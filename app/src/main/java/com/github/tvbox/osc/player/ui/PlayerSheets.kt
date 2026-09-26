@@ -240,6 +240,7 @@ internal fun SheetButton(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     contentPadding: Dp = 0.dp,
+    boldOnSelect: Boolean = true,
 ) {
     val container = if (selected) {
         MaterialTheme.colorScheme.primaryContainer
@@ -260,7 +261,7 @@ internal fun SheetButton(
                 MaterialTheme.colorScheme.onSurface
             },
             fontSize = playerTextSize(R.dimen.ts_20),
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+            fontWeight = if (selected && boldOnSelect) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

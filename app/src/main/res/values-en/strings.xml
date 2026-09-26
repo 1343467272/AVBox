@@ -437,8 +437,6 @@
     <string name="common_failed">Failed</string>
     <string name="player_time_start">Opening</string>
     <string name="player_time_end">Ending</string>
-    <string name="player_decode_hard_short">HW</string>
-    <string name="player_decode_soft_short">SW</string>
     <string name="player_brightness_value">Brightness %1$d%%</string>
     <string name="player_volume_value">Volume %1$d%%</string>
     <string name="player_select_player">Select a player</string>

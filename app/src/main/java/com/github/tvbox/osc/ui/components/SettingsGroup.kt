@@ -44,10 +44,10 @@ enum class SettingsCardPosition {
 }
 
 private fun shapeFor(position: SettingsCardPosition): Shape = when (position) {
-    SettingsCardPosition.SINGLE -> RoundedCornerShape(28.dp)
-    SettingsCardPosition.FIRST -> RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomEnd = 4.dp, bottomStart = 4.dp)
+    SettingsCardPosition.SINGLE -> RoundedCornerShape(32.dp)
+    SettingsCardPosition.FIRST -> RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp, bottomEnd = 4.dp, bottomStart = 4.dp)
     SettingsCardPosition.MIDDLE -> RoundedCornerShape(4.dp)
-    SettingsCardPosition.LAST -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomEnd = 28.dp, bottomStart = 28.dp)
+    SettingsCardPosition.LAST -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomEnd = 32.dp, bottomStart = 32.dp)
 }
 
 @Composable

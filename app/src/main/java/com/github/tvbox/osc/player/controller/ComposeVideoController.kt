@@ -733,19 +733,27 @@ class ComposeVideoController @JvmOverloads constructor(
             val isSoft = cfg.optString("exo", "硬解码") == "软解码" // i18n: keep
             return ParamsChoice(
                 options = listOf(
-                    context.getString(R.string.player_decode_hard_short),
-                    context.getString(R.string.player_decode_soft_short),
+                    context.getString(R.string.player_decode_hard),
+                    context.getString(R.string.player_decode_soft),
                 ),
                 selected = if (isSoft) 1 else 0,
                 onSelect = { applyDecode(playerType, if (it == 1) "软解码" else "硬解码") }, // i18n: keep
             )
         }
         val names = ApiConfig.get().ijkCodes.map { it.name }
+        val hardFirst = names.sortedBy { it != "硬解码" } // i18n: keep
         return ParamsChoice(
-            options = names,
-            selected = names.indexOf(cfg.optString("ijk")).coerceAtLeast(0),
-            onSelect = { applyDecode(playerType, names[it]) },
+            options = hardFirst.map { decodeLabel(it) },
+            selected = hardFirst.indexOf(cfg.optString("ijk")).coerceAtLeast(0),
+            onSelect = { applyDecode(playerType, hardFirst[it]) },
         )
+    }
+
+    /** IJK 的项名是码表数据值(ijk_codec 的取值),面板里与 EXO 两档同款显示本地化文案 */
+    private fun decodeLabel(name: String): String = when (name) {
+        "硬解码" -> context.getString(R.string.player_decode_hard) // i18n: keep
+        "软解码" -> context.getString(R.string.player_decode_soft) // i18n: keep
+        else -> name
     }
 
     private fun applySpeed(value: Float) {

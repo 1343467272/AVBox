@@ -2984,3 +2984,31 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 - **改动 1 行**:`PlayerBottomBar` 里 `PlayerActionPill` 的 `Modifier.padding(top = 2.dp)` → `6.dp` ⇒ 白线底边到图标顶边的视觉间距从 ≈14.8dp(≈2.3mm) 回到 ≈18.8dp(≈3.0mm);代价 = 进度条整体上移 4dp(≈1mm),底距 6dp 未动。
 - **为什么动这里**:误触发生在手指从进度行落到图标触摸盒时,两行之间的 `padding(top)` 是唯一的"安全缓冲带"(这段空隙不属于任何触摸目标);+4dp 即 +1mm 缓冲。进度行自身的 `vs_30` 触摸区未动(再压会拖手感)。
 - **验证**:BUILD SUCCESSFUL;350 用例 / 0 失败 / 0 错误。**未真机验证**。
+
+### 播放参数面板:画面比例 chips 行点选后换行(2026-09-27,用户"查看播放参数弹窗…点击4比3之后,这一行的选项会转行,这是bug吗",附两张真机截图)
+
+- **定位(截图实测,非推理)**:横屏 2800×1260 屏、参数面板 = 屏宽 45%(面板左缘 x=1540、右缘 2800)、内容区 x=1606..2734(**1129px**)。未选中 chips 实测宽 = 默认 174 / 16:9 171 / 4:3 149 / 填充 174 / 原始 174 / 裁剪 174(numbering 按面板顺序),合计 1016px,加 5×`vs_10`(22px)= **1126px** —— **余量 3px**。选中态 `SheetButton` 把字重 Normal→Medium,数字/冒号的字宽随之变宽(实测"4:3"字形墨迹 57→60px、整枚 chip 149→154px),点 4:3 / 16:9 时总宽 1131px > 1129px ⇒ `FlowRow` 把末位「裁剪」挤到第二行;点「默认」(CJK 加粗只 +2px)仍在 1129 内,所以现象表现为"有时正常、有时换行"。
+- **修法**:`SheetButton` 增 `boldOnSelect: Boolean = true`,选中态加粗受它控制;`PlayerParamsSheet.ParamsChoiceGroup`(三条 chips 行:播放器 / 解码 / 画面比例)传 `false` ⇒ chips 宽度与选中项**无关**,行布局恒定。默认 true 保其余调用点观感(选集弹窗条目、`SheetChipRow` 等宽度由调用方固定处不受影响、仍需选中加粗)。
+- **未采用的替代方案**:①缩 chips 内距/间距腾余量(改视觉尺寸,用户未要求);②六枚等分槽位 `weight(1f)`(英文 `Default/16:9/4:3/Fill/Original/Crop` 会截断 —— "Original" 需 141px 而槽内文字区仅 ≈100px);③选中项也预留加粗宽度(六枚全按加粗宽 = 1133px > 1129px,反而恒换行)。
+- **规则沉淀**:活规范 §4.4 参数面板条目已补"宽度随内容的 chips 一律不得随选中态改字重"。
+- **验证**:BUILD SUCCESSFUL;350 用例 / 0 失败 / 0 错误;`AVBox_debug.apk` 已装到 10AF1J04JX0016G。**未真机走查** —— 待用户点选画面比例六项,确认该行恒为一行、「裁剪」不再掉行、选中项仍为淡紫底 + 深色字。
+
+### 播放参数面板:解码方式统一为「硬解码 左 / 软解码 右」(2026-09-27,用户"统一播放参数弹窗的解码方式,左边为硬解码,右边是软解码",附 EXO / IJK 两种状态的真机截图)
+
+- **现象**:同一行在两个内核下左右翻转 —— EXO 选中时是「硬解 | 软解」(`player_decode_hard_short` / `soft_short`,短标签),IJK 选中时是「软解码 | 硬解码」(项名 = `ApiConfig` 内置 ijk 分组的 `group` 名,上游默认序软在前)。
+- **改动 1 处**(`ComposeVideoController.decodeChoice` 的 IJK 分支):名字列表**稳定排序**后再下发 —— `val hardFirst = names.sortedBy { it != "硬解码" }`,`options` / `selected` / `onSelect` 三处统一走 `hardFirst`(只重排展示序,`onSelect` 映射到同一名字,`applyDecode` 收到的仍是原名)。`sortedBy` 稳定 ⇒ 其余项保持配置原序。EXO 分支本就是硬在前,未动。
+- **为什么不在数据侧改**:`ApiConfig` 内置 ijk 数组的顺序还决定"KV 里存的解码名不在码表时的回落项"(`!foundOldSelect → ijkCodes.get(0).selected(true)`,会写 KV),改数据顺序等于顺带改行为;且面板展示序属于 UI 规则,放 `decodeChoice` 与同文件既有的 `sheetPlayerOrder()` 同位置。
+- **验证**:BUILD SUCCESSFUL;350 用例 / 0 失败 / 0 错误;`i18n_gate` ui 层 0 处、非 ui 层 0 处(新字面量带 `// i18n: keep`)。**未装包、未真机验证**(用户明示"改完就行了,不需要安装")—— 待走查:切到 IJK 播放器,解码这行应为「硬解码 | 软解码」且硬解码在左;切回 EXO 仍是「硬解 | 软解」。
+
+### 播放参数面板:解码项文案统一为「硬解码 / 软解码」全称(2026-09-27,用户"统一为左边硬解码,右边软解码")
+
+- **改动 3 处**:①`ComposeVideoController.decodeChoice` 的 EXO 分支把 `player_decode_hard_short` / `_soft_short` 换成全称 `player_decode_hard` / `player_decode_soft`;②IJK 分支的 `options` 过新增的 `decodeLabel(name)`(只映射两个知名码表名"硬解码"/"软解码"→本地化文案,未知名原样显示),`selected` / `onSelect` 仍按**码表名**列表取值 ⇒ 下发与落库的仍是 `ijk_codec` 原值;③三个语言层删除已无引用的 `player_decode_hard_short` / `player_decode_soft_short`(`values` 硬解/软解、`values-en` HW/SW、`values-b+zh+Hant` 硬解/軟解;`values-zh-rHK` 差异层本就没有这两键)。
+- **收益**:两个内核下这行文案一致(此前 EXO 短标签、IJK 码表名),且 IJK 在英文/繁體界面下不再显示简体码表名 —— 与播放设置页(`PlaySettingsPage` 的 `decodeLabels` 同一对资源)口径统一。
+- **验证**:BUILD SUCCESSFUL;350 用例 / 0 失败 / 0 错误;`i18n_gate` 0/0;`i18n_check_keys` declared=440 referenced=439、UNUSED 仅既有死键 `toast_permission_required`;`i18n_align` en / b+zh+Hant 全量 440=440 PASS、zh-rHK 差异层 PASS。**未装包、未真机验证**(用户此前明示不需安装)—— 待走查:EXO / IJK 两种内核下解码这行都是「硬解码 | 软解码」。
+
+### 定位:退出播放页再从历史进入,IJK 画面黑 2~3 秒(2026-09-27,用户报"有声音和弹幕")
+
+- **先排除用户的猜测**:不是重建内核实例 —— 退出只 `pause + stopPlaybackKeepPlayer`(PAUSED 时提前 return)+ 摘容器,实例留 60s(`PlaybackEngine.detach`,:424-441);重进同一部片命中 D6「同片接管」(`startedPlaybackKey` 在退页面时**故意不清**,`PlaybackContainer.setData` :1582-1593 → 直接 `mVideoView.start()`),**连取流都不重做**(所以声音/弹幕立刻就有)。
+- **真因 = 渲染容器跨窗口搬运后的 Surface 换代空窗**:`PlaybackEngine.attach()`(:374-378)先把容器盖**纯黑罩**再 `attachContainerTo(新页面槽位)` ⇒ 旧 Surface `surfaceDestroyed → setDisplay(null)`(`SurfaceRenderView.java:92-108`),新窗口的 `surfaceCreated → setDisplay(holder)` 尚未到;与此同时 `start()` → `startInPlaybackState()`(`player/.../VideoView.java:347-350`)**当场**置 `STATE_PLAYING`,引擎同帧掀罩(:163-169)⇒ 露出的是没有任何帧的空 Surface。IJK 侧要重建视频输出(疑等下一个关键帧,2s 级,未证实);EXO 因 media3 在 Surface 重建时重渲染最后一帧、且 `keepRenderViewOnReset()=true` 不重绑 display,所以观感正常。全仓无 `waitForSurface`/`isSurfaceAvailable` 门控(fork 里唯一等 surface 的分支在 `VideoView.resume():378-415`,新开页面走不到)。
+- **真机验证(用户当日反馈)**:把「画面渲染」切成 **TextureView** 后该现象消失 —— TextureView `onSurfaceTextureDestroyed` 返回 false 并复用同一 `SurfaceTexture`/`Surface`(`TextureRenderView.java:88-108`),内核侧窗口身份不变,整段绕开"输出重建+等关键帧"。与 2026-09-13 纯音频三联症状的结论同向(那次的判据就是"仅 SurfaceView 有此问题,TextureView 三症状全无")。
+- **未改动代码**;结论与三条收口候选(默认改 TextureView / 仅跨页复用窗口自动 Texture〔时序脆弱〕/ 登记不修)记入活规范 §7。**用户 2026-09-27 看过"引擎自带承载窗口"的评估后决定:保持现状、不修**(候选 ③)——他自己设备把「画面渲染」设为 TextureView 即为规避手段;默认值仍是 SurfaceView,未改过该键的设备在 IJK 下仍会复现这 2~3 秒黑窗,属已知接受。

@@ -437,8 +437,6 @@
     <string name="common_failed">失败</string>
     <string name="player_time_start">片头</string>
     <string name="player_time_end">片尾</string>
-    <string name="player_decode_hard_short">硬解</string>
-    <string name="player_decode_soft_short">软解</string>
     <string name="player_brightness_value">亮度%1$d%%</string>
     <string name="player_volume_value">音量%1$d%%</string>
     <string name="player_select_player">请选择播放器</string>

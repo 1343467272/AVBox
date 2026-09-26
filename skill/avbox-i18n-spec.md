@@ -142,7 +142,7 @@
 | 线路 | line | `线路N` = `Line N` |
 | 解析(超级解析) | parse / resolve | 超级解析 = `Super parse` |
 | 弹幕 | Danmaku | 保留日语借词(二次元语境通行),**不译** bullet comment |
-| 解码(硬解 / 软解) | Decoding(Hardware / Software) | 参数面板 chips 用短标签 = `HW` / `SW`(2026-09-26 由底栏移到播放参数抽屉) |
+| 解码(硬解码 / 软解码) | Decoding(Hardware / Software) | 2026-09-26 由底栏移到播放参数抽屉;显示文案统一走 `player_decode_hard` / `player_decode_soft`(2026-09-27 用户"统一为左边硬解码,右边软解码",原 `_short` 短标签键 `HW` / `SW` 已删),面板与播放设置页同款 |
 | 预载 / 缓存 / 缓冲 | preload / cache / buffer | |
 | 投屏 | cast | |
 | 节目单 | TV Guide | 节目单**数据内容**不翻(§2-N1) |

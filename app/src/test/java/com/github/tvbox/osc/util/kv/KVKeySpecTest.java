@@ -92,6 +92,13 @@ public class KVKeySpecTest {
                 spec.typeOf(com.github.tvbox.osc.util.HawkConfig.GESTURE_CONTROL_DISABLED));
     }
 
+    @Test
+    public void exoVideoDynamicScheduling_isRegistered() {
+        // 未登记的键会静默回落调用侧默认值 ⇒ 隐藏开关"改了没反应",必须锁住登记
+        assertEquals(TypeToken.get(Boolean.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.EXO_VIDEO_DYNAMIC_SCHEDULING));
+    }
+
     /**
      * 2026-09-13 修复的回归锁:直播源配置的 header/ua 由 ApiConfig 写入的是 HashMap&lt;String,String&gt;,
      * 一旦登记成 String,读取侧 Gson 会用 String 解析对象原文抛错、被 KV.get(key)(quiet 副本)静默吞成

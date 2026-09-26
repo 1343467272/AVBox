@@ -285,6 +285,8 @@ public class ExoPlayer extends ExoMediaPlayer {
     }
 
     private RenderersFactory buildRenderersFactory(Context context) {
+        boolean dynamicScheduling = KV.get(HawkConfig.EXO_VIDEO_DYNAMIC_SCHEDULING,
+                HawkConfig.EXO_VIDEO_DYNAMIC_SCHEDULING_DEFAULT);
         DefaultRenderersFactory factory = new SubtitleOffsetRenderersFactory(context, new SubtitleDelayProvider() {
             @Override
             public long getDelayUs() {
@@ -293,7 +295,8 @@ public class ExoPlayer extends ExoMediaPlayer {
         }, capturedVideoRenderers)
                 .setEnableDecoderFallback(true)
                 // 音频硬解优先:MediaCodec 不支持的格式(AC3/DTS 类)才落到 ffmpeg 软解兜底
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
+                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                .setEnableMediaCodecVideoRendererDurationToProgressUs(dynamicScheduling);
         // 关闭 MediaCodec 异步队列(2026-09-15:由反射改为直接调用)。该方法是 media3 的**公开 API**
         // (1.11.1 实证 public final,无 @RestrictTo/@UnstableApi/@Deprecated),内部只是
         // DefaultMediaCodecAdapterFactory.forceDisableAsynchronous() 的实例开关,在 renderer 构建前调用即生效。
@@ -302,6 +305,7 @@ public class ExoPlayer extends ExoMediaPlayer {
         // 日志保留用于真机确认确实走到了;若要恢复异步队列,删掉下面这行即可。
         factory.forceDisableMediaCodecAsynchronousQueueing();
         LOG.i("echo-exo-disable-async-codec-queue");
+        LOG.i("echo-exo-video-dynamic-scheduling: " + dynamicScheduling);
         return factory;
     }
 

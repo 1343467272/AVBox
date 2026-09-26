@@ -86,6 +86,7 @@ private fun ParamsChoiceGroup(@StringRes labelRes: Int, choice: ParamsChoice) {
                 selected = index == choice.selected,
                 onClick = { choice.onSelect(index) },
                 contentPadding = playerDim(R.dimen.vs_20),
+                boldOnSelect = false,
             )
         }
     }

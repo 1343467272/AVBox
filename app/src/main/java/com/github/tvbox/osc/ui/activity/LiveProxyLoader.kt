@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Base64
 import com.github.tvbox.osc.api.ApiConfig
 import com.github.tvbox.osc.bean.LiveChannelGroup
+import com.github.tvbox.osc.util.BoundedCall
 import com.github.tvbox.osc.util.LOG
 import com.github.tvbox.osc.util.live.TxtSubscribe
 import com.lzy.okgo.OkGo
@@ -15,8 +16,6 @@ import java.util.ArrayList
 import java.util.Locale
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 
 /**
  * 代理直播源加载:配置里只有一条 `http://127.0.0.1:9978/proxy?...&ext=<base64>` 合成地址时,
@@ -81,29 +80,15 @@ internal class LiveProxyLoader(private val host: Host) {
         if (realUrl.contains(".py") || realUrl.contains(".js")) {
             val finalUrl = realUrl
             val waitResponse = Runnable {
-                val executor = Executors.newSingleThreadExecutor()
-                val future = executor.submit(Callable<String> {
+                val sortJson = BoundedCall.call(Callable {
                     val sp = ApiConfig.get().getLiveCSP(finalUrl)
                     sp.liveContent(finalUrl)
-                })
-                var sortJson: String? = null
+                }, ApiConfig.get().liveConnectTimeoutSeconds * 1000L, "echo-live-proxy")
+                if (sortJson.isNullOrEmpty()) {
+                    mHandler.post { host.onEmpty() }
+                    return@Runnable
+                }
                 try {
-                    sortJson = future.get(ApiConfig.get().liveConnectTimeoutSeconds.toLong(), TimeUnit.SECONDS)
-                } catch (e: TimeoutException) {
-                    LOG.e("LiveProxyLoader", e)
-                    future.cancel(true)
-                } catch (e: Exception) {
-                    LOG.e("LiveProxyLoader", e)
-                } finally {
-                    try {
-                        executor.shutdown()
-                    } catch (th: Throwable) {
-                        LOG.e("LiveProxyLoader", th)
-                    }
-                    if (sortJson.isNullOrEmpty()) {
-                        mHandler.post { host.onEmpty() }
-                        return@Runnable
-                    }
                     val livesArray = TxtSubscribe.parseToJsonArray(sortJson)
                     mHandler.post {
                         ApiConfig.get().loadLives(livesArray)
@@ -114,6 +99,8 @@ internal class LiveProxyLoader(private val host: Host) {
                             host.onGroupsLoaded(ArrayList(list))
                         }
                     }
+                } catch (th: Throwable) {
+                    LOG.e("LiveProxyLoader", th)
                 }
             }
             Executors.newSingleThreadExecutor().also {

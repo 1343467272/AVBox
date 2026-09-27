@@ -25,6 +25,7 @@ import com.github.tvbox.osc.bean.MovieSort;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.player.thirdparty.RemoteTVBox;
+import com.github.tvbox.osc.util.BoundedCall;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.FileUtils;
 import com.github.tvbox.osc.util.HawkConfig;
@@ -67,7 +68,6 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -280,59 +280,43 @@ public class SourceViewModel extends ViewModel {
             Runnable waitResponse = new Runnable() {
                 @Override
                 public void run() {
-                    ExecutorService executor = Executors.newSingleThreadExecutor();
-                    Future<String> future = executor.submit(new Callable<String>() {
+                    String sortJson = BoundedCall.call(new Callable<String>() {
                         @Override
-                        public String call() throws Exception {
+                        public String call() {
                             Spider sp = ApiConfig.get().getCSP(sourceBean);
                             String json = sp.homeContent(true);
 //                            LOG.i("echo--getSort :" + json);
                             return json;
                         }
-                    });
-                    String sortJson = null;
-                    try {
-                        sortJson = future.get(30, TimeUnit.SECONDS);
-                    } catch (TimeoutException e) {
-                        LOG.i("echo--getSort-timeout--" + sourceBean.getKey());
-                        future.cancel(true);
-                    } catch (InterruptedException | ExecutionException e) {
-                        Throwable cause = e.getCause();
-                        LOG.i("echo--getSort-error--" + sourceBean.getKey() + "--" + e.getClass().getSimpleName() + "--" + (cause != null ? cause.getClass().getSimpleName() + ":" + cause.getMessage() : e.getMessage()));
-                    } finally {
-                        if (sortJson != null) {
-                            final AbsSortXml sortXml = sortJson(sortResult, sortJson);
-                            attachSortSource(sourceKey, sortXml);
-                            if (sortXml != null) {
-                                AbsXml absXml = json(null, sortJson, sourceBean.getKey());
-                                if (!withRec) {
-                                    postSortResult(sourceKey, sortXml);
-                                    cacheSort(sourceKey, sortXml);
-                                } else if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
-                                    sortXml.videoList = absXml.movie.videoList;
-                                    postSortResult(sourceKey, sortXml);
-                                    cacheSort(sourceKey, sortXml);
-                                } else {
-                                    getHomeRecList(sourceBean, null, new HomeRecCallback() {
-                                        @Override
-                                        public void done(List<Movie.Video> videos) {
-                                            sortXml.videoList = videos;
-                                            postSortResult(sourceKey, sortXml);
-                                            cacheSort(sourceKey, sortXml);
-                                        }
-                                    });
-                                }
-                            } else {
+                    }, 30_000L, "echo--getSort--" + sourceBean.getKey());
+                    if (sortJson != null) {
+                        final AbsSortXml sortXml = sortJson(sortResult, sortJson);
+                        attachSortSource(sourceKey, sortXml);
+                        if (sortXml != null) {
+                            AbsXml absXml = json(null, sortJson, sourceBean.getKey());
+                            if (!withRec) {
                                 postSortResult(sourceKey, sortXml);
                                 cacheSort(sourceKey, sortXml);
+                            } else if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
+                                sortXml.videoList = absXml.movie.videoList;
+                                postSortResult(sourceKey, sortXml);
+                                cacheSort(sourceKey, sortXml);
+                            } else {
+                                getHomeRecList(sourceBean, null, new HomeRecCallback() {
+                                    @Override
+                                    public void done(List<Movie.Video> videos) {
+                                        sortXml.videoList = videos;
+                                        postSortResult(sourceKey, sortXml);
+                                        cacheSort(sourceKey, sortXml);
+                                    }
+                                });
                             }
                         } else {
-                            postSortResult(sourceKey, null);
+                            postSortResult(sourceKey, sortXml);
+                            cacheSort(sourceKey, sortXml);
                         }
-                        try {
-                            executor.shutdown();
-                        } catch (Throwable ignored) {
-                        }
+                    } else {
+                        postSortResult(sourceKey, null);
                     }
                 }
             };
@@ -508,31 +492,18 @@ public class SourceViewModel extends ViewModel {
             spThreadPool.execute(new Runnable() {
                 @Override
                 public void run() {
-                    ExecutorService executor = Executors.newSingleThreadExecutor();
-                    Future<String> future = executor.submit(new Callable<String>() {
+                    String json = BoundedCall.call(new Callable<String>() {
                         @Override
-                        public String call() throws Exception {
+                        public String call() {
                             Spider sp = ApiConfig.get().getCSP(homeSourceBean);
                             return sp.categoryContent(sortData.id, page + "", true, sortData.filterSelect);
                         }
-                    });
-                    String json = null;
-                    try {
-                        json = future.get(homeSourceBean.getPlayTimeoutSeconds(), TimeUnit.SECONDS);
-//                        LOG.i("echo-categoryContent:"+json);
-                    } catch (TimeoutException e) {
-                        LOG.i("echo--getList-timeout--" + homeSourceBean.getKey());
-                        future.cancel(true);
-                    } catch (InterruptedException | ExecutionException e) {
-                        Throwable cause = e.getCause();
-                        LOG.i("echo--getList-error--" + homeSourceBean.getKey() + "--" + e.getClass().getSimpleName() + "--" + (cause != null ? cause.getClass().getSimpleName() + ":" + cause.getMessage() : e.getMessage()));
-                    } finally {
-                        executor.shutdown();
-                        if (json != null) {
-                            json(listResult, json,homeSourceBean.getKey());
-                        } else {
-                            listResult.postValue(null);
-                        }
+                    }, homeSourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getList--" + homeSourceBean.getKey());
+//                    LOG.i("echo-categoryContent:"+json);
+                    if (json != null) {
+                        json(listResult, json, homeSourceBean.getKey());
+                    } else {
+                        listResult.postValue(null);
                     }
                 }
             });
@@ -642,39 +613,24 @@ public class SourceViewModel extends ViewModel {
             Runnable waitResponse = new Runnable() {
                 @Override
                 public void run() {
-                    ExecutorService executor = Executors.newSingleThreadExecutor();
-                    Future<String> future = executor.submit(new Callable<String>() {
+                    String sortJson = BoundedCall.call(new Callable<String>() {
                         @Override
-                        public String call() throws Exception {
+                        public String call() {
                             Spider sp = ApiConfig.get().getCSP(sourceBean);
                             String json = sp.homeVideoContent();
 //                            LOG.i("echo--getHomeRecList :" + json);
                             return json;
                         }
-                    });
-                    String sortJson = null;
-                    try {
-                        sortJson = future.get(20, TimeUnit.SECONDS);
-                    } catch (TimeoutException e) {
-                        LOG.e("SourceViewModel", e);
-                        future.cancel(true);
-                    } catch (InterruptedException | ExecutionException e) {
-                        LOG.e("SourceViewModel", e);
-                    } finally {
-                        if (sortJson != null) {
-                            AbsXml absXml = json(null, sortJson, sourceBean.getKey());
-                            if (absXml != null && absXml.movie != null && absXml.movie.videoList != null) {
-                                callback.done(absXml.movie.videoList);
-                            } else {
-                                callback.done(null);
-                            }
+                    }, 20_000L, "echo--getHomeRecList--" + sourceBean.getKey());
+                    if (sortJson != null) {
+                        AbsXml absXml = json(null, sortJson, sourceBean.getKey());
+                        if (absXml != null && absXml.movie != null && absXml.movie.videoList != null) {
+                            callback.done(absXml.movie.videoList);
                         } else {
                             callback.done(null);
                         }
-                        try {
-                            executor.shutdown();
-                        } catch (Throwable ignored) {
-                        }
+                    } else {
+                        callback.done(null);
                     }
                 }
             };
@@ -776,8 +732,7 @@ public class SourceViewModel extends ViewModel {
             spThreadPool.execute(new Runnable() {
                 @Override
                 public void run() {
-                    ExecutorService executor = Executors.newSingleThreadExecutor();
-                    Future<String> future = executor.submit(new Callable<String>() {
+                    String json = BoundedCall.call(new Callable<String>() {
                         @Override
                         public String call() {
                             Spider sp = ApiConfig.get().getCSP(sourceBean);
@@ -791,21 +746,9 @@ public class SourceViewModel extends ViewModel {
                                 return "";
                             }
                         }
-                    });
-
-                    String json = null;
-                    try {
-                        json = future.get(fallback ? 6 : 30, TimeUnit.SECONDS);
-//                        LOG.i("echo--getDetail--result:" + json);
-                    } catch (TimeoutException e) {
-                        LOG.i("echo--getDetail--timeout");
-                        future.cancel(true);
-                    } catch (Exception e) {
-                        LOG.i("echo--getDetail--error: " + e.getMessage());
-                    } finally {
-                        json(detailResult, json, sourceBean.getKey());
-                        executor.shutdown();
-                    }
+                    }, fallback ? 6_000L : 30_000L, "echo--getDetail--" + sourceBean.getKey());
+//                    LOG.i("echo--getDetail--result:" + json);
+                    json(detailResult, json, sourceBean.getKey());
                 }
             });
         } else if (type == 0 || type == 1|| type == 4) {
@@ -1050,10 +993,9 @@ public class SourceViewModel extends ViewModel {
             spThreadPool.execute(new Runnable() {
                 @Override
                 public void run() {
-                    ExecutorService executor = Executors.newSingleThreadExecutor();
-                    Future<String> future = executor.submit(new Callable<String>() {
+                    String json = BoundedCall.call(new Callable<String>() {
                         @Override
-                        public String call() throws Exception {
+                        public String call() {
                             Spider sp = ApiConfig.get().getCSP(sourceBean);
                             if (TextUtils.isEmpty(requestUrl)) return "";
                             try {
@@ -1064,40 +1006,29 @@ public class SourceViewModel extends ViewModel {
                                 return "";
                             }
                         }
-                    });
-
-                    try {
-                        String json = future.get(sourceBean.getPlayTimeoutSeconds(), TimeUnit.SECONDS);
-                        LOG.i("echo--getPlay--result:" + json);
-                        // 处理返回的 JSON
-                        if (!TextUtils.isEmpty(json)) {
-                            JSONObject result = normalizePlayerResult(new JSONObject(json));
-                            result.put("key", url);
-                            mergePushHeaders(result, pushUrl);
-                            mergeSiteHeaders(result, sourceBean);
-                            result.put("proKey", progressKey);
-                            result.put("subtKey", subtitleKey);
-                            if (!result.has("flag"))
-                                result.put("flag", playFlag);
-                            if (TextUtils.isEmpty(result.optString("url", "")) && shouldDirectPlay(sourceBean, requestUrl)) {
-                                postPlayResult(seqHolder, resultChannel, requestSeq, createDirectPlayResult(url, pushUrl, progressKey, subtitleKey, playFlag, sourceBean));
-                            } else {
-                                postPlayResult(seqHolder, resultChannel, requestSeq, result);
-                            }
-                        } else {
-                            postPlayResult(seqHolder, resultChannel, requestSeq, null);
-                        }
-                    } catch (TimeoutException e) {
-                        // 如果超时了，处理超时逻辑
-                        LOG.i("echo--getPlay--timeout");
-                        future.cancel(true);
+                    }, sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getPlay--" + sourceBean.getKey());
+                    LOG.i("echo--getPlay--result:" + json);
+                    if (TextUtils.isEmpty(json)) {
                         postPlayResult(seqHolder, resultChannel, requestSeq, null);
+                        return;
+                    }
+                    try {
+                        JSONObject result = normalizePlayerResult(new JSONObject(json));
+                        result.put("key", url);
+                        mergePushHeaders(result, pushUrl);
+                        mergeSiteHeaders(result, sourceBean);
+                        result.put("proKey", progressKey);
+                        result.put("subtKey", subtitleKey);
+                        if (!result.has("flag"))
+                            result.put("flag", playFlag);
+                        if (TextUtils.isEmpty(result.optString("url", "")) && shouldDirectPlay(sourceBean, requestUrl)) {
+                            postPlayResult(seqHolder, resultChannel, requestSeq, createDirectPlayResult(url, pushUrl, progressKey, subtitleKey, playFlag, sourceBean));
+                        } else {
+                            postPlayResult(seqHolder, resultChannel, requestSeq, result);
+                        }
                     } catch (Exception e) {
-                        // 捕获其他异常
                         LOG.i("echo--getPlay--error: " + e.getMessage());
                         postPlayResult(seqHolder, resultChannel, requestSeq, null);
-                    } finally {
-                        executor.shutdown();
                     }
                 }
             });

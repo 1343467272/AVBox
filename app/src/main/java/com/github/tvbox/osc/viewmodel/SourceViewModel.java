@@ -12,14 +12,11 @@ import androidx.lifecycle.ViewModel;
 
 import com.github.catvod.crawler.Spider;
 import com.github.tvbox.osc.api.ApiConfig;
-import com.github.tvbox.osc.bean.AbsJson;
-import com.github.tvbox.osc.bean.AbsSortJson;
 import com.github.tvbox.osc.bean.AbsSortXml;
 import com.github.tvbox.osc.bean.AbsXml;
 import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.bean.MovieSort;
 import com.github.tvbox.osc.bean.SourceBean;
-import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.player.thirdparty.RemoteTVBox;
 import com.github.tvbox.osc.util.BoundedCall;
 import com.github.tvbox.osc.util.DefaultConfig;
@@ -28,19 +25,11 @@ import com.github.tvbox.osc.util.HeaderGuard;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.PlayerHelper;
 import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.google.gson.reflect.TypeToken;
 import com.lzy.okgo.callback.AbsCallback;
 import com.lzy.okgo.model.Response;
 import com.lzy.okgo.request.GetRequest;
 import com.github.tvbox.osc.util.KV;
-import com.thoughtworks.xstream.XStream;
-import com.thoughtworks.xstream.io.xml.DomDriver;
 
-import org.greenrobot.eventbus.EventBus;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -85,6 +74,7 @@ public class SourceViewModel extends ViewModel {
 
     private Gson gson;
     private final PushDetailResolver pushDetailResolver;
+    private final SourceResultParser resultParser;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final AtomicInteger playRequestSeq = new AtomicInteger();
     private final AtomicInteger preloadRequestSeq = new AtomicInteger();
@@ -99,6 +89,7 @@ public class SourceViewModel extends ViewModel {
         preloadResult = new MutableLiveData<>();
         gson=new Gson();
         pushDetailResolver = new PushDetailResolver(gson, detailResult);
+        resultParser = new SourceResultParser(gson, searchResult, detailResult, pushDetailResolver);
     }
 
     /** 站点取数线程池(spider 阻塞调用);池本身在 {@link SourceHelper},这里保留门面入口 */
@@ -109,28 +100,6 @@ public class SourceViewModel extends ViewModel {
         @Override
         protected boolean removeEldestEntry(Entry<String, AbsSortXml> eldest) {
             return size() > 5;
-        }
-    };
-
-    // XStream 非线程安全:按线程缓存实例复用(勿改共享单例)
-    private static final ThreadLocal<XStream> sortXStream = new ThreadLocal<XStream>() {
-        @Override
-        protected XStream initialValue() {
-            XStream xstream = new XStream(new DomDriver());
-            xstream.autodetectAnnotations(true);
-            xstream.processAnnotations(AbsSortXml.class);
-            xstream.ignoreUnknownElements();
-            return xstream;
-        }
-    };
-    private static final ThreadLocal<XStream> listXStream = new ThreadLocal<XStream>() {
-        @Override
-        protected XStream initialValue() {
-            XStream xstream = new XStream(new DomDriver());
-            xstream.autodetectAnnotations(true);
-            xstream.processAnnotations(AbsXml.class);
-            xstream.ignoreUnknownElements();
-            return xstream;
         }
     };
 
@@ -247,10 +216,10 @@ public class SourceViewModel extends ViewModel {
                         }
                     }, sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getSort--" + sourceBean.getKey());
                     if (sortJson != null) {
-                        final AbsSortXml sortXml = sortJson(sortResult, sortJson);
+                        final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
                         attachSortSource(sourceKey, sortXml);
                         if (sortXml != null) {
-                            AbsXml absXml = json(null, sortJson, sourceBean.getKey());
+                            AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
                             if (!withRec) {
                                 postSortResult(sourceKey, sortXml);
                                 cacheSort(sourceKey, sortXml);
@@ -296,10 +265,10 @@ public class SourceViewModel extends ViewModel {
                             AbsSortXml sortXml = null;
                             if (type == 0) {
                                 String xml = response.body();
-                                sortXml = sortXml(sortResult, xml);
+                                sortXml = resultParser.sortXml(sortResult, xml);
                             } else if (type == 1) {
                                 String json = response.body();
-                                sortXml = sortJson(sortResult, json);
+                                sortXml = resultParser.sortJson(sortResult, json);
                             }
                             attachSortSource(sourceKey, sortXml);
                             if (withRec && sortXml != null && sortXml.list != null && sortXml.list.videoList != null && sortXml.list.videoList.size() > 0) {
@@ -353,10 +322,10 @@ public class SourceViewModel extends ViewModel {
                             public void onSuccess(Response<String> response) {
                                 String sortJson  = response.body();
                                 if (sortJson != null) {
-                                    final AbsSortXml sortXml = sortJson(sortResult, sortJson);
+                                    final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
                                     attachSortSource(sourceKey, sortXml);
                                     if (sortXml != null) {
-                                        AbsXml absXml = json(null, sortJson, sourceBean.getKey());
+                                        AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
                                         if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
                                             sortXml.videoList = absXml.movie.videoList;
                                             postSortResult(sourceKey, sortXml);
@@ -403,10 +372,10 @@ public class SourceViewModel extends ViewModel {
                         public void onResponse(@NonNull Call call, @NonNull okhttp3.Response response) throws IOException {
                             assert response.body() != null;
                             String sortJson = response.body().string();
-                            final AbsSortXml sortXml = sortJson(sortResult, sortJson);
+                            final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
                             attachSortSource(sourceKey, sortXml);
                             if (sortXml != null) {
-                                AbsXml absXml = json(null, sortJson, sourceBean.getKey());
+                                AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
                                 if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
                                     sortXml.videoList = absXml.movie.videoList;
                                     postSortResult(sourceKey, sortXml);
@@ -458,7 +427,7 @@ public class SourceViewModel extends ViewModel {
                     }, homeSourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getList--" + homeSourceBean.getKey());
 //                    LOG.i("echo-categoryContent:"+json);
                     if (json != null) {
-                        json(listResult, json, homeSourceBean.getKey());
+                        resultParser.json(listResult, json, homeSourceBean.getKey());
                     } else {
                         listResult.postValue(null);
                     }
@@ -487,10 +456,10 @@ public class SourceViewModel extends ViewModel {
                         public void onSuccess(Response<String> response) {
                             if (type == 0) {
                                 String xml = response.body();
-                                xml(listResult, xml, homeSourceBean.getKey());
+                                resultParser.xml(listResult, xml, homeSourceBean.getKey());
                             } else {
                                 String json = response.body();
-                                json(listResult, json, homeSourceBean.getKey());
+                                resultParser.json(listResult, json, homeSourceBean.getKey());
                             }
                         }
 
@@ -545,7 +514,7 @@ public class SourceViewModel extends ViewModel {
                         public void onSuccess(Response<String> response) {
                             String json = response.body();
 //                            LOG.i("echo-list: " + json);
-                            json(listResult, json, homeSourceBean.getKey());
+                            resultParser.json(listResult, json, homeSourceBean.getKey());
                         }
 
                         @Override
@@ -580,7 +549,7 @@ public class SourceViewModel extends ViewModel {
                         }
                     }, sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getHomeRecList--" + sourceBean.getKey());
                     if (sortJson != null) {
-                        AbsXml absXml = json(null, sortJson, sourceBean.getKey());
+                        AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
                         if (absXml != null && absXml.movie != null && absXml.movie.videoList != null) {
                             callback.done(absXml.movie.videoList);
                         } else {
@@ -613,10 +582,10 @@ public class SourceViewModel extends ViewModel {
                             AbsXml absXml;
                             if (sourceBean.getType() == 0) {
                                 String xml = response.body();
-                                absXml = xml(null, xml, sourceBean.getKey());
+                                absXml = resultParser.xml(null, xml, sourceBean.getKey());
                             } else {
                                 String json = response.body();
-                                absXml = json(null, json, sourceBean.getKey());
+                                absXml = resultParser.json(null, json, sourceBean.getKey());
                             }
                             if (absXml != null && absXml.movie != null && absXml.movie.videoList != null) {
                                 callback.done(absXml.movie.videoList);
@@ -705,7 +674,7 @@ public class SourceViewModel extends ViewModel {
                         }
                     }, fallback ? 6_000L : sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getDetail--" + sourceBean.getKey());
 //                    LOG.i("echo--getDetail--result:" + json);
-                    json(detailResult, json, sourceBean.getKey());
+                    resultParser.json(detailResult, json, sourceBean.getKey());
                 }
             });
         } else if (type == 0 || type == 1|| type == 4) {
@@ -735,18 +704,18 @@ public class SourceViewModel extends ViewModel {
                         public void onSuccess(Response<String> response) {
                             if (type == 0) {
                                 String xml = response.body();
-                                xml(detailResult, xml, sourceBean.getKey());
+                                resultParser.xml(detailResult, xml, sourceBean.getKey());
                             } else {
                                 String json = response.body();
                                 LOG.i(json);
-                                json(detailResult, json, sourceBean.getKey());
+                                resultParser.json(detailResult, json, sourceBean.getKey());
                             }
                         }
 
                         @Override
                         public void onError(Response<String> response) {
                             super.onError(response);
-                            json(detailResult, "", sourceBean.getKey());
+                            resultParser.json(detailResult, "", sourceBean.getKey());
                         }
                     });
         } else {
@@ -798,7 +767,7 @@ public class SourceViewModel extends ViewModel {
     private void getSearch(String sourceKey, String wd, String searchToken, MutableLiveData<AbsXml> result, String requestTag) {
         SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
         if (sourceBean == null) {
-            postEmptySearchResult(result, sourceKey, searchToken);
+            resultParser.postEmptySearchResult(result, sourceKey, searchToken);
             return;
         }
         int type = sourceBean.getType();
@@ -807,13 +776,13 @@ public class SourceViewModel extends ViewModel {
                 Spider sp = ApiConfig.get().getCSP(sourceBean);
                 String search = sp.searchContent(wd, false);
                 if(!TextUtils.isEmpty(search)){
-                    json(result, search, sourceBean.getKey(), searchToken);
+                    resultParser.json(result, search, sourceBean.getKey(), searchToken);
                 } else {
-                    json(result, "", sourceBean.getKey(), searchToken);
+                    resultParser.json(result, "", sourceBean.getKey(), searchToken);
                 }
             } catch (Throwable th) {
                 LOG.e("SourceViewModel", th);
-                json(result, "", sourceBean.getKey(), searchToken);
+                resultParser.json(result, "", sourceBean.getKey(), searchToken);
             }
         } else if (type == 0 || type == 1) {
             SourceHelper.siteGet(sourceBean)
@@ -834,17 +803,17 @@ public class SourceViewModel extends ViewModel {
                         public void onSuccess(Response<String> response) {
                             if (type == 0) {
                                 String xml = response.body();
-                                xml(result, xml, sourceBean.getKey(), searchToken);
+                                resultParser.xml(result, xml, sourceBean.getKey(), searchToken);
                             } else {
                                 String json = response.body();
-                                json(result, json, sourceBean.getKey(), searchToken);
+                                resultParser.json(result, json, sourceBean.getKey(), searchToken);
                             }
                         }
 
                         @Override
                         public void onError(Response<String> response) {
                             super.onError(response);
-                            postEmptySearchResult(result, sourceBean.getKey(), searchToken);
+                            resultParser.postEmptySearchResult(result, sourceBean.getKey(), searchToken);
                         }
                     });
         }else if (type == 4) {
@@ -885,20 +854,20 @@ public class SourceViewModel extends ViewModel {
                     public void onSuccess(Response<String> response) {
                             String json = response.body();
 //                            LOG.i("echo-t4 search onSuccess"+json);
-                            json(result, json, sourceBean.getKey(), searchToken);
+                            resultParser.json(result, json, sourceBean.getKey(), searchToken);
                     }
 
                     @Override
                     public void onError(Response<String> response) {
                         LOG.i("echo-t4 search-onError");
                         super.onError(response);
-                        postEmptySearchResult(result, sourceBean.getKey(), searchToken);
+                        resultParser.postEmptySearchResult(result, sourceBean.getKey(), searchToken);
                     }
                 });
                 }
             });
         } else {
-            postEmptySearchResult(result, sourceBean.getKey(), searchToken);
+            resultParser.postEmptySearchResult(result, sourceBean.getKey(), searchToken);
         }
     }
     // playerContent
@@ -1290,199 +1259,6 @@ public class SourceViewModel extends ViewModel {
     }
 
     private static final ConcurrentHashMap<String, String> extendCache = new ConcurrentHashMap<>();
-
-    private MovieSort.SortFilter getSortFilter(JsonObject obj) {
-        String key = obj.get("key").getAsString();
-        String name = obj.get("name").getAsString();
-        JsonArray kv = obj.getAsJsonArray("value");
-        LinkedHashMap<String, String> values = new LinkedHashMap<>();
-        // 2026-09-10 BugFix:必须存 (v → n),与 FilterSheet 消费约定一致(显示 map value=显示名 n,
-        // 选中发送 map key=筛选值 v);原 put(n, v) 写反,导致胶囊显示英文 v 且发错筛选值
-        for (JsonElement ele : kv) {
-            JsonObject ele_obj = ele.getAsJsonObject();
-            String values_value = ele_obj.has("v") ? ele_obj.get("v").getAsString() : "";
-            String values_name = ele_obj.has("n") ? ele_obj.get("n").getAsString() : "";
-            values.put(values_value, values_name);
-        }
-        MovieSort.SortFilter filter = new MovieSort.SortFilter();
-        filter.key = key;
-        filter.name = name;
-        filter.values = values;
-        return filter;
-    }
-
-    private AbsSortXml sortJson(MutableLiveData<AbsSortXml> result, String json) {
-        try {
-            if (TextUtils.isEmpty(json)) {
-                return new AbsSortJson().toAbsSortXml();
-            }
-            JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
-            AbsSortJson sortJson = gson.fromJson(obj, new TypeToken<AbsSortJson>() {
-            }.getType());
-            AbsSortXml data = sortJson.toAbsSortXml();
-            try {
-                if (obj.has("filters")) {
-                    LinkedHashMap<String, ArrayList<MovieSort.SortFilter>> sortFilters = new LinkedHashMap<>();
-                    JsonObject filters = obj.getAsJsonObject("filters");
-                    for (String key : filters.keySet()) {
-                        ArrayList<MovieSort.SortFilter> sortFilter = new ArrayList<>();
-                        JsonElement one = filters.get(key);
-                        if (one.isJsonObject()) {
-                            sortFilter.add(getSortFilter(one.getAsJsonObject()));
-                        } else {
-                            for (JsonElement ele : one.getAsJsonArray()) {
-                                sortFilter.add(getSortFilter(ele.getAsJsonObject()));
-                            }
-                        }
-                        sortFilters.put(key, sortFilter);
-                    }
-                    if (data.classes != null && data.classes.sortList != null) {
-                        for (MovieSort.SortData sort : data.classes.sortList) {
-                            if (sortFilters.containsKey(sort.id) && sortFilters.get(sort.id) != null) {
-                                sort.filters = sortFilters.get(sort.id);
-                            }
-                        }
-                    }
-                }
-            } catch (Throwable th) {
-                LOG.d("SourceViewModel", "sort filters parse failed, continue without filters");
-            }
-            return data;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private AbsSortXml sortXml(MutableLiveData<AbsSortXml> result, String xml) {
-        try {
-            XStream xstream = sortXStream.get();
-            AbsSortXml data = (AbsSortXml) xstream.fromXML(xml);
-            for (MovieSort.SortData sort : data.classes.sortList) {
-                if (sort.filters == null) {
-                    sort.filters = new ArrayList<>();
-                }
-            }
-            return data;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /** 磁力链接交给迅雷解析改写,结果回投 detailResult */
-    public void checkThunder(AbsXml data, int index) {
-        pushDetailResolver.checkThunder(data, index);
-    }
-
-    private AbsXml xml(MutableLiveData<AbsXml> result, String xml, String sourceKey) {
-        return xml(result, xml, sourceKey, "");
-    }
-
-    private AbsXml xml(MutableLiveData<AbsXml> result, String xml, String sourceKey, String searchToken) {
-        try {
-            XStream xstream = listXStream.get();
-            if (xml.contains("<year></year>")) {
-                xml = xml.replace("<year></year>", "<year>0</year>");
-            }
-            if (xml.contains("<state></state>")) {
-                xml = xml.replace("<state></state>", "<state>0</state>");
-            }
-            AbsXml data = (AbsXml) xstream.fromXML(xml);
-            SourceHelper.absXml(data, sourceKey, searchToken);
-            if (searchResult == result) {
-                EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_SEARCH_RESULT, data));
-            } else if (result != null) {
-                if (result == detailResult) {
-                	data = pushDetailResolver.checkPush(data);
-                    pushDetailResolver.checkThunder(data,0);
-                }else {
-                    postSearchResult(result, data);
-                }
-            }
-            return data;
-        } catch (Exception e) {
-            if (searchResult == result) {
-                postEmptySearchResult(result, sourceKey, searchToken);
-            } else if (result != null) {
-                if (result == detailResult) {
-                    AbsXml data = new AbsXml();
-                    data.sourceKey = sourceKey;
-                    result.postValue(data);
-                } else {
-                    result.postValue(null);
-                }
-            }
-            return null;
-        }
-    }
-
-    private AbsXml json(MutableLiveData<AbsXml> result, String json, String sourceKey) {
-        return json(result, json, sourceKey, "");
-    }
-
-    private AbsXml json(MutableLiveData<AbsXml> result, String json, String sourceKey, String searchToken) {
-        try {
-            // 测试数据
-//            json = "{\n" +
-//                    "\t\"list\": [{\n" +
-//                    "\t\t\"vod_id\": \"137133\",\n" +
-//                    "\t\t\"vod_name\": \"磁力测试\",\n" +
-//                    "\t\t\"vod_pic\": \"https:/img9.doubanio.com/view/photo/s_ratio_poster/public/p2656327176.webp\",\n" +
-//                    "\t\t\"type_name\": \"剧情 / 爱情 / 古装\",\n" +
-//                    "\t\t\"vod_year\": \"2022\",\n" +
-//                    "\t\t\"vod_area\": \"中国大陆\",\n" +
-//                    "\t\t\"vod_remarks\": \"40集全\",\n" +
-//                    "\t\t\"vod_actor\": \"刘亦菲\",\n" +
-//                    "\t\t\"vod_director\": \"杨阳\",\n" +
-//                    "\t\t\"vod_content\": \"　　在钱塘开茶铺的赵盼儿（刘亦菲 饰）惊闻未婚夫、新科探花欧阳旭（徐海乔 饰）要另娶当朝高官之女，不甘命运的她誓要上京讨个公道。在途中她遇到了出自权门但生性正直的皇城司指挥顾千帆（陈晓 饰），并卷入江南一场大案，两人不打不相识从而结缘。赵盼儿凭借智慧解救了被骗婚而惨遭虐待的“江南第一琵琶高手”宋引章（林允 饰）与被苛刻家人逼得离家出走的豪爽厨娘孙三娘（柳岩 饰），三位姐妹从此结伴同行，终抵汴京，见识世间繁华。为了不被另攀高枝的欧阳旭从东京赶走，赵盼儿与宋引章、孙三娘一起历经艰辛，将小小茶坊一步步发展为汴京最大的酒楼，揭露了负心人的真面目，收获了各自的真挚感情和人生感悟，也为无数平凡女子推开了一扇平等救赎之门。\",\n" +
-//                    "\t\t\"vod_play_from\": \"磁力测试\",\n" +
-//                    "\t\t\"vod_play_url\": \"0$magnet:?xt=urn:btih:e398ca38fb9d64897ed19b4d16efeea11af4d03b\"\n" +
-//                    "\t}]\n" +
-//                    "}";
-            AbsJson absJson = gson.fromJson(json, new TypeToken<AbsJson>() {
-            }.getType());
-            AbsXml data = absJson.toAbsXml();
-            SourceHelper.absXml(data, sourceKey, searchToken);
-            if (searchResult == result) {
-                EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_SEARCH_RESULT, data));
-            } else if (result != null) {
-                if (result == detailResult) {
-                	data = pushDetailResolver.checkPush(data);
-                    pushDetailResolver.checkThunder(data,0);
-                }else {
-                    postSearchResult(result, data);
-                }
-            }
-            return data;
-        } catch (Exception e) {
-            if (searchResult == result) {
-                postEmptySearchResult(result, sourceKey, searchToken);
-            } else if (result != null) {
-                if (result == detailResult) {
-                    AbsXml data = new AbsXml();
-                    data.sourceKey = sourceKey;
-                    result.postValue(data);
-                } else {
-                    result.postValue(null);
-                }
-            }
-            return null;
-        }
-    }
-
-    private void postEmptySearchResult(MutableLiveData<AbsXml> result, String sourceKey, String searchToken) {
-        AbsXml data = new AbsXml();
-        data.sourceKey = sourceKey;
-        data.searchToken = searchToken;
-        if (searchResult == result) {
-            EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_SEARCH_RESULT, data));
-        } else if (result != null) {
-            postSearchResult(result, data);
-        }
-    }
-
-    private void postSearchResult(final MutableLiveData<AbsXml> result, final AbsXml data) {
-        result.postValue(data);
-    }
 
     @Override
     protected void onCleared() {

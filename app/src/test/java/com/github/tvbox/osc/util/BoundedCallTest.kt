@@ -31,7 +31,8 @@ class BoundedCallTest {
                 interrupted.countDown()
             }
             null
-        }, 100L, "test-timeout")
+        // 等待窗口必须远大于线程启动耗时:取消发生在任务启动前时任务不会跑,断言会假失败
+        }, 1_000L, "test-timeout")
         assertNull(result)
         assertTrue("超时必须打断任务线程", interrupted.await(2, TimeUnit.SECONDS))
     }

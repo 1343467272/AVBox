@@ -3239,3 +3239,34 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 - `SettingsCard` 新增可选 `shape: Shape? = null` 覆盖参数(默认 null 时仍走 `shapeFor(position)`,其余所有调用点零影响);仅偏好设置页语言行传 `RoundedCornerShape(22.dp)`(该行原随 `SettingsCardPosition.SINGLE` = 32dp)。改动 2 文件:`ui/components/SettingsGroup.kt`、`ui/page/PreferenceSettingsPage.kt`(+1 import;全部调用点均为"position 位置参数 + 其余命名参数",新增尾参不破坏任何既有调用)。
 
 **验证**:`assembleDebug` BUILD SUCCESSFUL。小改动按 2026-09-28 约定不跑单测(只构建)。
+## 文件级重构:阶段 1「UI 段落外提」(2026-09-28,按 `skill/review/refactor-plan-20260928.md`)
+
+**范围与结果**(4 个本地 commit,只挪文件、不改行为;均为「每文件一个 commit」):
+
+| 源文件 | 拆后文件 | 行数变化 |
+| --- | --- | --- |
+| `ui/activity/LivePlayActivity.kt` | + `LiveOverlayController.kt`(浮层/信息条) | 1279 → 1073 |
+| `ui/activity/DetailScreens.kt`(删) | `DetailScreen.kt` / `DetailContent.kt` / `DetailSections.kt` / `DetailEpisodes.kt` | 842 → 193 / 282 / 141 / 316 |
+| `ui/page/HistoryPage.kt` | `HistoryPage.kt` / `HistoryViewModel.kt` / `HistoryRow.kt` / `PageActions.kt` | 723 → 291 / 164 / 211 / 98 |
+| `ui/activity/SearchActivity.kt` | `SearchActivity.kt` / `SearchViewModel.kt` / `SearchScreen.kt` / `SearchIdleScreens.kt` / `SearchListScreens.kt` | 939 → 30 / 302 / 272 / 237 / 154 |
+
+**Live 只做了 UI 支撑段(未达计划的 ≤250)**:计划 §3 给该文件写的「字段仅 4 个、无状态搬迁」不成立 —— 它的 Compose UI 段 2026-09-15 就已外提为 `LiveScreens.kt`(见本页「文件级重构 A 档(第三轮)」),剩下的是**有状态**的频道列表簇(列表/密码/展开/设置项数据,约 330 行)与播放会话簇(切台/超时换源/回看/接管/直播源头,约 400 行)。本次只搬真正无状态的部分:切台快照、清晰度提示、时间/网速 ticker、手势提示、浮层自动收起、回看时移条、频道信息条文案 → `LiveOverlayController`(构造收 Activity + 复用宿主同一个 `mHandler`,保证 `onDestroy` 的 `removeCallbacksAndMessages(null)` 清理语义不变)。剩余两簇建议另立**阶段 1b**(有状态搬迁,中风险)。计划文档已同步标注该更正。
+
+**拆分做法(可复用)**:
+
+- **可见性**:`private` 顶层 Composable 跨文件后必须放宽为 `internal`(`DetailContent` / `SourceSection` / `RelatedSection` / `removeHtmlTag` / `EpisodeSheet` / `EpisodeRow` / `SearchIdleContent` / `SearchListResults` / `HistoryRow`,以及 `LiveOverlayController` 要用的 `LivePlayActivity.isSHIYI` / `epgController`)—— 与 `avbox-mobile-ui-spec.md` §2 既有的「跨文件暴露的成员一律 `internal`」口径一致。
+- **拆出的文件要自带 `@file:OptIn(...)`**(原文件顶部的标注不跟随),否则 `ContainedLoadingIndicator` 一类用法编译不过;`rememberSaveable` 的正确包是 `androidx.compose.runtime.saveable`(写成 `runtime.rememberSaveable` 编译不过)。
+- **同名共享组件挪文件不挪包**:`SelectCircle` / `ManageActionIcon` / `ConfirmDeleteDialog` 从 `HistoryPage.kt` 移入新文件 `ui/page/PageActions.kt`,包名不变 ⇒ `CollectPage` / `ConfigManagePage` / `SearchActivity` 三处调用点**零改动**。
+- **未使用导入随代码一起走**:搬走后 `LivePlayActivity` 的 `Bitmap` / `Calendar` / `TimeZone` / `PlayerHelper` 等 import 同步删除,不留悬空导入。
+
+**等价性校验(四步都跑,脚本一次性、不落库)**:
+
+1. **逐行多重集比对** —— 旧文件(HEAD 版)每行归一化(去 `private`/`internal`、去 `activity.`/`overlay.` 前缀、`mHandler`↔`handler`、`mXxx`↔`xxx` 重命名、FQN ↔ import 展开)后与"新文件全集"比对,卡口 = **旧行 0 丢失 + 新文件 0 凭空新增**;
+2. `.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest`;
+3. 改动目录 lint 0 错误。
+
+结果:四步全部通过(唯一命中差异是设计内的三处 —— 手势提示 1000ms 提为常量 `GESTURE_HINT_HIDE_DELAY`、`LiveOverlayController` 新增 `onPlaybackStarted()` 收拢原 `handleAutoSourceSwitch` 里的截图+清晰度块、`SearchViewModel` 的 `AbsXml` 从 FQN 改回 import)。
+
+**验证**:`assembleDebug` + `testDebugUnitTest`(44 类 / 364 用例 / 0 失败)BUILD SUCCESSFUL,已装机。**待真机走查**:①直播页全屏切换/返回/回看/切台/频道密码;②详情页全屏与选集面板/返回;③历史页编辑多选删除 + 长按单条删除;④搜索页两种布局切换 + 历史/热词。
+
+**边界与更正**:`ui/activity/SearchScreens.kt`(423,结果列表与共享小组件)与 `ui/page/HistoryPage.kt`(291)本次未动;计划 §2 ⑩「SearchActivity 里的 `search()` 编排」已过时 —— `search()` 早在 `SearchViewModel` 内(67 行),文件拆分即解决该文件的结构问题。文档同步:`avbox-mobile-ui-spec.md` §2 的文件布局与单测基线(21 类 / 213 例 → 44 类 / 364 例)已更新;`avbox-i18n-spec.md` §A.1 的 2026-09-22 快照仍按当时文件名统计,属**按期归档,不回填**。

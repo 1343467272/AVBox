@@ -1,8 +1,13 @@
 package com.github.tvbox.osc.api;
 
+import android.text.TextUtils;
+
+import com.github.tvbox.osc.bean.IJKCode;
 import com.github.tvbox.osc.bean.ParseBean;
 import com.github.tvbox.osc.util.AdBlocker;
 import com.github.tvbox.osc.util.DefaultConfig;
+import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.KV;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.M3u8;
 import com.github.tvbox.osc.util.OkGoHelper;
@@ -12,6 +17,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /** 把配置 JSON 的规则段物化到全局表:嗅探规则/广告拦截/DNS/解析器列表 */
@@ -143,5 +149,39 @@ final class ConfigApplier {
             }
         }
         return parseBeans;
+    }
+
+    /** 默认 IJK 解码档位:按 KV 里选中的档名标 selected,选不中则取第一档 */
+    static List<IJKCode> parseDefaultIjk(JsonObject defaultJson) {
+        List<IJKCode> ijkCodes = new ArrayList<>();
+        boolean foundOldSelect = false;
+        String ijkCodec = KV.get(HawkConfig.IJK_CODEC, "硬解码"); // i18n: keep
+        JsonArray ijkJsonArray = defaultJson.get("ijk").getAsJsonArray();
+        for (JsonElement opt : ijkJsonArray) {
+            JsonObject obj = (JsonObject) opt;
+            String name = obj.get("group").getAsString();
+            LinkedHashMap<String, String> baseOpt = new LinkedHashMap<>();
+            for (JsonElement cfg : obj.get("options").getAsJsonArray()) {
+                JsonObject cObj = (JsonObject) cfg;
+                String key = cObj.get("category").getAsString() + "|" + cObj.get("name").getAsString();
+                String val = cObj.get("value").getAsString();
+                baseOpt.put(key, val);
+            }
+            IJKCode codec = new IJKCode();
+            codec.setName(name);
+            codec.setOption(baseOpt);
+            if (name.equals(ijkCodec) || TextUtils.isEmpty(ijkCodec)) {
+                codec.selected(true);
+                ijkCodec = name;
+                foundOldSelect = true;
+            } else {
+                codec.selected(false);
+            }
+            ijkCodes.add(codec);
+        }
+        if (!foundOldSelect && ijkCodes.size() > 0) {
+            ijkCodes.get(0).selected(true);
+        }
+        return ijkCodes;
     }
 }

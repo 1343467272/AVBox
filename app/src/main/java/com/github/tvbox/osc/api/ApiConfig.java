@@ -438,35 +438,7 @@ public class ApiConfig {
         }
         // IJK解码配置
         if(ijkCodes==null){
-            ijkCodes = new ArrayList<>();
-            boolean foundOldSelect = false;
-            String ijkCodec = KV.get(HawkConfig.IJK_CODEC, "硬解码"); // i18n: keep
-            JsonArray ijkJsonArray = defaultJson.get("ijk").getAsJsonArray();
-            for (JsonElement opt : ijkJsonArray) {
-                JsonObject obj = (JsonObject) opt;
-                String name = obj.get("group").getAsString();
-                LinkedHashMap<String, String> baseOpt = new LinkedHashMap<>();
-                for (JsonElement cfg : obj.get("options").getAsJsonArray()) {
-                    JsonObject cObj = (JsonObject) cfg;
-                    String key = cObj.get("category").getAsString() + "|" + cObj.get("name").getAsString();
-                    String val = cObj.get("value").getAsString();
-                    baseOpt.put(key, val);
-                }
-                IJKCode codec = new IJKCode();
-                codec.setName(name);
-                codec.setOption(baseOpt);
-                if (name.equals(ijkCodec) || TextUtils.isEmpty(ijkCodec)) {
-                    codec.selected(true);
-                    ijkCodec = name;
-                    foundOldSelect = true;
-                } else {
-                    codec.selected(false);
-                }
-                ijkCodes.add(codec);
-            }
-            if (!foundOldSelect && ijkCodes.size() > 0) {
-                ijkCodes.get(0).selected(true);
-            }
+            ijkCodes = ConfigApplier.parseDefaultIjk(defaultJson);
         }
         LOG.i("echo-default-config-----------load");
     }

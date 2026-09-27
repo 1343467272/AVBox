@@ -113,115 +113,129 @@ public class Thunder {
         playList=new ArrayList<>();
         ed2kList=new ArrayList<>();
         Map<Integer, String> urlMap = new HashMap<>();
-        threadPool.execute(new Runnable() {
-            @Override
-            public void run() {
-                for (int idx=0;idx<urlBean.infoList.size();idx++) {
-                    Movie.Video.UrlBean.UrlInfo urlInfo = urlBean.infoList.get(idx);
-                    if (urlInfo != null) {
-                        String url="";
-                        for (Movie.Video.UrlBean.UrlInfo.InfoBean infoBean : urlInfo.beanList) {
-                            boolean isParse=false;
-                            url=infoBean.url;
-                            if (isMagnet(url) || isThunder(url) || isTorrent(url)) {
-                                if(isThunder(url) )url=XLDownloadManager.getInstance().parserThunderUrl(url);
-                                String link = isThunder(url) ? XLDownloadManager.getInstance().parserThunderUrl(url) : url;
-                                Uri p = Uri.parse(link);
-                                if (p == null) {
-                                    continue;
-                                }
-                                String fileName = XLTaskHelper.instance().getFileName(link);
-                                File cache = new File(cacheRoot + File.separator + fileName);
-                                try {
-                                    if (currentTask > 0) {
-                                        XLTaskHelper.instance().stopTask(currentTask);
-                                        currentTask = 0L;
-                                    }
-                                    currentTask = isMagnet(url) ?
-                                            XLTaskHelper.instance().addMagentTask(url, cacheRoot, fileName) :
-                                            XLTaskHelper.instance().addThunderTask(url, cacheRoot, fileName);
-                                } catch (Exception exception) {
-                                    LOG.e("Thunder", exception);
-                                    currentTask = 0;
-                                }
-                                if (currentTask <= 0) {
-                                    continue;
-                                }
-                                int count = 30;
-                                outerLoop:
-                                while (true) {
-                                    count--;
-                                    if (count <= 0) {
-                                        break;
-                                    }
-                                    XLTaskInfo taskInfo = XLTaskHelper.instance().getTaskInfo(currentTask);
-                                    if(taskInfo!=null){
-                                        switch (taskInfo.mTaskStatus) {
-                                            case 2: {
-                                                try {
-                                                    TorrentInfo torrentInfo = XLTaskHelper.instance().getTorrentInfo(cache.getAbsolutePath());
-                                                    if (torrentInfo == null || TextUtils.isEmpty(torrentInfo.mInfoHash)) {
+        threadPool.execute(new ParseTask(urlBean, urlMap, callback));
+    }
 
-                                                    } else {
-                                                        TorrentFileInfo[] mSubFileInfo = torrentInfo.mSubFileInfo;
-                                                        if (mSubFileInfo != null) {
-                                                            for (TorrentFileInfo sub : mSubFileInfo) {
-                                                                if (isMedia(sub.mFileName) && sub.mFileSize > 1048576L * 30) {
-                                                                    sub.torrentPath = cache.getAbsolutePath();
-                                                                    playList.add(sub.mFileName + "$tvbox-torrent:" + torrentFileInfoArrayList.size());
-                                                                    torrentFileInfoArrayList.add(sub);
-                                                                }
+    private static final class ParseTask implements Runnable {
+
+        private final Movie.Video.UrlBean urlBean;
+        private final Map<Integer, String> urlMap;
+        private final ThunderCallback callback;
+
+        ParseTask(Movie.Video.UrlBean urlBean, Map<Integer, String> urlMap, ThunderCallback callback) {
+            this.urlBean = urlBean;
+            this.urlMap = urlMap;
+            this.callback = callback;
+        }
+
+        @Override
+        public void run() {
+            for (int idx=0;idx<urlBean.infoList.size();idx++) {
+                Movie.Video.UrlBean.UrlInfo urlInfo = urlBean.infoList.get(idx);
+                if (urlInfo != null) {
+                    String url="";
+                    for (Movie.Video.UrlBean.UrlInfo.InfoBean infoBean : urlInfo.beanList) {
+                        boolean isParse=false;
+                        url=infoBean.url;
+                        if (isMagnet(url) || isThunder(url) || isTorrent(url)) {
+                            if(isThunder(url) )url=XLDownloadManager.getInstance().parserThunderUrl(url);
+                            String link = isThunder(url) ? XLDownloadManager.getInstance().parserThunderUrl(url) : url;
+                            Uri p = Uri.parse(link);
+                            if (p == null) {
+                                continue;
+                            }
+                            String fileName = XLTaskHelper.instance().getFileName(link);
+                            File cache = new File(cacheRoot + File.separator + fileName);
+                            try {
+                                if (currentTask > 0) {
+                                    XLTaskHelper.instance().stopTask(currentTask);
+                                    currentTask = 0L;
+                                }
+                                currentTask = isMagnet(url) ?
+                                        XLTaskHelper.instance().addMagentTask(url, cacheRoot, fileName) :
+                                        XLTaskHelper.instance().addThunderTask(url, cacheRoot, fileName);
+                            } catch (Exception exception) {
+                                LOG.e("Thunder", exception);
+                                currentTask = 0;
+                            }
+                            if (currentTask <= 0) {
+                                continue;
+                            }
+                            int count = 30;
+                            outerLoop:
+                            while (true) {
+                                count--;
+                                if (count <= 0) {
+                                    break;
+                                }
+                                XLTaskInfo taskInfo = XLTaskHelper.instance().getTaskInfo(currentTask);
+                                if(taskInfo!=null){
+                                    switch (taskInfo.mTaskStatus) {
+                                        case 2: {
+                                            try {
+                                                TorrentInfo torrentInfo = XLTaskHelper.instance().getTorrentInfo(cache.getAbsolutePath());
+                                                if (torrentInfo == null || TextUtils.isEmpty(torrentInfo.mInfoHash)) {
+
+                                                } else {
+                                                    TorrentFileInfo[] mSubFileInfo = torrentInfo.mSubFileInfo;
+                                                    if (mSubFileInfo != null) {
+                                                        for (TorrentFileInfo sub : mSubFileInfo) {
+                                                            if (isMedia(sub.mFileName) && sub.mFileSize > 1048576L * 30) {
+                                                                sub.torrentPath = cache.getAbsolutePath();
+                                                                playList.add(sub.mFileName + "$tvbox-torrent:" + torrentFileInfoArrayList.size());
+                                                                torrentFileInfoArrayList.add(sub);
                                                             }
-                                                            isParse=true;
-                                                            break outerLoop;
                                                         }
+                                                        isParse=true;
+                                                        break outerLoop;
                                                     }
-                                                } catch (Throwable throwable) {
-                                                    LOG.e("Thunder", throwable);
                                                 }
-                                            }
-                                            case 3: {
-                                                break outerLoop;
-                                            }
-                                            default: {
+                                            } catch (Throwable throwable) {
+                                                LOG.e("Thunder", throwable);
                                             }
                                         }
-                                    }
-                                    try {
-                                        Thread.sleep(100);
-                                    } catch (InterruptedException e) {
-                                        LOG.e("Thunder", e);
+                                        case 3: {
+                                            break outerLoop;
+                                        }
+                                        default: {
+                                        }
                                     }
                                 }
-                            }else {
-                                url=infoBean.url;
-                                if(isThunder(url))url=XLDownloadManager.getInstance().parserThunderUrl(url);
-                                if(isNetworkDownloadTask(url)){
-                                    task_url=url;
-                                    if(TextUtils.isEmpty(task_url)){
-                                        continue;
-                                    }
-                                    name = XLTaskHelper.instance().getFileName(task_url);
-                                    playList.add(name + "$tvbox-oth:" + ed2kList.size());
-                                    ed2kList.add(task_url);
-                                    isParse=true;
+                                try {
+                                    Thread.sleep(100);
+                                } catch (InterruptedException e) {
+                                    LOG.e("Thunder", e);
                                 }
                             }
-                            if (!isParse)playList.add(infoBean.name + "$" + infoBean.url);
+                        }else {
+                            url=infoBean.url;
+                            if(isThunder(url))url=XLDownloadManager.getInstance().parserThunderUrl(url);
+                            if(isNetworkDownloadTask(url)){
+                                task_url=url;
+                                if(TextUtils.isEmpty(task_url)){
+                                    continue;
+                                }
+                                name = XLTaskHelper.instance().getFileName(task_url);
+                                playList.add(name + "$tvbox-oth:" + ed2kList.size());
+                                ed2kList.add(task_url);
+                                isParse=true;
+                            }
                         }
-                        if (playList.size() > 0) {
-                            urlMap.put(idx,TextUtils.join("#", playList));
-                            playList.clear();
-                        }
+                        if (!isParse)playList.add(infoBean.name + "$" + infoBean.url);
+                    }
+                    if (playList.size() > 0) {
+                        urlMap.put(idx,TextUtils.join("#", playList));
+                        playList.clear();
                     }
                 }
+            }
 
-                if (urlMap.size() > 0) {
-                    callback.list(urlMap);
-                } else {
-                    callback.status(-1, str(R.string.thunder_error_parse));
-                }
-            }});
+            if (urlMap.size() > 0) {
+                callback.list(urlMap);
+            } else {
+                callback.status(-1, str(R.string.thunder_error_parse));
+            }
+        }
     }
 
 

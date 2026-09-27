@@ -61,7 +61,7 @@
 | `PlaybackController`(新) | `app/.../player/PlaybackController.java` | **从 `PlayContainer` 迁出的播放调度段**:取流/解析/嗅探/超时重试/自动换线/换源回滚/清晰度/DASH/M3U8 净化/预载协调/进度读写/弹幕调度/字幕与歌词轨道管理/投屏地址改写。不持有 Activity(用 `PageHost`) |
 | `PlaybackSession`(新) | `app/.../player/PlaybackSession.java` | 一次播放的完整数据:vod 快照、sourceKey、线路/集索引、`playerCfg`、headers、progressKey、播放器实例标识。**取代** `App.getInstance().getVodInfo()` + `setData(Bundle)` 这两个隐式全局通道 |
 | `PageHost`(新,接口) | `app/.../player/PageHost.java` | 页面能力:`runOnUi`/提示/Toast/权限申请/文件选择器/外部播放器/WebView 宿主判定。由 `DetailActivity` / `LivePlayActivity` 实现(弱引用注册) |
-| `PlaybackViewBridge`(新,接口) | `app/.../player/PlaybackViewBridge.java` | **调度 → 视图**的最小动作面(播放/提示/状态读取/解析停止/嗅探队列消费/内核切换/配置回刷/换源兜底)。P0–P1 由 `PlayContainer` 提供匿名实现;P2 起由"服务 → 页面"的桥实现 |
+| `PlaybackViewBridge`(新,接口) | `app/.../player/PlaybackViewBridge.java` | **调度 → 视图**的最小动作面(播放/提示/状态读取/解析停止/嗅探队列消费/内核切换/配置回刷/换源兜底)。P0–P1 由 `PlayContainer` 提供实现(2026-09-28 起该类拆到同包 `ui/player/PlayContainerViewBridge.java`);P2 起由"服务 → 页面"的桥实现 |
 | `PlaybackSurfaceHost`(新) | `app/.../ui/player/PlaybackSurfaceHost.kt` | 页面侧显示宿主(Compose `AndroidView` → FrameLayout):`attach(service)` 把服务侧 `mPlayerContainer` 挂进来,`detach()` 摘走 |
 | `MyVideoView`(改) | `app/.../player/MyVideoView.java` + fork `VideoView` | 内核 + render + artwork/frameCover(服务侧);弹幕视图与控制器由页面 attach 时注入、detach 时清空 |
 | `ComposeVideoController`(不改) | `app/.../player/controller/ComposeVideoController.kt` | 页面侧 Composer 覆盖层 + 手势 + 字幕/歌词视图;attach 时 `setVideoController(controller)`,detach 时 `setVideoController(null)` |

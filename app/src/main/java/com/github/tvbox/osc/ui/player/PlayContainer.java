@@ -155,7 +155,6 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
 
     private final PlaybackViewBridge viewBridge = new PlayContainerViewBridge(this);
 
-
     private boolean lifecyclePaused;
     private String ownedPlaybackKey;
 
@@ -341,7 +340,6 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         mController.setListener(new PlayContainerControlListener(this));
         if (mVideoView != null) mVideoView.setVideoController((BaseVideoController) mController);
     }
-
 
     public void showCast() {
         showCastDialog();

@@ -144,11 +144,6 @@ final class SourceResultParser {
         }
     }
 
-    /** 磁力链接交给迅雷解析改写,结果回投 detailResult */
-    public void checkThunder(AbsXml data, int index) {
-        pushDetailResolver.checkThunder(data, index);
-    }
-
 
     AbsXml xml(MutableLiveData<AbsXml> result, String xml, String sourceKey) {
         return xml(result, xml, sourceKey, "");

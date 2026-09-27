@@ -1,14 +1,10 @@
-package com.github.tvbox.osc.player.thirdparty;
+package com.github.tvbox.osc.util;
 
 import android.app.Activity;
 import android.text.TextUtils;
 
 import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.server.RemoteServer;
-import com.github.tvbox.osc.util.HawkConfig;
-import com.github.tvbox.osc.util.OkGoHelper;
-import com.github.tvbox.osc.util.KV;
-import com.github.tvbox.osc.util.LOG;
 
 import java.io.IOException;
 import java.net.URLEncoder;

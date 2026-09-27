@@ -7,7 +7,7 @@ import androidx.lifecycle.ViewModel;
 
 import com.github.tvbox.osc.bean.Subtitle;
 import com.github.tvbox.osc.bean.SubtitleData;
-import com.github.tvbox.osc.player.SubtitleFilePicker;
+import com.github.tvbox.osc.util.SubtitleFilePicker;
 import com.github.tvbox.osc.util.OkGoHelper;
 import com.lzy.okgo.OkGo;
 import com.lzy.okgo.callback.AbsCallback;
@@ -66,7 +66,7 @@ public class SubtitleViewModel extends ViewModel {
      * 记忆还原路径:在指定发布页里挑出"本集"的文件并解析出直链。
      *
      * <p>不走 {@link #searchResult}:那是面板的列表数据,播放层写进去会与用户正在浏览的面板互相覆盖。
-     * 挑文件规则见 {@link com.github.tvbox.osc.player.SubtitleFilePicker};挑不出(不确定是本集)回调 {@code onFailed}。
+     * 挑文件规则见 {@link com.github.tvbox.osc.util.SubtitleFilePicker};挑不出(不确定是本集)回调 {@code onFailed}。
      */
     public void pickEpisodeSubtitle(String releaseUrl, String episodeName, String fileNameHint,
                                     SubtitleLoader onPicked, Runnable onFailed) {

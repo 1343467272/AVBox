@@ -1,7 +1,6 @@
-package com.github.tvbox.osc.player;
+package com.github.tvbox.osc.util;
 
 import com.github.tvbox.osc.bean.VodInfo;
-import com.github.tvbox.osc.util.LOG;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +14,7 @@ import java.util.regex.Pattern;
  * <p>坑:不得改用 android.text.TextUtils —— 单测 unitTests.isReturnDefaultValues=true 会让它静默返 false,
  * 空判断走错分支(换回去时 lineFlagIndex(flags, null) 立刻 NPE)。
  */
-final class EpisodeMatcher {
+public final class EpisodeMatcher {
 
     private EpisodeMatcher() {
     }
@@ -24,7 +23,7 @@ final class EpisodeMatcher {
         return text == null || text.length() == 0;
     }
 
-    static List<String> lineFlagsInDisplayOrder(VodInfo vod) {
+    public static List<String> lineFlagsInDisplayOrder(VodInfo vod) {
         List<String> lineFlags = new ArrayList<>();
         if (vod == null || vod.seriesMap == null) {
             return lineFlags;
@@ -44,7 +43,7 @@ final class EpisodeMatcher {
         return lineFlags;
     }
 
-    static int lineFlagIndex(List<String> lineFlags, String currentFlag) {
+    public static int lineFlagIndex(List<String> lineFlags, String currentFlag) {
         if (lineFlags == null || isEmpty(currentFlag)) {
             return -1;
         }
@@ -56,7 +55,7 @@ final class EpisodeMatcher {
         return -1;
     }
 
-    static int sameEpisodeIndex(VodInfo.VodSeries currentSeries, List<VodInfo.VodSeries> targetList, int fallbackIndex) {
+    public static int sameEpisodeIndex(VodInfo.VodSeries currentSeries, List<VodInfo.VodSeries> targetList, int fallbackIndex) {
         if (targetList == null || targetList.isEmpty()) {
             return 0;
         }
@@ -104,7 +103,7 @@ final class EpisodeMatcher {
         return 0;
     }
 
-    static int extractEpisodeNumber(String name) {
+    public static int extractEpisodeNumber(String name) {
         if (isEmpty(name)) {
             return -1;
         }

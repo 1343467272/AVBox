@@ -1,4 +1,4 @@
-package com.github.tvbox.osc.player;
+package com.github.tvbox.osc.util;
 
 import java.util.List;
 import java.util.Locale;

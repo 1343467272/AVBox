@@ -3343,12 +3343,21 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 | 口径 | 值 | 用在哪 |
 | --- | --- | --- |
 | 站点级默认 | `getPlayTimeoutSeconds()`(缺省 15s) | getSort(**30→15**)/ getList(不变)/ getHomeRecList(**20→15**)/ getDetail 非 fallback(**30→15**)/ getPlay(不变)/ getFixUrl 默认(**20→15**,type 4 的 extend 拉取) |
-| 显式覆盖 | 6s / 10s / 120s / `liveConnectTimeoutSeconds` | 详情 fallback 6s;预热单项 10s;JS 调用 120s;直播 py/js 代理源(直播侧的站点级值) |
+| 显式覆盖 | 6s / 10s / 15s / 120s / `liveConnectTimeoutSeconds` | 详情 fallback 6s;预热单项 10s;推送代理闩锁 15s(`checkPush` 等的是异步 OkGo 回调,不是 `Callable`);JS 调用 120s;直播 py/js 代理源(直播侧的站点级值)。播放器起播超时、`DanmakuApi` 的 20s 网络超时属其它子系统,不在本表 |
 
 ⚠️ 三条路径等待上限被**缩短**(慢源若因此失败:把该源配置 `timeout` 调到 30–60 即可),回滚只需 revert `a034ac7`。
 
 **有意保留的行为差异**:① `InterruptedException` 现在恢复中断位(原文吞掉);② `LiveProxyLoader` 的解析段原来被 `finally` 里的 `return@Runnable` 静默吞异常,现改为记日志(仍不上抛);③ 超时日志形状变为 `echo--getSort--<key>-timeout(15000ms)`,前缀不变。
 
 **验证**:`assembleDebug` + `testDebugUnitTest`(**45 类 / 367 用例 / 0 失败**,基线上调因新增 `BoundedCallTest`);已装机 vivo V2425A(`versionName=1.1.6`)。**待走查**:换源、详情、取流不回归(含慢源);直播代理源(py/js)加载不回归。
+
+⚠️ **慢源的具体表现(走查时按这几条看,均为 15s 档的必然结果)**:
+
+- **首页 sort(type-3 源)**:15s 超时 → `postSortResult(null)` → 首页落**空态**;由于结果在 15s 就到了,`HomeViewModel` 的 20s 看门狗(`armWatchdog`)不再命中 Loading ⇒ 挂死源**不再出现「Error + 重试」态**(旧行为是 20s Error、30s 空态)。与既有 `getList`(站点值 15s)行为一致。
+- **详情(type 0/1/3/4)**:15s 超时 → `json(detailResult, null, …)` → `handleEmptyDetail(null)` → 当前源 `changeable` 且已知片名时**走「自动换站」**(旧行为是等 30s)。不换站 = 源配置里 `"changeable": false`。
+- **`getFixUrl`(type 4 / 带 http ext 的源)**:超时返回的是**原始 extend**(不是空,见 `catch (TimeoutException)` 分支),请求会带着 raw url 发出 ⇒ 站点可能回空页;第二次调用走 `extendCache`.
+- **jar 源首次打开**:`ApiConfig.get().getCSP()` 内含 jar 下载 + 装载 + init,全在这一次有界等待里;>15s 时首页/详情要重试一次(第二次走 jar 缓存与 `extendCache`)。
+
+**回退**:只 revert `a034ac7` 一笔即回到 30s/20s/6s/站点值(与抽模板那笔无耦合)。
 
 **本阶段未动**:计划列入但按上表驳回的 7 个文件;`ApiConfig` 的 `WARM_ITEM_TIMEOUT_MS`(10s)与 `JsSpider.CALL_TIMEOUT_MS`(120s) 保持显式覆盖。

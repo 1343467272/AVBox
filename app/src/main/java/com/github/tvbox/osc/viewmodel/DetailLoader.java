@@ -96,72 +96,89 @@ final class DetailLoader {
         }
         int type = sourceBean.getType();
         if (type == 3) {
-            SourceHelper.SPIDER_POOL.execute(new Runnable() {
-                @Override
-                public void run() {
-                    String json = BoundedCall.call(new Callable<String>() {
-                        @Override
-                        public String call() {
-                            Spider sp = ApiConfig.get().getCSP(sourceBean);
-                            List<String> ids = new ArrayList<>();
-                            ids.add(id);
-                            try {
-//                                LOG.i("echo--getDetail--id: " + id);
-                                return sp.detailContent(ids);
-                            } catch (Exception e) {
-                                LOG.i("echo--getDetail--error: " + e.getMessage());
-                                return "";
-                            }
-                        }
-                    }, fallback ? 6_000L : sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getDetail--" + sourceBean.getKey());
-//                    LOG.i("echo--getDetail--result:" + json);
-                    resultParser.json(detailResult, json, sourceBean.getKey());
-                }
-            });
+            getDetailFromSpider(sourceBean, id, fallback);
         } else if (type == 0 || type == 1|| type == 4) {
-            String extend=sourceBean.getExt();
-            extend=fallback ? SourceHelper.getFixUrl(extendCache, gson, extend, 6) : SourceHelper.getFixUrl(extendCache, gson, extend, sourceBean.getPlayTimeoutSeconds());
-
-            GetRequest<String> request = SourceHelper.siteGet(sourceBean)
-                    .tag("detail")
-                    .params("ac", type == 0 ? "videolist" : "detail")
-                    .params("ids", id);
-            // 当 extend 不为空且非空字符串时添加参数
-            if (extend != null && !extend.isEmpty()) {
-                request.params("extend", extend);
-            }
-            request.execute(new AbsCallback<String>() {
-
-                        @Override
-                        public String convertResponse(okhttp3.Response response) throws Throwable {
-                            if (response.body() != null) {
-                                return response.body().string();
-                            } else {
-                                throw new IllegalStateException(SourceHelper.ERR_NETWORK);
-                            }
-                        }
-
-                        @Override
-                        public void onSuccess(Response<String> response) {
-                            if (type == 0) {
-                                String xml = response.body();
-                                resultParser.xml(detailResult, xml, sourceBean.getKey());
-                            } else {
-                                String json = response.body();
-                                LOG.i(json);
-                                resultParser.json(detailResult, json, sourceBean.getKey());
-                            }
-                        }
-
-                        @Override
-                        public void onError(Response<String> response) {
-                            super.onError(response);
-                            resultParser.json(detailResult, "", sourceBean.getKey());
-                        }
-                    });
+            getDetailFromApi(sourceBean, id, fallback);
         } else {
             detailResult.postValue(createEmptyDetail(sourceKey));
         }
+    }
+
+
+    /** type 3:爬虫 detailContent;换源回退(fallback)时超时收紧 */
+    private void getDetailFromSpider(final SourceBean sourceBean, final String id, final boolean fallback) {
+        
+        SourceHelper.SPIDER_POOL.execute(new Runnable() {
+            @Override
+            public void run() {
+                String json = BoundedCall.call(new Callable<String>() {
+                    @Override
+                    public String call() {
+                        Spider sp = ApiConfig.get().getCSP(sourceBean);
+                        List<String> ids = new ArrayList<>();
+                        ids.add(id);
+                        try {
+//                                LOG.i("echo--getDetail--id: " + id);
+                            return sp.detailContent(ids);
+                        } catch (Exception e) {
+                            LOG.i("echo--getDetail--error: " + e.getMessage());
+                            return "";
+                        }
+                    }
+                }, fallback ? 6_000L : sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getDetail--" + sourceBean.getKey());
+//                    LOG.i("echo--getDetail--result:" + json);
+                resultParser.json(detailResult, json, sourceBean.getKey());
+            }
+        });
+    
+    }
+
+    /** type 0/1/4:站点接口(带 extend);type 0 走 XML */
+    private void getDetailFromApi(final SourceBean sourceBean, final String id, final boolean fallback) {
+        // 回调里要按 type 分流 xml/json,值语义与调用点一致(原为捕获上层局部量)
+        final int type = sourceBean.getType();
+        
+        String extend=sourceBean.getExt();
+        extend=fallback ? SourceHelper.getFixUrl(extendCache, gson, extend, 6) : SourceHelper.getFixUrl(extendCache, gson, extend, sourceBean.getPlayTimeoutSeconds());
+
+        GetRequest<String> request = SourceHelper.siteGet(sourceBean)
+                .tag("detail")
+                .params("ac", type == 0 ? "videolist" : "detail")
+                .params("ids", id);
+        // 当 extend 不为空且非空字符串时添加参数
+        if (extend != null && !extend.isEmpty()) {
+            request.params("extend", extend);
+        }
+        request.execute(new AbsCallback<String>() {
+
+                    @Override
+                    public String convertResponse(okhttp3.Response response) throws Throwable {
+                        if (response.body() != null) {
+                            return response.body().string();
+                        } else {
+                            throw new IllegalStateException(SourceHelper.ERR_NETWORK);
+                        }
+                    }
+
+                    @Override
+                    public void onSuccess(Response<String> response) {
+                        if (type == 0) {
+                            String xml = response.body();
+                            resultParser.xml(detailResult, xml, sourceBean.getKey());
+                        } else {
+                            String json = response.body();
+                            LOG.i(json);
+                            resultParser.json(detailResult, json, sourceBean.getKey());
+                        }
+                    }
+
+                    @Override
+                    public void onError(Response<String> response) {
+                        super.onError(response);
+                        resultParser.json(detailResult, "", sourceBean.getKey());
+                    }
+                });
+    
     }
 
     /** 空详情(源不存在 / 未知 type):详情页按空态渲染,不带任何影片数据 */

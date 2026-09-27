@@ -66,118 +66,142 @@ final class ListLoader {
         SourceBean homeSourceBean = ApiConfig.get().getHomeSourceBean();
         int type = homeSourceBean.getType();
         if (type == 3) {
-            SourceHelper.SPIDER_POOL.execute(new Runnable() {
-                @Override
-                public void run() {
-                    String json = BoundedCall.call(new Callable<String>() {
-                        @Override
-                        public String call() {
-                            Spider sp = ApiConfig.get().getCSP(homeSourceBean);
-                            return sp.categoryContent(sortData.id, page + "", true, sortData.filterSelect);
-                        }
-                    }, homeSourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getList--" + homeSourceBean.getKey());
-//                    LOG.i("echo-categoryContent:"+json);
-                    if (json != null) {
-                        resultParser.json(listResult, json, homeSourceBean.getKey());
-                    } else {
-                        listResult.postValue(null);
-                    }
-                }
-            });
+            getListFromSpider(homeSourceBean, sortData, page);
         } else if (type == 0 || type == 1) {
-            SourceHelper.siteGet(homeSourceBean)
-                    .tag(homeSourceBean.getApi())
-                    .params("ac", type == 0 ? "videolist" : "detail")
-                    .params("t", sortData.id)
-                    .params("pg", page)
-                    .params(sortData.filterSelect)
-                    .params("f", (sortData.filterSelect == null || sortData.filterSelect.size() <= 0) ? "" : new JSONObject(sortData.filterSelect).toString())
-                    .execute(new AbsCallback<String>() {
-
-                        @Override
-                        public String convertResponse(okhttp3.Response response) throws Throwable {
-                            if (response.body() != null) {
-                                return response.body().string();
-                            } else {
-                                throw new IllegalStateException(SourceHelper.ERR_NETWORK);
-                            }
-                        }
-
-                        @Override
-                        public void onSuccess(Response<String> response) {
-                            if (type == 0) {
-                                String xml = response.body();
-                                resultParser.xml(listResult, xml, homeSourceBean.getKey());
-                            } else {
-                                String json = response.body();
-                                resultParser.json(listResult, json, homeSourceBean.getKey());
-                            }
-                        }
-
-                        @Override
-                        public void onError(Response<String> response) {
-                            super.onError(response);
-                            listResult.postValue(null);
-                        }
-                    });
-        }else if (type == 4) {
-            String ext= "";
-            String extend=homeSourceBean.getExt();
-            extend=SourceHelper.getFixUrl(extendCache, gson, extend, homeSourceBean.getPlayTimeoutSeconds());
-            if (sortData.filterSelect != null && sortData.filterSelect.size() > 0) {
-                try {
-                    String selectExt = new JSONObject(sortData.filterSelect).toString();
-                    ext = Base64.encodeToString(selectExt.getBytes("UTF-8"), Base64.DEFAULT |  Base64.NO_WRAP);
-                } catch (UnsupportedEncodingException e) {
-                    LOG.e("SourceViewModel", e);
-                }
-            }else {
-                ext = Base64.encodeToString("{}".getBytes(), Base64.DEFAULT |  Base64.NO_WRAP);
-            }
-
-            GetRequest<String> request = SourceHelper.siteGet(homeSourceBean)
-                    .tag(homeSourceBean.getApi())
-                    .params("ac", "detail")
-                    .params("filter", "true")
-                    .params("t", sortData.id)
-                    .params("pg", page)
-                    .params("ext", ext);
-            // 当 extend 不为空且非空字符串时添加参数
-            if (extend != null && !extend.isEmpty()) {
-                request.params("extend", extend);
-            }
-            request.execute(new AbsCallback<String>() {
-                        @Override
-                        public String convertResponse(okhttp3.Response response) throws Throwable {
-                            try {
-                                if (response.body() != null) {
-                                    return response.body().string();
-                                } else {
-                                    throw new IllegalStateException(SourceHelper.ERR_NETWORK + "，response body 为 null"); // i18n: keep
-                                }
-                            } catch (Exception e) {
-                                LOG.i("echo-list: convertResponse error"+ e.getMessage());
-                                throw e;  // 重新抛出异常
-                            }
-                        }
-
-                        @Override
-                        public void onSuccess(Response<String> response) {
-                            String json = response.body();
-//                            LOG.i("echo-list: " + json);
-                            resultParser.json(listResult, json, homeSourceBean.getKey());
-                        }
-
-                        @Override
-                        public void onError(Response<String> response) {
-                            super.onError(response);
-                            listResult.postValue(null);
-                        }
-                    });
-
+            getListFromApi(homeSourceBean, sortData, page);
+        } else if (type == 4) {
+            getListFromExtendedApi(homeSourceBean, sortData, page);
         } else {
             listResult.postValue(null);
         }
+    }
+
+
+    /** type 3:爬虫 categoryContent */
+    private void getListFromSpider(final SourceBean homeSourceBean, final MovieSort.SortData sortData, final int page) {
+        
+        SourceHelper.SPIDER_POOL.execute(new Runnable() {
+            @Override
+            public void run() {
+                String json = BoundedCall.call(new Callable<String>() {
+                    @Override
+                    public String call() {
+                        Spider sp = ApiConfig.get().getCSP(homeSourceBean);
+                        return sp.categoryContent(sortData.id, page + "", true, sortData.filterSelect);
+                    }
+                }, homeSourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getList--" + homeSourceBean.getKey());
+//                    LOG.i("echo-categoryContent:"+json);
+                if (json != null) {
+                    resultParser.json(listResult, json, homeSourceBean.getKey());
+                } else {
+                    listResult.postValue(null);
+                }
+            }
+        });
+    
+    }
+
+    /** type 0/1:站点 XML / JSON 接口 */
+    private void getListFromApi(final SourceBean homeSourceBean, final MovieSort.SortData sortData, final int page) {
+        // 回调里要按 type 分流 xml/json,值语义与调用点一致(原为捕获上层局部量)
+        final int type = homeSourceBean.getType();
+        
+        SourceHelper.siteGet(homeSourceBean)
+                .tag(homeSourceBean.getApi())
+                .params("ac", type == 0 ? "videolist" : "detail")
+                .params("t", sortData.id)
+                .params("pg", page)
+                .params(sortData.filterSelect)
+                .params("f", (sortData.filterSelect == null || sortData.filterSelect.size() <= 0) ? "" : new JSONObject(sortData.filterSelect).toString())
+                .execute(new AbsCallback<String>() {
+
+                    @Override
+                    public String convertResponse(okhttp3.Response response) throws Throwable {
+                        if (response.body() != null) {
+                            return response.body().string();
+                        } else {
+                            throw new IllegalStateException(SourceHelper.ERR_NETWORK);
+                        }
+                    }
+
+                    @Override
+                    public void onSuccess(Response<String> response) {
+                        if (type == 0) {
+                            String xml = response.body();
+                            resultParser.xml(listResult, xml, homeSourceBean.getKey());
+                        } else {
+                            String json = response.body();
+                            resultParser.json(listResult, json, homeSourceBean.getKey());
+                        }
+                    }
+
+                    @Override
+                    public void onError(Response<String> response) {
+                        super.onError(response);
+                        listResult.postValue(null);
+                    }
+                });
+    
+    }
+
+    /** type 4:带 extend 的接口(filter 走 Base64 的 ext 参数) */
+    private void getListFromExtendedApi(final SourceBean homeSourceBean, final MovieSort.SortData sortData, final int page) {
+        
+        String ext= "";
+        String extend=homeSourceBean.getExt();
+        extend=SourceHelper.getFixUrl(extendCache, gson, extend, homeSourceBean.getPlayTimeoutSeconds());
+        if (sortData.filterSelect != null && sortData.filterSelect.size() > 0) {
+            try {
+                String selectExt = new JSONObject(sortData.filterSelect).toString();
+                ext = Base64.encodeToString(selectExt.getBytes("UTF-8"), Base64.DEFAULT |  Base64.NO_WRAP);
+            } catch (UnsupportedEncodingException e) {
+                LOG.e("SourceViewModel", e);
+            }
+        }else {
+            ext = Base64.encodeToString("{}".getBytes(), Base64.DEFAULT |  Base64.NO_WRAP);
+        }
+
+        GetRequest<String> request = SourceHelper.siteGet(homeSourceBean)
+                .tag(homeSourceBean.getApi())
+                .params("ac", "detail")
+                .params("filter", "true")
+                .params("t", sortData.id)
+                .params("pg", page)
+                .params("ext", ext);
+        // 当 extend 不为空且非空字符串时添加参数
+        if (extend != null && !extend.isEmpty()) {
+            request.params("extend", extend);
+        }
+        request.execute(new AbsCallback<String>() {
+                    @Override
+                    public String convertResponse(okhttp3.Response response) throws Throwable {
+                        try {
+                            if (response.body() != null) {
+                                return response.body().string();
+                            } else {
+                                throw new IllegalStateException(SourceHelper.ERR_NETWORK + "，response body 为 null"); // i18n: keep
+                            }
+                        } catch (Exception e) {
+                            LOG.i("echo-list: convertResponse error"+ e.getMessage());
+                            throw e;  // 重新抛出异常
+                        }
+                    }
+
+                    @Override
+                    public void onSuccess(Response<String> response) {
+                        String json = response.body();
+//                            LOG.i("echo-list: " + json);
+                        resultParser.json(listResult, json, homeSourceBean.getKey());
+                    }
+
+                    @Override
+                    public void onError(Response<String> response) {
+                        super.onError(response);
+                        listResult.postValue(null);
+                    }
+                });
+
+    
     }
 
     interface HomeRecCallback {

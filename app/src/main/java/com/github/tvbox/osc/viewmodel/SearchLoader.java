@@ -55,102 +55,126 @@ final class SearchLoader {
         }
         int type = sourceBean.getType();
         if (type == 3) {
-            try {
-                Spider sp = ApiConfig.get().getCSP(sourceBean);
-                String search = sp.searchContent(wd, false);
-                if(!TextUtils.isEmpty(search)){
-                    resultParser.json(result, search, sourceBean.getKey(), searchToken);
-                } else {
-                    resultParser.json(result, "", sourceBean.getKey(), searchToken);
-                }
-            } catch (Throwable th) {
-                LOG.e("SourceViewModel", th);
+            searchFromSpider(sourceBean, wd, result, searchToken);
+        } else if (type == 0 || type == 1) {
+            searchFromApi(sourceBean, wd, result, searchToken, requestTag);
+        } else if (type == 4) {
+            searchFromExtendedApi(sourceBean, wd, result, searchToken, requestTag);
+        } else {
+            resultParser.postEmptySearchResult(result, sourceBean.getKey(), searchToken);
+        }
+    }
+
+
+    /** type 3:爬虫 searchContent;空结果也回一条空 AbsXml,保持与其它分支同形状 */
+    private void searchFromSpider(final SourceBean sourceBean, final String wd, final MutableLiveData<AbsXml> result, final String searchToken) {
+        
+        try {
+            Spider sp = ApiConfig.get().getCSP(sourceBean);
+            String search = sp.searchContent(wd, false);
+            if(!TextUtils.isEmpty(search)){
+                resultParser.json(result, search, sourceBean.getKey(), searchToken);
+            } else {
                 resultParser.json(result, "", sourceBean.getKey(), searchToken);
             }
-        } else if (type == 0 || type == 1) {
-            SourceHelper.siteGet(sourceBean)
-                    .params("wd", wd)
-                    .params(type == 1 ? "ac" : null, type == 1 ? "detail" : null)
-                    .tag(requestTag)
-                    .execute(new AbsCallback<String>() {
-                        @Override
-                        public String convertResponse(okhttp3.Response response) throws Throwable {
-                            if (response.body() != null) {
-                                return response.body().string();
-                            } else {
-                                throw new IllegalStateException(SourceHelper.ERR_NETWORK);
-                            }
-                        }
+        } catch (Throwable th) {
+            LOG.e("SourceViewModel", th);
+            resultParser.json(result, "", sourceBean.getKey(), searchToken);
+        }
+    
+    }
 
-                        @Override
-                        public void onSuccess(Response<String> response) {
-                            if (type == 0) {
-                                String xml = response.body();
-                                resultParser.xml(result, xml, sourceBean.getKey(), searchToken);
-                            } else {
-                                String json = response.body();
-                                resultParser.json(result, json, sourceBean.getKey(), searchToken);
-                            }
-                        }
-
-                        @Override
-                        public void onError(Response<String> response) {
-                            super.onError(response);
-                            resultParser.postEmptySearchResult(result, sourceBean.getKey(), searchToken);
-                        }
-                    });
-        }else if (type == 4) {
-            final String searchWd = wd;
-            SourceHelper.PREPARE_POOL.execute(new Runnable() {
-                @Override
-                public void run() {
-            String extend=sourceBean.getExt();
-            extend=SourceHelper.getFixUrlDirect(extendCache, gson, extend);
-            String queryWd = searchWd;
-            try {
-                queryWd=URLEncoder.encode(queryWd, "UTF-8");
-            } catch (UnsupportedEncodingException e) {
-                LOG.e("SourceViewModel", e);
-            }
-
-            GetRequest<String> request = SourceHelper.siteGet(sourceBean)
-                    .tag(requestTag)
-                    .params("wd", queryWd)
-                    .params("ac" ,"detail")
-                    .params("quick" ,"false");
-            // 当 extend 不为空且非空字符串时添加参数
-            if (extend != null && !extend.isEmpty()) {
-                request.params("extend", extend);
-            }
-            request.execute(new AbsCallback<String>() {
+    /** type 0/1:站点搜索接口(type 0 走 XML) */
+    private void searchFromApi(final SourceBean sourceBean, final String wd, final MutableLiveData<AbsXml> result, final String searchToken, final String requestTag) {
+        // 回调里要按 type 分流 xml/json,值语义与调用点一致(原为捕获上层局部量)
+        final int type = sourceBean.getType();
+        
+        SourceHelper.siteGet(sourceBean)
+                .params("wd", wd)
+                .params(type == 1 ? "ac" : null, type == 1 ? "detail" : null)
+                .tag(requestTag)
+                .execute(new AbsCallback<String>() {
                     @Override
                     public String convertResponse(okhttp3.Response response) throws Throwable {
                         if (response.body() != null) {
                             return response.body().string();
                         } else {
-                            LOG.i("echo-t4 search-网络请求错误");
                             throw new IllegalStateException(SourceHelper.ERR_NETWORK);
                         }
                     }
 
                     @Override
                     public void onSuccess(Response<String> response) {
+                        if (type == 0) {
+                            String xml = response.body();
+                            resultParser.xml(result, xml, sourceBean.getKey(), searchToken);
+                        } else {
                             String json = response.body();
-//                            LOG.i("echo-t4 search onSuccess"+json);
                             resultParser.json(result, json, sourceBean.getKey(), searchToken);
+                        }
                     }
 
                     @Override
                     public void onError(Response<String> response) {
-                        LOG.i("echo-t4 search-onError");
                         super.onError(response);
                         resultParser.postEmptySearchResult(result, sourceBean.getKey(), searchToken);
                     }
                 });
+    
+    }
+
+    /** type 4:带 extend 的搜索;extend 是阻塞拉取,故整段挪到准备线程池 */
+    private void searchFromExtendedApi(final SourceBean sourceBean, final String wd, final MutableLiveData<AbsXml> result, final String searchToken, final String requestTag) {
+        
+        final String searchWd = wd;
+        SourceHelper.PREPARE_POOL.execute(new Runnable() {
+            @Override
+            public void run() {
+        String extend=sourceBean.getExt();
+        extend=SourceHelper.getFixUrlDirect(extendCache, gson, extend);
+        String queryWd = searchWd;
+        try {
+            queryWd=URLEncoder.encode(queryWd, "UTF-8");
+        } catch (UnsupportedEncodingException e) {
+            LOG.e("SourceViewModel", e);
+        }
+
+        GetRequest<String> request = SourceHelper.siteGet(sourceBean)
+                .tag(requestTag)
+                .params("wd", queryWd)
+                .params("ac" ,"detail")
+                .params("quick" ,"false");
+        // 当 extend 不为空且非空字符串时添加参数
+        if (extend != null && !extend.isEmpty()) {
+            request.params("extend", extend);
+        }
+        request.execute(new AbsCallback<String>() {
+                @Override
+                public String convertResponse(okhttp3.Response response) throws Throwable {
+                    if (response.body() != null) {
+                        return response.body().string();
+                    } else {
+                        LOG.i("echo-t4 search-网络请求错误");
+                        throw new IllegalStateException(SourceHelper.ERR_NETWORK);
+                    }
+                }
+
+                @Override
+                public void onSuccess(Response<String> response) {
+                        String json = response.body();
+//                            LOG.i("echo-t4 search onSuccess"+json);
+                        resultParser.json(result, json, sourceBean.getKey(), searchToken);
+                }
+
+                @Override
+                public void onError(Response<String> response) {
+                    LOG.i("echo-t4 search-onError");
+                    super.onError(response);
+                    resultParser.postEmptySearchResult(result, sourceBean.getKey(), searchToken);
                 }
             });
-        } else {
-            resultParser.postEmptySearchResult(result, sourceBean.getKey(), searchToken);
-        }
+            }
+        });
+    
     }
 }

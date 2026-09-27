@@ -3297,3 +3297,26 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **待走查**:①播放器容器全链(起播/切源/换线/内核切换/预载提示/弹幕/字幕/投屏);②各弹层(贴底面板、右侧滑出、居中对话框、拖拽下滑关闭、返回键、带动作关闭);③迅雷/磁力/种子解析入口。
 
 **本阶段未动**:`player/PlaybackController.java:1075` 的 107 行匿名 `Observer`(按计划归阶段 7/播放服务化 spec);`SpiderLoader`/`SourceViewModel`/`SubtitleViewModel`/`PlayUrlResolver` 四处 65–69 行匿名块(未达 >80 门槛,不在本阶段口径内)。
+## 文件级重构:阶段 2b「适配器外提」(2026-09-28,用户"现在拆")
+
+**背景**:阶段 2 只做了同文件具名化(理由见上一条:两个适配器去重后依赖宿主约 23 个 private 成员,远超计划 §3 硬地板的 2–4/文件)。用户拍板后按计划原口径做**文件边界外提**。
+
+**落地**(commit `54c8f07`):
+
+| 新文件 | 内容 | 行数 |
+| --- | --- | --- |
+| `ui/player/PlayContainerViewBridge.java` | 原 `ViewBridge` 内部类(277 行),`implements PlaybackViewBridge` | 302 |
+| `ui/player/PlayContainerControlListener.java` | 原 `ControlListener` 内部类(133 行),`implements VodControlListener` | 156 |
+
+- 两者均持 `private final PlayContainer container`(构造传入);`PlayContainer.this` → `container`;`mContext` → `container.getContext()`(View 公共 API,少放宽一个成员);`new MyWebView(mContext)` → `container.new MyWebView(...)`。
+- **`PlayContainer` 1843 → 1424 行**(−419)。实例化点:字段初始化器 `new PlayContainerViewBridge(this)`(实例初始化先于构造体,与 `scheduler.setViewBridge(viewBridge)` 的先后**不变**)、`initView()` 内 `new PlayContainerControlListener(this)`。
+- **可见性代价(明示例外)**:**23 个成员由 `private` 降为包级** —— 字段 7(`scheduler`/`pageHost`/`mActivity`/`mVideoView`/`mController`/`exitingPreview`/`danmuLoadController`)+ 方法 16(`isAttached`/`checkDanmu(2 参)`/`startDanmuIfReady`/`resetDanmuState`/`reloadDanmuForPlayback`/`initSubtitleView`/`clearLyricView`/`trackMemoryKey`/`releasePlayerKernel`/`showCastDialog`/`openDanmuSearchSheet`/`showPreloadReady`/`hidePreloadReady`/`buildPreloadSnapshot`/`reviveEngineIfReleased`/`playViaScheduler`)。**暴露面仅限 `com.github.tvbox.osc.ui.player` 包**,包内另两个文件(`PlayerTipBridge.kt`、`PreloadCoordinator.java`)不使用这些成员。
+- 三个文件顺带清了未用导入(两个新文件各 67/69 个、宿主 9 个——`ApiConfig`/`ParseBean`/`VodControlListener`/`TextureRenderViewFactory` 等随代码一起走)。
+
+**做法与坑(可复用)**:
+
+- 机械外提的正确姿势是**「类级成员表 + 形参/局部判定」**,不能靠"名字出现过就是成员"——两次踩坑:①按全文件声明行收集成员名会把 `String url = ...;` 这类**局部声明**也算成成员,结果给形参声明加上前缀(`String container.url`,javac 报"错误的接收方参数名");②局部判定写成 `\s+(\w+)\s*=` 会把 `return mVideoView == null ? ...` 当成局部声明(`==` 命中了 `=`),于是宿主字段被排除出前缀名单,新文件里留下裸 `mVideoView`。最终判定 = 花括号深度 1 的声明行取成员 ∪ 签名块(从 `@Override` 到 `{`)取形参 ∪ `=(?!=)` 行首取局部。
+- `private` 静态/字段放宽后,`checkDanmu` 这类**重载**要整名放宽(1 参与 2 参两个一起),否则调用点仍解析失败。
+- 等价性校验(脚本):宿主旧行(去掉两个类块)1233 行 → **只有 2 行变化**(两个实例化点);两个新文件除「`PlayContainer.this` 调用点 + 构造/字段样板」外逐行都能在旧类块里找到。
+
+**验证**:`assembleDebug` + `testDebugUnitTest`(44 类 / 364 用例 / 0 失败)BUILD SUCCESSFUL。**待走查**:播放器全链(起播/切源/换线/内核切换/预载提示/弹幕/字幕/投屏)与底栏控制回调(播放/暂停/选集/线路/倍速/投屏/换源)两条路径。

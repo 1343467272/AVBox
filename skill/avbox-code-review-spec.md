@@ -11,6 +11,7 @@
 3. AI 无仓库访问权（纯对话）时，附上本批文件内容；清单可让编码 Agent 按批次定义导出。
 4. 本批涉及 UI / 播放 / KV / 订阅源时，按「AVBox 项目开发规范」文档地图取对应 spec 的相关小节一并附上。
 5. 拿到报告后按文末「审查收敛」记账；只有修复轮才允许改代码，每轮跑构建与单测。
+6. 报告是否落盘到 `skill/review/`（`review-<YYYYMMDD>-batch<N>.md`）由你决定；一旦落盘，下一批必须出「附录 B 上轮对账」。
 
 ---
 
@@ -31,11 +32,16 @@
 - 只审查本批范围内的文件（由分批策略定义或随提示词给出）；范围外问题一句话移交，不展开
 - 无法确认的问题一律标注「不确定」，禁止猜测或编造
 - 不因代码规模大、语言旧而建议重写；只做渐进式改进
-- 上游继承代码（TVBox osc）中的问题不算「本次引入」，如实标注「既有」；只有当它造成真实崩溃 / 性能 / 维护负担时才列出
+- 上游继承代码（TVBox osc）中的问题不算「本次引入」，如实标注「既有」；命中「维护负担」可判定口径的必须列出（口径见「审查清单 → 类规模与函数」），**禁止把「既有」当免报牌**
 
 ---
 
 # 项目上下文（审查前必读）
+
+## 先读什么（按需检索，别通读）
+
+- `skill/SKILL.md` 的文档地图是索引入口；本批涉及 UI / 播放 / KV / 订阅源时，按其索引读对应 spec 的相关小节（如订阅源字段 → `avbox-mobile-ui-spec.md` §6.12），再动手审查
+- 仍生效的规范在活规范里；`skill/history/` 只用于查"当初为什么这么定"，不作为现状依据
 
 ## 项目定位
 
@@ -46,7 +52,7 @@
 ## 技术栈实况（审查清单以此为准，勿套通用模板）
 
 - 语言构成：`app/src/main` 自身 Java 约 180、Kotlin 约 110 个文件（Java 主要是 TVBox 上游遗产），`player` 模块另有 50 个上游内核 Java 文件；新代码一律 Kotlin。**不建议**"整体迁移 Kotlin"类建议
-- 模块：`app`（宿主，含 api/base/bean/cache/data/dlna/event/player/receiver/server/subtitle/ui/util/viewmodel）、`player`（ijk `tv.danmaku.ijk` 与 doikki `xyz.doikki` 播放内核）、`pyramid`、`quickjs`（JS 脚本引擎）、`libs`（backdrop 等第三方）
+- 模块：`app`（宿主，含 api/base/bean/data/dlna/event/player/receiver/server/subtitle/ui/util/viewmodel；原 `cache` 包已于 2026-09-28 并入 `data`）、`player`（ijk `tv.danmaku.ijk` 与 doikki `xyz.doikki` 播放内核）、`pyramid`、`quickjs`（JS 脚本引擎）、`libs`（backdrop 等第三方）
 - UI：View 体系与 Jetpack Compose（Material3）共存；Compose 集中在 `app` 的 ui/page、ui/components、navbar、glass 系列，以及播放器 ui 层
 - 播放内核：media3/ExoPlayer 为主，ijk/doikki 兜底；预载走 `PreloadManagerHolder` / `PreloadCoordinator` 链路
 - 存储：Room（实体 Cache / VodRecord / VodCollect）+ MMKV 键值（经 `util/kv` KV 门面）
@@ -88,7 +94,7 @@
 
 # 审查模式与分批策略
 
-可审源码实况：app 主源码约 290 个文件 + `player` 模块约 50 个，其余（quickjs、pyramid、libs、测试代码）在排除范围。
+可审源码实况：app 主源码 317 个文件（2026-09-28 实测：批次一 134 + 批次二 123 + 批次三 60）+ `player` 模块约 50 个，其余（quickjs、pyramid、libs、测试代码）在排除范围。
 
 ## 快速模式（默认，一次跑完）
 
@@ -96,8 +102,8 @@
 
 ## 深度模式（三批，跑完即一轮完整深审）
 
-- **批次一 数据与解析链**（约 120 文件）：`com/github/catvod`、`osc/api`、`osc/data`、`osc/cache`、`osc/bean`、`osc/util`、quickjs 宿主侧桥接。锚点类：`ConfigParser`、`BootGuard`、`VideoParseRuler`、`OkHttp`（catvod.net）、`Spider`、KV 门面、Room DAO
-- **批次二 UI 层**（约 100 文件）：`osc/ui`（Compose page/components/navbar/glass 与上游 View 页共存）、`osc/subtitle`、`osc/viewmodel`、`osc/base`。重点：双 UI 体系一致性、触屏交互、状态管理
+- **批次一 数据与解析链**（134 文件）：`com/github/catvod`、`osc/api`、`osc/data`、`osc/bean`、`osc/util`、quickjs 宿主侧桥接。锚点类：`ConfigParser`、`BootGuard`、`VideoParseRuler`、`OkHttp`（catvod.net）、`Spider`、KV 门面、Room DAO
+- **批次二 UI 层**（123 文件；`osc/viewmodel` 因 2026-09-28 的取数层拆分由 2 个文件变为 11 个）：`osc/ui`（Compose page/components/navbar/glass 与上游 View 页共存）、`osc/subtitle`、`osc/viewmodel`、`osc/base`。重点：双 UI 体系一致性、触屏交互、状态管理
 - **批次三 播放与后台**（约 60 文件）：`osc/player`、`osc/dlna`、`osc/server`、`osc/receiver`、`osc/event`、`player` 模块（ijk/doikki 只看与宿主桥接）。重点：播放器所有权、预载链路、服务与通知
 
 有仓库访问权的 AI 按上述目录与锚点类自行定位文件；无仓库访问权时由喂文件者按此准备清单。跨批发现只记录移交，不展开。
@@ -112,10 +118,13 @@
 - ViewModel 与 UI 边界；全局单例门面的使用是否失控、是否被当作万能入口
 - 循环依赖；职责过重的"上帝类"（继承而来的标注「既有」）
 
-## 类规模与函数
+## 类规模与函数（硬阈值，命中即进「附录 A 度量盘点」；正文按"数量 + 典型"合并一行）
 
-- Activity / Fragment > 500 行、ViewModel > 300 行、Composable > 300 行、工具类职责过重
-- 超长方法、过深嵌套；同文件近似重复 ≥3 次的代码块才算"重复代码"
+- 文件 > 500 行计 1 条（其中 Activity / Fragment > 500、ViewModel / Composable > 300 单列点名）；工具类职责过重按同口径
+- 方法 > 100 行为超长；> 200 行或嵌套 ≥5 层另计 1 条；匿名类块与 Compose 内联 lambda 块 > 80 行按同口径
+- 全局门面（单例 / 工具类）被 ≥20 个文件依赖时按「门面失控」计 1 条，给出引用数与被依赖 Top 消费方
+- 同文件近似重复 ≥3 次才算"重复代码"，含模板复制（如 `newSingleThreadExecutor` + `submit` + `get(timeout)` + `shutdown` 这类成组出现）
+- 以上口径即「维护负担」判定：命中任一即必须列出（记 低 / 中，不算阻断）；数字必须给统计口径，估算值未标注误差即视为违规（命令与误差见「附录 A」）
 
 ## Kotlin 与协程
 
@@ -168,9 +177,26 @@
 
 ---
 
+# 审查者禁止事项（违反即视为报告不合格）
+
+- 禁止用"修复成本高""项目不打算重构""非本次引入"反向过滤发现；只允许标注改动成本与风险，由人决定做不做
+- 禁止统计数字无口径：行数 / 次数 / 引用数必须给命令或统计方式，估算值必须标注误差范围
+- 禁止只给行号不给锚点：行号会随改动漂移，证据必须"锚点内容 + 行号"双给
+- 禁止只报症状不点成因：报了具体缺陷却没点出它所在的巨型类 / 超长方法 / 重复模板，即算漏报
+- 禁止在"性能 / 内存"类发现里只写"可能有卡顿"，必须给可测判据或标注「不确定」
+
+---
+
 # 输出格式
 
 按以下编号输出：
+
+## 0. 覆盖度声明（必出）
+
+- 本批文件数 N：已审 M、跳过 K 并逐类说明原因
+- 锚点类逐个点名（读过 ✓ / 未涉本批 —）
+- 未展开的目录与原因（如 `player` 模块上游内核只看宿主桥接）
+- 所用工具与命令：语义检索 / 子代理批量盘点 / 统计脚本（口径写进附录 A）
 
 ## 1. 项目架构评价
 
@@ -185,14 +211,21 @@
 每条包含：
 
 - 问题：一句话标题
-- 位置：`相对路径:行号`
+- 位置：`相对路径:行号` + 唯一锚点内容（便于行号漂移后复核）
 - 描述：现象与成因
 - 严重度：阻断 / 高 / 中 / 低
 - 引入维度：本次引入 / 既有 / 口味差异
 - 证据：不超过 5 行代码片段
 - 建议：一句话方向（不写完整实现）
 
-约束：深度模式单份报告最多 30 条；快速模式最多 15 条且只报阻断与高；按严重度排序；同类问题合并为一行带数量；无证据不输出。快速模式下第 4–6 节合并为一段简述。
+严重度锚点（跨轮口径以此为准）：
+
+- 阻断：启动或必用链路必崩 / 必失效（无源可用、首页空白、配置损坏）
+- 高：常见操作可复现的崩溃 / ANR / 明显卡死、静默失效、数据损坏或丢失
+- 中：边界或概率触发的问题；或后果严重但触发条件苛刻（并发竞争、泄漏）
+- 低：整洁度、存量注释 / 死代码、口味差异，以及附录 A 的度量类（除非已造成 中 级后果）
+
+约束：深度模式单份报告最多 30 条；快速模式最多 15 条且只报阻断与高；按严重度排序；同类问题合并为一行带数量；无证据不输出。**附录 A 必出；上一批报告已落盘时附录 B 必出；两个附录都不计入条数上限。** 快速模式下第 4–6 节合并为一段简述。
 
 ## 4. 重构决策
 
@@ -210,6 +243,30 @@ A / B / C + 理由。
 
 约束：不影响现有功能；每步可独立提交、可独立回滚；每步落地后必须通过 `:app:assembleDebug` 与 `:app:testDebugUnitTest`。
 
+## 附录 A. 度量盘点（必出，不计入条数上限）
+
+按「审查清单 → 类规模与函数」的硬阈值出表：四项各给统计值 + 明细 + 口径。
+
+| 指标 | 命中数 | 明细（Top N，含相对路径:行号） | 统计口径 |
+| --- | --- | --- | --- |
+| 文件 > 500 行 |  |  |  |
+| 方法 > 100 行 |  |  |  |
+| 同文件重复模板 ≥3 次 |  |  |  |
+| 门面被依赖 ≥20 文件 |  |  |  |
+
+- 文件行数口径（PowerShell，仓库根执行）：`Get-ChildItem -Recurse -Include *.java,*.kt -File app\src\main | ForEach-Object { [pscustomobject]@{ Lines=(Get-Content $_.FullName).Count; Rel=$_.FullName } } | Sort-Object Lines -Descending`
+- 方法行数只能靠脚本估算：多行签名会漏检、字符串 / 注释里的花括号会漂移 ⇒ 必须标注"估算 ±N 行"，并剔除已人工核对为假阳性的条目（附上核对结论）
+- 计数类口径：把上条命令的管道换成 `Select-String -Pattern '<模式>' | Group-Object Path`，模式自定义（如 `Executors\.newSingleThreadExecutor\(\)`、`ApiConfig\.get\(\)`）
+
+## 附录 B. 上轮对账（上一批报告已落盘时必出，不计入条数上限）
+
+| 上轮条目 | 状态（已修 / 未修 / 已驳回 / 待定） | 本轮新增证据 |
+| --- | --- | --- |
+|  |  |  |
+
+- 未修条目给"仍在档"的锚点确认（锚点内容 + 行号）；消失的条目说明是修掉了还是定位不到了
+- 「既有被放大」（本次改动让旧缺陷触发面变宽）必须单列，与「本次引入」分开记
+
 ---
 
 再次强调：不确定就标注「不确定」，不猜测；不因代码规模建议重写；优先渐进式重构。
@@ -220,4 +277,6 @@ A / B / C + 理由。
 
 - 发现按「严重度 × 引入维度」两轴记账，严重度单调下降即可继续；换角度无限找新问题没有收益
 - 终止线：连续一轮没有阻断 / 高 / 中级发现，且剩余全部属于"既有问题"或"口味差异"，即可收尾
-- 修复轮每完成一组改动立即验证：PowerShell 下 `.\gradlew.bat :app:assembleDebug` 与 `:app:testDebugUnitTest`；gradle 输出落盘再读（是 UTF-16，别用 Git Bash grep），以 `BUILD SUCCESSFUL` 与 `app/build/test-results/testDebugUnitTest/*.xml` 用例计数为准
+- 终止线的否决条件：报告出现"只报症状未点成因"（例如报了 `getFixUrl` 主线程阻塞，却没点出它所在的 ViewModel 已近 2000 行、方法超 100 行）即视为本轮未完成，先补「附录 A」
+- 落盘（可选，你决定）：`skill/review/review-<YYYYMMDD>-batch<N>.md`；同批的修复轮记录追加在同一文件，内容 = 改了哪些条目 / 构建与单测结果 / 回归面清单（不变量 × 消费方 × 结论，并区分「本次引入」与「既有被放大」）
+- 修复轮每完成一组改动立即验证：PowerShell 下 `.\gradlew.bat :app:assembleDebug` 与 `:app:testDebugUnitTest`；gradle 输出落盘再读（Git Bash 的 grep 对它零命中，PowerShell Core 用 `2>&1 | Out-File -Encoding utf8 <log>` 最稳），判读以 `BUILD SUCCESSFUL` 与 `app/build/test-results/testDebugUnitTest/*.xml` 用例计数为准

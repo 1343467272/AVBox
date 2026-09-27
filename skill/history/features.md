@@ -3320,3 +3320,35 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 - 等价性校验(脚本):宿主旧行(去掉两个类块)1233 行 → **只有 2 行变化**(两个实例化点);两个新文件除「`PlayContainer.this` 调用点 + 构造/字段样板」外逐行都能在旧类块里找到。
 
 **验证**:`assembleDebug` + `testDebugUnitTest`(44 类 / 364 用例 / 0 失败)BUILD SUCCESSFUL。**待走查**:播放器全链(起播/切源/换线/内核切换/预载提示/弹幕/字幕/投屏)与底栏控制回调(播放/暂停/选集/线路/倍速/投屏/换源)两条路径。
+## 文件级重构:阶段 3「有界调用模板 + 超时口径统一」(2026-09-28,按 `skill/review/refactor-plan-20260928.md`)
+
+**目标口径修正(第三次)**:计划的「重复模板 19 处 / 10 文件」= `Select-String 'Executors\.newSingleThreadExecutor\(\)'` 的**字面出现次数**,不是模板实例数。逐处核对后,真正符合「一次性 executor + `submit` + `get(timeout)` + `shutdown`」的只有 **6 处**:
+
+| 处置 | 位置 | 理由 |
+| --- | --- | --- |
+| 抽 `BoundedCall`(6) | `SourceViewModel` 的 getSort / getList / getHomeRecList / getDetail / getPlay;`LiveProxyLoader` 直播 py/js 代理源 | 同一模板,逐行等价搬迁 |
+| 不抽 | `JsSpider` 3 处 `submit().get(timeout)` | 必须落在 QuickJS 专属单线程(线程亲和),超时不能 cancel,且 `initializeJS` 要把 `ExecutionException` 的 cause 抛回构造函数 —— 不能统一成"失败返回 null";已有私有 `submitAndWait` |
+| 不抽 | `ApiConfig.warmOneSource`(预热独占线程 + 单项 10s) | 预热队列语义:超时不打断、项在后台跑完;换一次性线程会变成并发预热,破坏既有独占设计 |
+| 不抽 | `SourceViewModel.getFixUrl`(共享池 `spThreadPool` + 20s) | 共享池有界等待,超时**回退原值**(返回 raw extend),非"新建-等待-销毁"模板 |
+| 不抽 | `SourceViewModel` 推送代理(15s 闩锁) | `CountDownLatch` 等异步 OkGo 回调,不是 `Callable` |
+| 不抽 | `LOG`(落盘)/ `SpiderLoader`(jar 装载、弹幕搜索)/ `PlayUrlResolver`(解析池)/ `Thunder`(解析池)/ `DanmuLoadController`(弹幕解析)/ `ConfigManagePage.kt`(副本清理)/ `PlaybackProgress`、`HistoryWriter`、`LocalConfigHelper` | 长生命周期池或投递即走,全库无 `get(timeout)` |
+
+**两笔 commit(本地,未推远程)**:
+
+- `1026fe5` `util: funnel bounded spider calls into BoundedCall` —— 新增 `util/BoundedCall.kt`(`object` + `@JvmStatic fun <T> call(task, timeoutMs, tag): T?`;超时 → `LOG.i("$tag-timeout(Nms)")` + `cancel(true)`;中断 → 恢复中断位;异常 → `LOG.e` 记 cause;`finally` 里 `shutdown()` 收线程)+ `util/BoundedCallTest.kt`(3 例:返回值 / 超时归 null 且 interrupt 任务 / 任务异常归 null)。各调用点**原超时值一字未动**。
+- `a034ac7` `viewmodel: unify site data timeouts on site default` —— 站点数据请求统一取 `SourceBean.getPlayTimeoutSeconds()`(站点配置 `timeout` 字段,缺省 15s、钳 5–60);`getFixUrl` 的 1 参包装(20s)删掉,4 个调用点显式传站点值。
+
+**超时口径(改后 = 2 种)**:
+
+| 口径 | 值 | 用在哪 |
+| --- | --- | --- |
+| 站点级默认 | `getPlayTimeoutSeconds()`(缺省 15s) | getSort(**30→15**)/ getList(不变)/ getHomeRecList(**20→15**)/ getDetail 非 fallback(**30→15**)/ getPlay(不变)/ getFixUrl 默认(**20→15**,type 4 的 extend 拉取) |
+| 显式覆盖 | 6s / 10s / 120s / `liveConnectTimeoutSeconds` | 详情 fallback 6s;预热单项 10s;JS 调用 120s;直播 py/js 代理源(直播侧的站点级值) |
+
+⚠️ 三条路径等待上限被**缩短**(慢源若因此失败:把该源配置 `timeout` 调到 30–60 即可),回滚只需 revert `a034ac7`。
+
+**有意保留的行为差异**:① `InterruptedException` 现在恢复中断位(原文吞掉);② `LiveProxyLoader` 的解析段原来被 `finally` 里的 `return@Runnable` 静默吞异常,现改为记日志(仍不上抛);③ 超时日志形状变为 `echo--getSort--<key>-timeout(15000ms)`,前缀不变。
+
+**验证**:`assembleDebug` + `testDebugUnitTest`(**45 类 / 367 用例 / 0 失败**,基线上调因新增 `BoundedCallTest`);已装机 vivo V2425A(`versionName=1.1.6`)。**待走查**:换源、详情、取流不回归(含慢源);直播代理源(py/js)加载不回归。
+
+**本阶段未动**:计划列入但按上表驳回的 7 个文件;`ApiConfig` 的 `WARM_ITEM_TIMEOUT_MS`(10s)与 `JsSpider.CALL_TIMEOUT_MS`(120s) 保持显式覆盖。

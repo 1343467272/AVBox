@@ -15,8 +15,8 @@ import java.util.Iterator;
 /**
  * 推送源(push://)URL 的解析与相关结果合成。
  *
- * <p>推送链接形如 {@code http://host/play?url=xxx@Headers=<urlencoded json>@}:
- * 标记头从 URL 里摘出来、URL 本身还原干净,标记头同样要过 {@link HeaderGuard}(会进 OkGo 与本地 m3u8 净化)。
+ * <p>推送链接把标记头(urlencoded 的 JSON)用 {@code @Headers=...@} 夹在 URL 里:摘出来、URL 还原干净。
+ * 标记头同样要过 {@link HeaderGuard}(会进 OkGo 与本地 m3u8 净化)。
  */
 final class PushUrlParser {
     private PushUrlParser() {
@@ -80,7 +80,7 @@ final class PushUrlParser {
         return pushUrl;
     }
 
-    static boolean parseMarkedHeaders(PushUrl pushUrl) {
+    private static boolean parseMarkedHeaders(PushUrl pushUrl) {
         String marker = PUSH_HEADERS_MARKER;
         int start = pushUrl.url.indexOf(marker);
         if (start < 0) return false;

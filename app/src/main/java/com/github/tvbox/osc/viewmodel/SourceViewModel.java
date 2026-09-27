@@ -24,7 +24,7 @@ import java.util.concurrent.ExecutorService;
 /**
  * 站点取数门面:对外只暴露通道 + 入口方法,取数实现按职责分在同包 Loader 里。
  *
- * <p>门面自己只保留跨 Loader 共享的东西:7 个结果通道、两个线程池、sortCache/extendCache
+ * <p>门面自己只保留跨 Loader 共享的东西:7 个结果通道、站点取数线程池、sortCache/extendCache
  * 与 {@link #clearRuntimeCache()} —— 缓存与通道的归属集中在一处,换源清理才有唯一出口。
  *
  * @author pj567
@@ -43,7 +43,7 @@ public class SourceViewModel extends ViewModel {
     public static final ExecutorService spThreadPool = SourceHelper.SPIDER_POOL;
 
     //homeContent缓存，最多存储5个sourceKey的AbsSortXml对象
-    // access-order 的 LinkedHashMap:连 get 都会改结构,而读它的有三个池线程 ⇒ 所有访问都在
+    // access-order 的 LinkedHashMap:连 get 都会改结构,而读写它的是多个池线程 ⇒ 所有访问都在
     // 这把锁(监视器就是 map 本身)下,持锁期间不做 IO,否则链表会在并发下损坏
     private static final Map<String, AbsSortXml> sortCache = new LinkedHashMap<String, AbsSortXml>(5, 0.75f, true) {
         @Override

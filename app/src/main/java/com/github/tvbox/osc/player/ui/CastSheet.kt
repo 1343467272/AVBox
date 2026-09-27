@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.github.tvbox.osc.R
@@ -191,6 +192,7 @@ fun CastSheet(sheet: CastSheetState, onDismiss: () -> Unit) {
                     text = stringResource(R.string.cast_hint),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = playerTextSize(R.dimen.ts_18),
+                    fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -217,6 +219,7 @@ fun CastSheet(sheet: CastSheetState, onDismiss: () -> Unit) {
                             text = stringResource(R.string.cast_permission_hint),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = playerTextSize(R.dimen.ts_20),
+                            fontWeight = FontWeight.Medium,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.align(Alignment.Center),
                         )
@@ -233,6 +236,7 @@ fun CastSheet(sheet: CastSheetState, onDismiss: () -> Unit) {
                                 text = stringResource(R.string.cast_searching),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = playerTextSize(R.dimen.ts_20),
+                                fontWeight = FontWeight.Medium,
                             )
                         }
                     } else if (deviceList.isEmpty() && searchFinished) {
@@ -240,6 +244,7 @@ fun CastSheet(sheet: CastSheetState, onDismiss: () -> Unit) {
                             text = stringResource(R.string.cast_no_device),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = playerTextSize(R.dimen.ts_20),
+                            fontWeight = FontWeight.Medium,
                             modifier = Modifier.align(Alignment.Center),
                         )
                     }

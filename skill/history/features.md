@@ -3441,3 +3441,112 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **验证**:每笔落地跑 `assembleDebug` + `testDebugUnitTest`(**45 类 / 367 用例 / 0 失败**);环数用自写脚本在每笔前后各测一次,并用 `git worktree add` 取上一个 commit 的全量快照做「消失/新增环」集合差(6.1 的差集 = 仅 `osc.player ⇄ osc.ui.player` 消失、0 新增)。**改包前按硬约束做了全库类名检索**:`RemoteTVBox`/`SubtitleFilePicker`/`EpisodeMatcher`/`PreloadCoordinator`/Room 实体在 xml/manifest/proguard/字符串字面量里均无引用(命中的只有 `app/build/` 产物),故无反射与 jar 契约破坏;`SpiderDebug` 因属爬虫 jar 公开面而**未**移动。
 
 **踩坑**:① `git mv` 的目标目录必须先存在,否则报的是"源文件不存在"(误导);② Kotlin 的 `LocalContext.current` 不能在非 composable 的 lambda 里读,回调化时必须在 composable 体内先捕获(`DetailScreen` 一度出现同作用域重复声明);③ 编辑脚本按"区域"切 Kt/Java 时,断言 `count` 是唯一可靠的护栏 —— 本轮脚本三次因断言失败而中止,每次都保住了工作区不被写坏(但也意味着**中止前的写入已生效**,需要按幂等方式重跑)。
+
+## 播放器提示浮层改黑底白字 + 三处位置统一到屏幕上部(2026-09-28,用户"将播放器界面滑动画面出现的胶囊进度指示器改成图二这种样式半透明黑色的字体则白色…位置全部放在图一这个位置,大概就是屏幕的上四分之一处")
+
+**诉求(用户原文 + 两张截图)**:图一 = 现状 seek 提示(浅底药丸 + 深色字,位置在顶部);图二 = 目标样式(半透明黑胶囊 + 白字 + 白色图标)。三点要求:①横滑快进/快退的提示改成图二样式;②它的快进/快退图标**复用播放参数面板的「设为片头 / 设为片尾」矢量**;③**亮度/音量与长按倍速三处提示一并统一**,位置全部落到图一(seek 提示)那一处,即屏幕上部约四分之一处。
+
+**落地(`player/ui/PlayerLayers.kt` 单文件,零新增资源)**:
+
+- `HintPill` 底色 `MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f)` → `Color.Black.copy(alpha = HINT_PILL_SCRIM_ALPHA)`(新常量 0.6);三个消费点的文字色 `onSurface` → `Color.White`。**提示浮层压在视频画面上、不随深浅主题反转** —— 浅底在亮画面里对比度会掉到看不见,这正是本次改动的动机。
+- 新增 `HintPillLayer(content: @Composable RowScope.() -> Unit)` = `Box(fillMaxSize)` 内 `align(TopCenter) + offset(y = playerDim(vs_60))`;三处提示(`PlayerSlideHint` / `PlayerSeekHint` / `PlayerSpeedBoostHint`)全部改走它,`HintPill` 的 content 由 `() -> Unit` 收窄成 `RowScope.() -> Unit` 以适配。**位置原地不动的是 seek 提示**(它本就在此),亮度音量与长按倍速由 `Alignment.Center` 上移。
+- seek 图标:`exo_icon_fastforward` / `exo_icon_rewind` → `player_ic_params_time_end` / `player_ic_params_time_start`(参数面板「设为片尾 / 设为片头」那两颗矢量,方向分别是 `▶|` 与 `|◀`,与快进/快退同向),白色 tint。⚠️ **图标盒同时由 `vs_40` 提到 `vs_60`**:这两颗矢量图形只占画布约一半(以片头为例,竖条 x∈[220,300] + 三角尖点 x=412 / 右缘 ≈x=690,图形高 y∈[-720,-240] ⇒ 宽高各约 50%),盒子不提档图形只有 20mm、比 `ts_30` 文字小一圈。
+- 字号未动(seek / 亮度音量 `ts_30`,长按倍速 `ts_26` 加粗):本次只统一样式与位置。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` 通过(48 类 / 376 用例 / 0 失败);本次不触碰手势识别与状态流(只改渲染),`PlayerUiState` 的三个 `*HintVisible` 与 1s 自动隐藏逻辑未动。**待真机走查**:三处提示在横屏全屏 / 竖屏全屏下的落点(竖屏全屏的长边 = 屏高,`vs_60` 按长边缩放 ⇒ 位置会略偏高)、黑底在纯黑与纯白画面上的可读性、片头/片尾图标用作快退/快进的辨识度。
+
+## 亮度/音量提示改图标 + 去文案(2026-09-28,用户"调整音量调整亮度指示器的图标用 .tubiao 里的图标代替字体,不要音量和亮度了")
+
+**诉求(用户原文)**:承接同日上一轮的药丸改造(黑底白字 + 三处位置统一),这次把亮度/音量提示的内容从「亮度 50%」「音量 50%」改成「**图标** + **50%**」—— 图标说明调的是哪一项,百分比保留(去掉它就没有任何档位反馈,与图二「图标 + 数字」的形态也一致)。
+
+**素材与转换**:`.tubiao/` 恰有 `亮度.svg` / `音量.svg` 两颗(Material Symbols 风格,24px / `viewBox="0 -960 960 960"` 单 path),按既有范式用脚本转出 `res/drawable/player_ic_brightness.xml` / `player_ic_volume.xml`(viewport 960 + `<group android:translateY="960">` 抵消负 viewBox、`fillColor="#FFFFFFFF"` 交由 tint 着色),与既有 `player_ic_*` 同范式。
+
+**改动 7 文件(含 2 个新 drawable)**:
+
+- `player/ui/PlayerLayers.kt`:`PlayerSlideHint` 在文本前加图标(白 tint、盒 `vs_40`、间距 `vs_20`)。⚠️ **盒刻意不等于 seek 那支的 `vs_60`**:亮度矢量图形占画布 ≈92%、音量 ≈75%,而 seek 用的片头/片尾只占 ≈50% —— 三支用同一个盒常数会让可见图形大小差一圈。
+- `player/state/PlayerUiState.kt`:新增 `slideHintBrightness: Boolean`(默认 true),UI 据此二选图标。
+- `player/controller/ComposeVideoController.kt`:`slideToChangeBrightness` / `slideToChangeVolume` 两处改取 `player_gesture_percent`,并各自置位 `slideHintBrightness`。
+- `res/values*/strings.xml`(values / values-en / values-b+zh+Hant 三份):新增 `player_gesture_percent` = `%1$d%%`(纯格式串、无译文,三份同值;`values-zh-rHK` 回落基础层),删除 `player_brightness_value` / `player_volume_value`(留着会被 `i18n_check_keys.py` 报 UNUSED)。
+
+**验证**:`i18n_check_keys.py` = declared 445 / referenced 444、同值多键 0、引用未声明 0、首尾空白 0(唯一 UNUSED 是既有的 `toast_permission_required`,与本次无关);`assembleDebug` + `testDebugUnitTest` 通过(48 类 / 376 用例 / 0 失败)。**未做**:直播页的亮度/音量提示(`LiveScreens` 的 `live_gesture_hint` = `%1$s %2$d%%`,仍带「亮度 / 音量」词)走的是另一套 Surface 实现,用户本次未提,要统一需另开一轮。**待真机走查**:两颗图标的实际辨识度(尤其音量在 0~100% 之间图标不随档位变化)、亮度图标 ≈37mm 与音量 ≈30mm 的观感差是否可接受。
+
+## 播放参数面板「清空」按钮挂图标(2026-09-28,用户"给清空按钮加上一个图标,项目里好像有几个垃圾箱的图标可以用")
+
+**诉求(用户原文)**:播放参数弹窗的「片头片尾」那一组,给第三颗「清空」按钮加上图标,并提示项目里应已有垃圾箱图标可用。
+
+**素材盘点(先查再动手)**:全仓 `res/drawable/` 只有**一颗**垃圾箱 —— `ic_delete.xml`(源 `.tubiao/删除.svg`,与既有 `player_ic_*` 同范式:viewport 960 + `translateY=960` 白填充),已在 7 处使用(历史 / 收藏页批量删除、搜索记录清空、设置页清缓存、配置管理页删除);`.tubiao/` 目录现只剩 `亮度.svg` / `音量.svg`(来源 SVG 已不在仓库里,但 drawable 可用)。**用户说"几个",实际只有一个**,无需新建 drawable、也不存在"选哪颗"的问题。
+
+**改动 2 文件**:
+
+- `player/ui/PlayerParamsSheet.kt`:`ParamsTimeGroup` 的清空按钮补 `iconRes = R.drawable.ic_delete`(其余参数不变 —— `fontWeight = FontWeight.Medium`、`weight(1f)`)。`SheetButton` 本就有 `iconRes` 可选参数(`vs_24` 图标 + `vs_8` 间距 + `tint = contentColor`,选中态自动跟随 `onPrimaryContainer`),故零改动复用;三颗按钮宽度由 `weight(1f)` 固定,加图标只是内容居中位置变化,不触发换行(该行余量充足:「清空」2 字 ≈83px + 图标 60px 远小于槽位 ≈361px)。
+- `res/drawable/ic_delete.xml`:文件头注释由「历史/收藏页批量管理「删除」图标」改为中性的「删除(垃圾箱)图标,来自 .tubiao/删除.svg」—— 消费方已跨 4 个页面,注释再按单一场景描述就不准了,**不改名、不改文件**(改名会牵动已有 7 处引用)。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` 通过(48 类 / 376 用例 / 0 失败)。**待真机走查**:片头片尾组三颗按钮「图标 + 文字」后的观感(两颗时间键文案较长:「片头 13:14」+ 图标 ≈275px,仍在槽位内)。
+
+## 手势提示胶囊:底色对齐底栏时间胶囊 + seek 提示只留目标时间(2026-09-28,用户"改成和左下角进度展示胶囊一样的,还有进度展示不要再保留 18:23/23:41 这样了,改成图片中的这样")
+
+**诉求(用户原文 + 参考图)**:承接同日第一轮的药丸改造,两点 —— ①手势提示胶囊的**透明度**改成与「左下角进度展示胶囊」一样;②「进度展示」不要再保留 `18:23 / 23:41` 这种两个时间的写法,改成参考图那样(图标 + 单个时间)。
+
+**先量了再改(避免拍脑袋定数值)**:
+
+- 用户参考图(`▶▶ 05:46` 那张 crop,270×120)逐像素采样:胶囊外部背景亮度 211~218、胶囊内部 106~109(几个干净列一致)⇒ **实测 ≈50% 黑**(三条列分别算出 0.50 / 0.50 / 0.49)。
+- 底栏「左下角进度展示胶囊」= `PlayerTimePill`(常量 `OVERLAY_PILL_ALPHA = 0.2f`),但它坐在底栏那层 `Transparent → Black 50%` 垂直渐变 scrim 的上段(胶囊中心距底栏顶约 20dp / 栏高约 120dp ⇒ 该处 scrim ≈8%)⇒ **实际合成 ≈26% 黑**。
+- 于是"与底栏胶囊一致"(0.2)与"与参考图一致"(≈0.5)是两个口径,**按用户字面要求取前者**,并把口径差异写进规范备查(改回参考图观感只需把这一个共用常量调到 0.45~0.5)。
+
+**约定判定**:用户引用的 `18:23/23:41` 与底栏时间胶囊「当前 / 总时长」同形,**但判定指的是 seek 提示**(依据:参考图带 ▶▶ 快进图标 —— 底栏胶囊没有图标,也没理由加;且 `18:23` 正是图一里 seek 提示的目标时间,底栏那一格的数字与之无关)。底栏胶囊保持原样未动。
+
+**改动 3 文件**:
+
+- `player/ui/PlayerBottomBar.kt`:`OVERLAY_PILL_ALPHA` 由 `private` 提为 `internal` 并补文档 —— 底栏时间胶囊与手势药丸**共用同一个值**,避免两处各写一个数再漂开(本次诉求的根因正是"两个地方各有一套透明度")。
+- `player/ui/PlayerLayers.kt`:删掉本文件自己的 `HINT_PILL_SCRIM_ALPHA = 0.6`,`HintPill` 改用共用的 `OVERLAY_PILL_ALPHA`;文件头视觉注释同步(不再写"0.6")。
+- `player/controller/ComposeVideoController.kt`:`updateSeekUiHint` 由 `stringForTime(seekTo) + " / " + stringForTime(duration)` 改为只写目标时间,`duration` 形参删除(两处调用点同步:横滑 `slideToChangePosition`、键盘/滚轮步进 `onSeekStep`);两处局部 `duration` 仍各自用于限幅与步长,未成孤儿变量。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` 通过(48 类 / 376 用例 / 0 失败),Kotlin 无新增告警;改后 APK 已装到用户设备(`adb install -r -t`,保留数据)。**待真机走查**:0.2 底色的白字在亮画面上的可读性(这是本次最需要肉眼确认的一项 —— 参考图口径是 0.5,若判"太淡"就调那一个常量)、三支提示在新透明度和新位置下的整体观感、seek 提示只留一个时间后是否够用(总时长仍在底栏胶囊可见)。
+
+## 手势提示胶囊高度收矮:80mm → 60mm(2026-09-28,用户"胶囊的高度能否矮一点" + 一张设备截图)
+
+**诉求(用户原文 + 设备截图)**:提示胶囊太高,压矮一点。截图(2800×1260,即用户设备原生分辨率)里能看清当时那版:胶囊约 156px 高、图标 `▷|` + `00:16`,底色是上一轮改完的 0.2。
+
+**先量了再改(两张图都量,避免拍脑袋)**:
+
+| 量什么 | 用户截图(我们 App) | 参考图(用户此前给的 `▶▶ 05:46` crop) |
+| --- | --- | --- |
+| 胶囊高 | ≈156px(≈79mm) | 82px |
+| 图标图形高 | ≈54px(≈27mm) | 25px |
+| 数字高 | ≈42px(≈21mm) | 24px |
+| 图标 / 数字 | 1.29 | **1.04(等高)** |
+| 该机 mm 换算 | ≈1.97px/mm(由 `vs_60` 盒 ⇒ 118px 反推) | — |
+
+**结论**:高度的成因不是文字,而是**图标盒** —— 胶囊高 = 图标盒 + 2×垂直内距 = `vs_60`(60mm) + 2×`vs_10` = **80mm**,而图标本体只有 27mm(那两颗矢量只占画布 ~46%,盒里有近三成是透明边距);同时参考图的口径是"图标与数字等高",我们当时的图标比数字大 29%。
+
+**改动(1 文件 3 处,全在 `player/ui/PlayerLayers.kt`)**:
+
+- `HintPill` 垂直内距 `vs_10` → `vs_5`(水平内距 `vs_20` 未动 —— 用户只说高度)。
+- seek 图标盒 `vs_60` → `vs_50`:图形降到 ≈23mm,与 `ts_30` 的数字(≈21mm)等高,对上参考图口径。
+- 亮度/音量那支的盒**保持 `vs_40` 不动**(那两颗图形占画布 75%~92%,跟着提到 50 会明显偏大;注释里写清了"别跟 seek 统一")。
+
+**结果**:胶囊 80mm → **60mm**(该机 156px → ≈118px,-24%);三支提示同时变矮(seek 由图标盒撑、亮度音量由 `vs_40` 盒撑、倍速由文字行高撑,内距三处共用一份)。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` 通过(48 类 / 376 用例 / 0 失败);新 APK 已装到设备(保留数据)。**待真机走查**:60mm 高度是否够矮(还想更矮的两个现成档位:图标盒 `vs_40` → 50mm,或垂直内距归零)、图标收到 23mm 后与数字的观感是否确实持平。**过程中的一个失误已如实记录**:第一次编辑我把 `vs_50` 误替换到了亮度/音量那支的盒上(那处 old_string 带了注释、与 seek 那处区分度不够),随即读回文件核对并改正 —— 提示自己:**同一文件里多处同形尺寸时,old_string 必须带上区分性上下文**(此处注释行反而是干扰项)。
+
+### 追加:亮度/音量那支图标盒也改 vs_50 + 删掉该处注释(2026-09-28,用户"亮度/音量那支的图标盒也改成 vs_50,然后把注释删了")
+
+上一轮刻意保留的差异被用户否掉 —— 那处注释(`// 盒取 vs_40 而非 seek 那支的 vs_50：这两颗矢量的图形占画布 75%~92%…`)连同 `vs_40` 一起换成 `vs_50`,三支提示的图标盒统一。**后果如实记下**:亮度矢量图形占画布 ≈92%、音量 ≈75%,`vs_50` 盒下图形分别 ≈46mm / ≈37.5mm,比同屏 `ts_30` 的数字(≈21mm)大一圈多,与 seek 那支"图标与数字等高"的口径不再一致 —— 这是用户明确要求的口径(优先"外框等高"),若后续觉得图标过大,回调 `vs_40` 即可(注释已按用户要求删除,判断依据以本档与活规范为准)。胶囊高度不受影响(仍是 60mm:图标盒 50 + 2×`vs_5`)。**验证**:`assembleDebug` + `testDebugUnitTest` 通过(48 类 / 376 用例 / 0 失败),APK 已装到设备。
+
+## 播放器弹窗字重全量统一为 500(2026-09-28,用户"播放器界面全部 dialog 弹窗的字重都统一为 500")
+
+**背景**:上一轮盘点出弹窗字重只有"选中项"是 500(参数面板因 2026-09-27 的要求显式传参恒 500,其余弹窗的未选中项是 400),用户据此要求全量统一。
+
+**落地(6 文件,全部是"删参数 / 补一个字重")**:
+
+- `player/ui/PlayerSheets.kt`(骨架,一处改全局生效):`SheetButton` 的 `fontWeight ?: if (selected && boldOnSelect) Medium else Normal` → 直接写死 `Medium`,**`fontWeight` 与 `boldOnSelect` 两个参数随之删除**(它们此后再无意义);`SheetLabelRow` 标签、`SheetStepper` 中间值、`SheetInput` 的 `textStyle` 与占位提示各补 `Medium`。
+- `player/ui/PlayerParamsSheet.kt`:删掉 5 处 `fontWeight = FontWeight.Medium` 与 1 处 `boldOnSelect = false`(参数删了,这些传参编译不过,也本就成了噪音)。
+- `player/ui/CastSheet.kt`:4 处自绘文本(`cast_hint` ts_18、权限提示/搜索中/无设备 ts_20)补 `Medium`(含新增 `FontWeight` import)。
+- `player/ui/SubtitleSheets.kt`:4 处自绘文本(大小/位置/延迟 ts_26、延迟说明 ts_20)补 `Medium`(含新增 import)。
+- `player/ui/DanmuSheets.kt` 与 `PlayerSelectDialog.kt`:**零改动** —— 二者没有任何自绘文本,全部走骨架组件,自动跟着变。
+
+**扫描口径(不靠肉眼)**:写了个小检查脚本,对 6 个弹窗文件逐个找出 `Text(` / `BasicTextField(` / `textStyle = TextStyle(` 节点、看其后 8 行内有没有 `fontWeight`,再全量 grep 确认这些文件里**不存在 `FontWeight.Medium` 之外的字重** —— 两项都干净。
+
+**未纳入(已与用户核对过口径)**:选集面板(`ui/activity/DetailEpisodes`)是详情页的 sheet、与竖屏详情页共用,其 M3 `FilterChip` 标签本身就是 `labelLarge`(M3 默认 Medium),故不在本次范围;直播页的 `AVBoxBottomSheet` 同理(非播放器 UI)。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` 通过(48 类 / 376 用例 / 0 失败),Kotlin 无告警;APK 已装到设备(保留数据)。**待真机走查**:字重整体加粗后各弹窗的观感(尤其投屏面板 ts_18 的说明行、字幕/弹幕面板的长文案)、以及画面比例那 6 枚 chips 是否如规范所记在第二行换行(该风险与本次无关,是 2026-09-27 就存在的问题)。

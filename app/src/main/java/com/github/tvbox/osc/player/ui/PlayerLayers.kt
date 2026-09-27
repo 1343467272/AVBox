@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -45,27 +46,41 @@ import com.github.tvbox.osc.player.state.PlayerUiState
 /**
  * 浮层组（照搬旧 tv_slide_progress_text / tv_progress_container /
  * loading / tv_play_load_net_speed / tv_back / tv_lock / play_speed_3_container）。
- * 视觉：提示类浮层（seek 提示 / 亮度音量提示）统一为 M3 surface 药丸 —— 半透明
- * `surfaceContainer`(90%) + 4dp 轻投影、无描边、内容自适应（2026-09-13 用户定稿，
- * 废弃旧 shape_user_focus 的深灰底 #6C3D3D3D + 白描边 + 固定 200x100mm）。
+ * 视觉：提示类浮层（seek 提示 / 亮度音量提示 / 长按倍速）统一为**半透明黑药丸 + 白字**
+ * —— 4dp 轻投影、无描边、尺寸内容自适应，底色透明度取 [OVERLAY_PILL_ALPHA]（与底栏左下角
+ * 那颗时间胶囊同值，2026-09-28 用户要求两者一致）。三处位置也统一，见 [HintPillLayer]。
  */
 
 private val PillShape = RoundedCornerShape(50)
 
 @Composable
-private fun HintPill(modifier: Modifier, content: @Composable () -> Unit) {
+private fun HintPill(modifier: Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
         modifier
-            // M3 surface 样式：surfaceContainer 50% 透明度 + 轻投影,无描边
             .shadow(4.dp, PillShape)
-            .background(
-                MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f),
-                PillShape
-            )
-            .padding(horizontal = playerDim(R.dimen.vs_20), vertical = playerDim(R.dimen.vs_10)),
+            .background(Color.Black.copy(alpha = OVERLAY_PILL_ALPHA), PillShape)
+            // 垂直内距 vs_5：胶囊高度主要由内容撑(图标盒/文字行高)，内距只补一点呼吸感 ——
+            // 2026-09-28 用户「胶囊的高度能否矮一点」，与图标盒一起把 80mm 收到 60mm
+            .padding(horizontal = playerDim(R.dimen.vs_20), vertical = playerDim(R.dimen.vs_5)),
         verticalAlignment = Alignment.CenterVertically,
-    ) {
-        content()
+        content = content,
+    )
+}
+
+/**
+ * 提示药丸的统一落点：水平居中 + 屏幕上部（顶部下移 `vs_60`，落在屏幕上方四分之一区域内）。
+ * seek / 亮度音量 / 长按倍速三处共用 —— 原先只有 seek 在这里，另两处在屏幕正中，同类提示位置不一
+ * （2026-09-28 用户要求统一到 seek 提示的位置）。
+ */
+@Composable
+private fun HintPillLayer(content: @Composable RowScope.() -> Unit) {
+    Box(Modifier.fillMaxSize()) {
+        HintPill(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = playerDim(R.dimen.vs_60)),
+            content = content,
+        )
     }
 }
 
@@ -139,50 +154,57 @@ fun PlayerPauseLayer(state: PlayerUiState, actions: PlayerActions) {
 }
 
 /**
- * 亮度/音量提示（中央药丸，替代旧 msg 100/101 + tv_slide_progress_text）。
- * 2026-09-13 用户定稿：**样式与 seek 提示（[PlayerSeekHint]）完全同款** —— 复用 [HintPill]
- * （半透明 `surfaceContainer` 90% + 轻投影、无描边），尺寸由内容自适应（不再固定 200x100mm），
- * 文字色 `onSurface`。
+ * 亮度/音量提示（替代旧 msg 100/101 + tv_slide_progress_text）。
+ * 图标区分调的是哪一项，文本只剩百分比 —— 「亮度」「音量」两词不再出现；
+ * 样式与位置见 [HintPillLayer]（半透明黑药丸 + 白字）。
  */
 @Composable
 fun PlayerSlideHint(state: PlayerUiState) {
     if (!state.slideHintVisible) return
-    Box(Modifier.fillMaxSize()) {
-        HintPill(modifier = Modifier.align(Alignment.Center)) {
-            Text(
-                text = state.slideHintText,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = playerTextSize(R.dimen.ts_30),
-            )
-        }
+    HintPillLayer {
+        Image(
+            painter = painterResource(
+                if (state.slideHintBrightness) R.drawable.player_ic_brightness
+                else R.drawable.player_ic_volume
+            ),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(Color.White),
+            modifier = Modifier.size(playerDim(R.dimen.vs_50)),
+        )
+        Spacer(Modifier.width(playerDim(R.dimen.vs_20)))
+        Text(
+            text = state.slideHintText,
+            color = Color.White,
+            fontSize = playerTextSize(R.dimen.ts_30),
+        )
     }
 }
 
-/** seek 提示（顶部居中 60mm，快进/快退图标 + 时间，替代 msg 1000/1001） */
+/**
+ * seek 提示（快进/快退图标 + 时间，替代 msg 1000/1001）。
+ * 图标复用播放参数面板的「设为片头 / 设为片尾」矢量（`|◀` / `▶|`，与快退/快进同向）。
+ * 图标盒 `vs_50`：这两颗只占画布约 46%，`vs_50` 盒下图形 ≈23mm、与 `ts_30` 的数字等高
+ * （参考图同样是「图标与数字等高」）；盒再大就只是把胶囊顶高（`vs_60` 时胶囊 80mm，现 60mm）。
+ */
 @Composable
 fun PlayerSeekHint(state: PlayerUiState) {
     if (!state.seekHintVisible) return
-    Box(Modifier.fillMaxSize()) {
-        HintPill(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = playerDim(R.dimen.vs_60))
-        ) {
-            Image(
-                painter = painterResource(
-                    if (state.seekHintForward) R.drawable.exo_icon_fastforward else R.drawable.exo_icon_rewind
-                ),
-                contentDescription = null,
-                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
-                modifier = Modifier.size(playerDim(R.dimen.vs_40)),
-            )
-            Spacer(Modifier.width(playerDim(R.dimen.vs_20)))
-            Text(
-                text = state.seekHintText,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = playerTextSize(R.dimen.ts_30),
-            )
-        }
+    HintPillLayer {
+        Image(
+            painter = painterResource(
+                if (state.seekHintForward) R.drawable.player_ic_params_time_end
+                else R.drawable.player_ic_params_time_start
+            ),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(Color.White),
+            modifier = Modifier.size(playerDim(R.dimen.vs_50)),
+        )
+        Spacer(Modifier.width(playerDim(R.dimen.vs_20)))
+        Text(
+            text = state.seekHintText,
+            color = Color.White,
+            fontSize = playerTextSize(R.dimen.ts_30),
+        )
     }
 }
 
@@ -295,24 +317,19 @@ private fun BoxScope.SideButton(
 }
 
 /**
- * 长按倍速浮层(替代 play_speed_3_container / fromLongPress;倍率设置页可调 2x~10x)。
- *
- * 样式与其他提示浮层统一(2026-09-13 用户要求):复用 [HintPill] —— 与控制条进度提示
- * ([PlayerSeekHint])完全同款的半透明 surface 药丸,不再用旧的纯黑圆角底 `#66000000` + 白字;
- * 文字色随主题 `onSurface`,字号用 play 模块的 ts_26 档(与中央提示同级)。
- * 遮罩在屏时不显示:长按倍速作用的是上一次会话的残留内核,提示不该出现在加载画面上。
+ * 长按倍速浮层（替代 play_speed_3_container / fromLongPress；倍率设置页可调 2x~10x）。
+ * 样式与位置见 [HintPillLayer]（半透明黑药丸 + 白字）。
+ * 遮罩在屏时不显示：长按倍速作用的是上一次会话的残留内核，提示不该出现在加载画面上。
  */
 @Composable
 fun PlayerSpeedBoostHint(state: PlayerUiState) {
     if (!state.speedBoostVisible || state.tipVisible) return
-    Box(Modifier.fillMaxSize()) {
-        HintPill(modifier = Modifier.align(Alignment.Center)) {
-            Text(
-                text = "%.1f X".format(state.speedBoostValue),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = playerTextSize(R.dimen.ts_26),
-                fontWeight = FontWeight.Bold,
-            )
-        }
+    HintPillLayer {
+        Text(
+            text = "%.1f X".format(state.speedBoostValue),
+            color = Color.White,
+            fontSize = playerTextSize(R.dimen.ts_26),
+            fontWeight = FontWeight.Bold,
+        )
     }
 }

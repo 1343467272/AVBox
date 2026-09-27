@@ -72,7 +72,6 @@ internal fun PlayerParamsSheet(
                 SheetButton(
                     text = stringResource(R.string.player_menu_search_danmu),
                     iconRes = R.drawable.player_ic_menu_danmu,
-                    fontWeight = FontWeight.Medium,
                     onClick = {
                         dismissThen {
                             onSearch()
@@ -104,8 +103,6 @@ private fun ParamsChoiceGroup(
                 selected = index == choice.selected,
                 onClick = { choice.onSelect(index) },
                 contentPadding = playerDim(R.dimen.vs_20),
-                boldOnSelect = false,
-                fontWeight = FontWeight.Medium,
             )
         }
     }
@@ -188,7 +185,6 @@ private fun ParamsTimeGroup(sheet: ParamsSheetState) {
             text = timeMarkText(sheet.timeStartText, R.string.player_time_start, R.string.player_params_set_start),
             iconRes = R.drawable.player_ic_params_time_start,
             selected = startActive,
-            fontWeight = FontWeight.Medium,
             onClick = sheet.onSetTimeStart,
             modifier = Modifier.weight(1f),
         )
@@ -196,13 +192,12 @@ private fun ParamsTimeGroup(sheet: ParamsSheetState) {
             text = timeMarkText(sheet.timeEndText, R.string.player_time_end, R.string.player_params_set_end),
             iconRes = R.drawable.player_ic_params_time_end,
             selected = endActive,
-            fontWeight = FontWeight.Medium,
             onClick = sheet.onSetTimeEnd,
             modifier = Modifier.weight(1f),
         )
         SheetButton(
             text = stringResource(R.string.common_clear),
-            fontWeight = FontWeight.Medium,
+            iconRes = R.drawable.ic_delete,
             onClick = sheet.onResetTime,
             modifier = Modifier.weight(1f),
         )

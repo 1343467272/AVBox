@@ -236,7 +236,8 @@ internal fun SheetTitle(text: String) {
 }
 
 /** 面板按钮:M3 选项样式 —— `surfaceBright` 底、选中 `primaryContainer`;触摸点按。
- *  [contentPadding] 给"宽度随内容"的 chips 用(默认 0 = 沿用调用方的宽度/权重)。 */
+ *  [contentPadding] 给"宽度随内容"的 chips 用(默认 0 = 沿用调用方的宽度)。
+ *  文字恒 `Medium`(500):2026-09-28 用户要求播放器弹窗内字重一律 500,选中态只靠底色区分。 */
 @Composable
 internal fun SheetButton(
     text: String,
@@ -244,9 +245,7 @@ internal fun SheetButton(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     contentPadding: Dp = 0.dp,
-    boldOnSelect: Boolean = true,
     @DrawableRes iconRes: Int? = null,
-    fontWeight: FontWeight? = null,
 ) {
     val container = if (selected) {
         MaterialTheme.colorScheme.primaryContainer
@@ -278,7 +277,7 @@ internal fun SheetButton(
                 text = text,
                 color = contentColor,
                 fontSize = playerTextSize(R.dimen.ts_20),
-                fontWeight = fontWeight ?: if (selected && boldOnSelect) FontWeight.Medium else FontWeight.Normal,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -299,6 +298,7 @@ internal fun SheetLabelRow(label: String, content: @Composable RowScope.() -> Un
             text = label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = playerTextSize(R.dimen.ts_20),
+            fontWeight = FontWeight.Medium,
             textAlign = TextAlign.End,
             modifier = Modifier.width(playerDim(R.dimen.vs_120)),
         )
@@ -346,6 +346,7 @@ internal fun SheetStepper(
             text = valueText,
             color = MaterialTheme.colorScheme.onSurface,
             fontSize = playerTextSize(R.dimen.ts_20),
+            fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
         )
@@ -385,6 +386,7 @@ internal fun SheetInput(
             textStyle = TextStyle(
                 color = MaterialTheme.colorScheme.onSurface,
                 fontSize = playerTextSize(R.dimen.ts_26),
+                fontWeight = FontWeight.Medium,
             ),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -399,6 +401,7 @@ internal fun SheetInput(
                             text = hint,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = playerTextSize(R.dimen.ts_26),
+                            fontWeight = FontWeight.Medium,
                             maxLines = 1,
                         )
                     }

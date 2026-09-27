@@ -161,8 +161,9 @@ fun PlayerBottomBar(
     }
 }
 
-/** 时间胶囊底色透明度 */
-private const val OVERLAY_PILL_ALPHA = 0.2f
+/** 覆盖层胶囊底色的不透明度。底栏时间胶囊与手势提示药丸（`PlayerLayers.HintPill`）共用同一值，
+ *  避免两处各写一个数后慢慢漂开（2026-09-28 用户要求手势提示「和左下角进度展示胶囊一样」）。 */
+internal const val OVERLAY_PILL_ALPHA = 0.2f
 
 private const val PILL_DIVIDER_ALPHA = 0.3f
 

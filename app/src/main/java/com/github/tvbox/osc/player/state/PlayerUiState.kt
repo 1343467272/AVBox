@@ -41,9 +41,10 @@ class PlayerUiState {
     var seekHintForward: Boolean by mutableStateOf(true)
     var seekHintText: String by mutableStateOf("")
 
-    /** 亮度/音量提示（替代 BaseController msg 100/101） */
+    /** 亮度/音量提示（替代 BaseController msg 100/101）；文本只有百分比，靠图标区分是哪一项 */
     var slideHintVisible: Boolean by mutableStateOf(false)
     var slideHintText: String by mutableStateOf("")
+    var slideHintBrightness: Boolean by mutableStateOf(true)
 
     /** 长按倍速浮层（替代 play_speed_3_container / fromLongPress） */
     var speedBoostVisible: Boolean by mutableStateOf(false)

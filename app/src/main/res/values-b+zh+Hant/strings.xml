@@ -443,8 +443,7 @@
     <string name="common_failed">失敗</string>
     <string name="player_time_start">片頭</string>
     <string name="player_time_end">片尾</string>
-    <string name="player_brightness_value">亮度%1$d%%</string>
-    <string name="player_volume_value">音量%1$d%%</string>
+    <string name="player_gesture_percent">%1$d%%</string>
     <string name="player_select_player">請選擇播放器</string>
     <string name="player_select_scale">請選擇畫面尺寸</string>
     <string name="player_select_speed">請選擇播放倍速</string>

@@ -363,10 +363,11 @@ class ComposeVideoController @JvmOverloads constructor(
         if (notifyHistory) EventBus.getDefault().post(RefreshEvent(RefreshEvent.TYPE_HISTORY_REFRESH))
     }
 
-    /** seek 提示（替代旧 updateSeekUI + msg 1000/1001，UI 侧 1s 自动隐藏） */
-    private fun updateSeekUiHint(curr: Int, seekTo: Int, duration: Int) {
+    /** seek 提示（替代旧 updateSeekUI + msg 1000/1001，UI 侧 1s 自动隐藏）。
+     *  只显示目标时间 —— 总时长在底栏时间胶囊里已有，提示里再带一份是冗余（2026-09-28 用户要求）。 */
+    private fun updateSeekUiHint(curr: Int, seekTo: Int) {
         state.seekHintForward = seekTo > curr
-        state.seekHintText = PlayerUtils.stringForTime(seekTo) + " / " + PlayerUtils.stringForTime(duration)
+        state.seekHintText = PlayerUtils.stringForTime(seekTo)
         state.seekHintVisible = true
     }
 
@@ -526,7 +527,7 @@ class ComposeVideoController @JvmOverloads constructor(
         var position = (-deltaX / width * SLIDE_POSITION_FULL_WIDTH_MS + currentPosition).toInt()
         if (position > duration) position = duration
         if (position < 0) position = 0
-        updateSeekUiHint(currentPosition, position, duration)
+        updateSeekUiHint(currentPosition, position)
         mSeekPosition = position
     }
 
@@ -543,7 +544,8 @@ class ComposeVideoController @JvmOverloads constructor(
         val percent = (newBrightness * 100).toInt()
         attributes.screenBrightness = newBrightness
         window.attributes = attributes
-        state.slideHintText = context.getString(R.string.player_brightness_value, percent)
+        state.slideHintText = context.getString(R.string.player_gesture_percent, percent)
+        state.slideHintBrightness = true
         state.slideHintVisible = true
     }
 
@@ -558,7 +560,8 @@ class ComposeVideoController @JvmOverloads constructor(
         if (index < 0) index = 0f
         val percent = (index / streamMaxVolume * 100).toInt()
         am.setStreamVolume(AudioManager.STREAM_MUSIC, index.toInt(), 0)
-        state.slideHintText = context.getString(R.string.player_volume_value, percent)
+        state.slideHintText = context.getString(R.string.player_gesture_percent, percent)
+        state.slideHintBrightness = false
         state.slideHintVisible = true
     }
 
@@ -1329,7 +1332,6 @@ class ComposeVideoController @JvmOverloads constructor(
         updateSeekUiHint(
             PlayerUtils.safeTimeMs(wrapper.currentPosition),
             state.seekPreviewPositionMs.toInt(),
-            duration,
         )
         uiHandler.removeCallbacks(keySeekCommitRunnable)
         uiHandler.postDelayed(keySeekCommitRunnable, 400)

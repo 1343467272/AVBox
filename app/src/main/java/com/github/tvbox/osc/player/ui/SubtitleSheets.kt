@@ -32,6 +32,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.stringResource
 import com.github.tvbox.osc.R
@@ -108,6 +109,7 @@ fun SubtitleSheet(sheet: SubtitleSheetState, onDismiss: () -> Unit) {
                             text = sizeText,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontSize = playerTextSize(R.dimen.ts_26),
+                            fontWeight = FontWeight.Medium,
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .weight(1f)
@@ -155,6 +157,7 @@ fun SubtitleSheet(sheet: SubtitleSheetState, onDismiss: () -> Unit) {
                             text = posText,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontSize = playerTextSize(R.dimen.ts_26),
+                            fontWeight = FontWeight.Medium,
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .weight(1f)
@@ -182,6 +185,7 @@ fun SubtitleSheet(sheet: SubtitleSheetState, onDismiss: () -> Unit) {
                         text = stringResource(if (exo) R.string.subtitle_delay_exo_hint else R.string.subtitle_delay_hint),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = playerTextSize(R.dimen.ts_20),
+                        fontWeight = FontWeight.Medium,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -202,6 +206,7 @@ fun SubtitleSheet(sheet: SubtitleSheetState, onDismiss: () -> Unit) {
                             text = delayText,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontSize = playerTextSize(R.dimen.ts_26),
+                            fontWeight = FontWeight.Medium,
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .weight(1f)

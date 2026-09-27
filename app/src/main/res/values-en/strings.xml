@@ -443,8 +443,7 @@
     <string name="common_failed">Failed</string>
     <string name="player_time_start">Opening</string>
     <string name="player_time_end">Ending</string>
-    <string name="player_brightness_value">Brightness %1$d%%</string>
-    <string name="player_volume_value">Volume %1$d%%</string>
+    <string name="player_gesture_percent">%1$d%%</string>
     <string name="player_select_player">Select a player</string>
     <string name="player_select_scale">Select picture size</string>
     <string name="player_select_speed">Select playback speed</string>

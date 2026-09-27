@@ -7,243 +7,47 @@ package com.github.tvbox.osc.ui.page
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ContainedLoadingIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ProgressIndicatorDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil3.compose.AsyncImage
 import com.github.tvbox.osc.R
-import com.github.tvbox.osc.api.ApiConfig
 import com.github.tvbox.osc.bean.VodInfo
-import com.github.tvbox.osc.cache.RoomDataManger
-import com.github.tvbox.osc.event.RefreshEvent
-import com.github.tvbox.osc.ui.components.AVBoxAlertDialog
 import com.github.tvbox.osc.ui.components.AppTopBarScaffold
 import com.github.tvbox.osc.ui.components.LoadState
 import com.github.tvbox.osc.ui.components.LoadStateBox
-import com.github.tvbox.osc.ui.components.LocalSheetDismiss
-import com.github.tvbox.osc.ui.components.LocalSheetDismissThen
-import com.github.tvbox.osc.ui.components.glassTopBarSurface
-import com.github.tvbox.osc.ui.theme.cardContainer
 import com.github.tvbox.osc.util.EpisodeTotals
-import com.github.tvbox.osc.util.HawkConfig
-import com.github.tvbox.osc.util.HistoryHelper
-import com.github.tvbox.osc.util.HistoryMerge
-import com.github.tvbox.osc.util.KV
 import com.github.tvbox.osc.util.PlaybackProgress
-import com.github.tvbox.osc.util.TrackMemory
-import com.github.tvbox.osc.util.WatchProgressStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
-import org.greenrobot.eventbus.EventBus
-import org.greenrobot.eventbus.Subscribe
-import org.greenrobot.eventbus.ThreadMode
-
-class HistoryViewModel : ViewModel() {
-    val loading = MutableStateFlow(true)
-    val items = MutableStateFlow<List<VodInfo>>(emptyList())
-    val episodeTotals = MutableStateFlow<Map<String, Int>>(emptyMap())
-    val playedPercents = MutableStateFlow<Map<String, Int>>(emptyMap())
-
-    /** 无痕:列表与卡片整体不显示(页面仍保留"清空历史"这个主动操作) */
-    val incognito = MutableStateFlow(HistoryHelper.isIncognito())
-
-    init {
-        EventBus.getDefault().register(this)
-        refresh()
-        // 配置就绪后再刷一次:换订阅瞬间按 cid 读库是对的,但站名与可用性要等新配置解析完才算得准
-        viewModelScope.launch {
-            AppBootstrap.state.collect { boot ->
-                if (boot is AppBootstrap.Boot.Ready) refresh()
-            }
-        }
-    }
-
-    override fun onCleared() {
-        EventBus.getDefault().unregister(this)
-    }
-
-    val scrollSignal = MutableStateFlow(0)
-
-    val placementAnim = MutableStateFlow(false)
-
-    fun refresh(scrollToTop: Boolean = false) {
-        // 无痕:不读库也不显示卡片(历史合并的去重删库同样跳过 —— 都不展示了,没必要动库)
-        if (HistoryHelper.isIncognito()) {
-            incognito.value = true
-            loading.value = false
-            items.value = emptyList()
-            episodeTotals.value = emptyMap()
-            playedPercents.value = emptyMap()
-            return
-        }
-        incognito.value = false
-        if (items.value.isEmpty()) loading.value = true
-        if (scrollToTop) placementAnim.value = false
-        viewModelScope.launch(Dispatchers.IO) {
-            val limit = HistoryHelper.getHisNum(KV.get(HawkConfig.HISTORY_NUM, 0))
-            val all = RoomDataManger.getAllVodRecord(limit)
-            if (HistoryMerge.isEnabled()) {
-                // 历史合并:同一部剧只保留最新一条,被合并掉的旧记录直接清库(上游"历史合并"语义,见 HistoryMerge)
-                val (kept, dropped) = HistoryMerge.dedupe(all) { it.name }
-                dropped.forEach { RoomDataManger.deleteVodRecord(it.sourceKey, it) }
-                items.value = kept
-            } else {
-                items.value = all
-            }
-            episodeTotals.value = EpisodeTotals.snapshot()
-            playedPercents.value = PlaybackProgress.snapshot()
-            resolveSourceNames()
-            loading.value = false
-            if (scrollToTop) scrollSignal.value++
-        }
-    }
-
-    @Subscribe(threadMode = ThreadMode.MAIN)
-    fun onRefreshEvent(event: RefreshEvent) {
-        if (event.type == RefreshEvent.TYPE_HISTORY_REFRESH) refresh(scrollToTop = true)
-        // 历史按当前订阅隔离:换了订阅必须重读库,只重解析站名会继续列着上一个订阅的记录
-        else if (event.type == RefreshEvent.TYPE_API_URL_CHANGE) refresh()
-    }
-
-    private var resolveJob: Job? = null
-
-    fun resolveSourceNames() {
-        resolveJob?.cancel()
-        resolveJob = viewModelScope.launch(Dispatchers.IO) {
-            val list = items.value
-            if (list.isEmpty()) return@launch
-            // 配置未就绪时 getSource 全为空,此刻把站点标成"当前源不可用"是误判,等 Ready 那次刷新再算
-            if (AppBootstrap.state.value !is AppBootstrap.Boot.Ready) return@launch
-            val cache = KV.get(HawkConfig.SOURCE_NAME_CACHE, HashMap<String, String>())
-            var cacheChanged = false
-            var listChanged = false
-            list.forEach { info ->
-                val key = info.sourceKey
-                val bean = if (key.isNullOrEmpty()) null else ApiConfig.get().getSource(key)
-                val resolved = if (key.isNullOrEmpty()) {
-                    ""
-                } else {
-                    val current = bean?.name
-                    if (!current.isNullOrEmpty()) {
-                        if (cache[key] != current) {
-                            cache[key] = current
-                            cacheChanged = true
-                        }
-                        current
-                    } else {
-                        cache[key] ?: key
-                    }
-                }
-                if (info.sourceName != resolved) {
-                    info.sourceName = resolved
-                    listChanged = true
-                }
-                // 站名快照会跨订阅残留,是否可用必须按当前订阅现判
-                val unavailable = !key.isNullOrEmpty() && bean == null
-                if (info.sourceUnavailable != unavailable) {
-                    info.sourceUnavailable = unavailable
-                    listChanged = true
-                }
-            }
-            if (cacheChanged) KV.put(HawkConfig.SOURCE_NAME_CACHE, cache)
-            if (listChanged) items.value = list.toList()
-        }
-    }
-
-    fun deleteSelected(list: List<VodInfo>) {
-        if (list.isEmpty()) return
-        placementAnim.value = true
-        viewModelScope.launch(Dispatchers.IO) {
-            list.forEach { item ->
-                RoomDataManger.deleteVodRecord(item.sourceKey, item)
-                // 记录删了,该片的进度痕迹与轨道/字幕记忆一并清掉,免得留下访问不到的孤儿键
-                WatchProgressStore.clearOwner(WatchProgressStore.ownerOf(item))
-                TrackMemory.delete(TrackMemory.contentKey(item.sourceKey, item.id))
-            }
-            refresh()
-        }
-    }
-
-    fun deleteAll() {
-        placementAnim.value = false
-        viewModelScope.launch(Dispatchers.IO) {
-            RoomDataManger.deleteVodRecordAll()
-            WatchProgressStore.clearAll()
-            TrackMemory.deleteAll()
-            refresh()
-        }
-    }
-
-    companion object {
-        fun key(item: VodInfo): String = item.sourceKey + "|" + item.id
-    }
-}
 
 // 退出动画期间旧内容仍按旧快照渲染:进度/集数快照已清空时,淡出中的卡片不会丢进度条
 private data class HistoryContent(
@@ -484,240 +288,4 @@ fun HistoryPage(
             onDismiss = { deleteTarget = null },
         )
     }
-}
-
-private const val PROGRESS_ENTER_DURATION_MS = 600
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun HistoryRow(
-    item: VodInfo,
-    totalEpisodes: Int?,
-    playedPercent: Int?,
-    editMode: Boolean,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-) {
-    var progressEntered by rememberSaveable { mutableStateOf(false) }
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.cardContainer,
-    ) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(horizontal = 12.dp, vertical = 12.dp)
-                .height(IntrinsicSize.Min),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(64.dp)
-                    .aspectRatio(2f / 3f),
-            ) {
-                AsyncImage(
-                    model = item.pic,
-                    contentDescription = item.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                )
-                if (editMode) {
-                    SelectCircle(
-                        selected = selected,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(6.dp),
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-                verticalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = item.name ?: "",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (!item.sourceName.isNullOrEmpty()) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        val unavailable = item.sourceUnavailable
-                        Text(
-                            text = if (unavailable) {
-                                "${item.sourceName} · ${stringResource(R.string.source_unavailable)}"
-                            } else {
-                                item.sourceName
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (unavailable) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.widthIn(max = 160.dp),
-                        )
-                    }
-                }
-                Text(
-                    text = if (item.playNote.isNullOrEmpty()) {
-                        item.note ?: ""
-                    } else {
-                        stringResource(R.string.history_last_watched, item.playNote)
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val numberedEpisode = item.playNote.isNullOrEmpty() || EpisodeTotals.isNumberedEpisode(item.playNote)
-                val eps = if (numberedEpisode) {
-                    totalEpisodes ?: parseEpisodeTotal(item.note) ?: parseEpisodeTotal(item.state)
-                } else {
-                    null
-                }
-                val episodeFraction = eps?.let { total ->
-                    (item.playIndex + 1).coerceIn(1, total).toFloat() / total
-                }
-                val barProgress = playedPercent?.let { it / 100f } ?: episodeFraction
-                if (barProgress != null) {
-                    val barColor = MaterialTheme.colorScheme.primary
-                    val progressAnim = remember {
-                        Animatable(if (progressEntered) barProgress else 0f)
-                    }
-                    LaunchedEffect(barProgress) {
-                        val spec = if (progressEntered) {
-                            ProgressIndicatorDefaults.ProgressAnimationSpec
-                        } else {
-                            tween(PROGRESS_ENTER_DURATION_MS)
-                        }
-                        progressEntered = true
-                        progressAnim.animateTo(barProgress, spec)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        LinearProgressIndicator(
-                            progress = { progressAnim.value },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(5.dp),
-                            color = barColor,
-                            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            drawStopIndicator = {},
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (eps != null) {
-                                stringResource(
-                                        R.string.history_episode_progress,
-                                        (item.playIndex + 1).coerceIn(1, eps),
-                                        eps,
-                                    )
-                            } else {
-                                stringResource(R.string.history_watched_percent, (barProgress * 100).roundToInt())
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = barColor,
-                        )
-                    }
-                } else {
-                    Spacer(modifier = Modifier.height(5.dp))
-                }
-            }
-        }
-    }
-}
-
-// i18n: keep —— 匹配源数据(片名/备注)里的"第N集/期",不能翻
-private val EpisodeTotalRegex = Regex("(\\d+)\\s*[集期]")
-
-private fun parseEpisodeTotal(note: String?): Int? {
-    val total = note?.let { EpisodeTotalRegex.find(it)?.groupValues?.get(1)?.toIntOrNull() } ?: return null
-    return total.takeIf { it in 2..1000 }
-}
-
-@Composable
-internal fun SelectCircle(
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier
-            .size(24.dp)
-            .clip(CircleShape)
-            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.35f))
-            .border(2.dp, Color.White, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (selected) {
-            Icon(
-                painter = painterResource(R.drawable.ic_check),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(14.dp),
-            )
-        }
-    }
-}
-
-@Composable
-internal fun ManageActionIcon(
-    iconRes: Int,
-    contentDescription: String,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-) {
-    Box(
-        modifier = Modifier
-            .alpha(if (enabled) 1f else 0.4f)
-            .size(40.dp)
-            .glassTopBarSurface(CircleShape, MaterialTheme.colorScheme.surfaceBright)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = contentDescription,
-            tint = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(22.dp),
-        )
-    }
-}
-
-@Composable
-internal fun ConfirmDeleteDialog(
-    title: String,
-    text: String,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AVBoxAlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(text) },
-        confirmButton = {
-            val dismissThen = LocalSheetDismissThen.current
-            TextButton(onClick = { dismissThen { onConfirm(); onDismiss() } }) {
-                Text(stringResource(R.string.common_delete))
-            }
-        },
-        dismissButton = {
-            val dismissAnimated = LocalSheetDismiss.current
-            TextButton(onClick = { dismissAnimated() }) { Text(stringResource(R.string.common_cancel)) }
-        },
-    )
 }

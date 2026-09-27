@@ -339,11 +339,19 @@ final class PlayLoader {
         }
     }
 
+    /**
+     * 结果归属判定:序号已被后续请求(取消/切集/下一次预载)顶掉 ⇒ 这条结果作废。
+     * 抽成纯判定是为了让"双通道序号互不作废"这条不变量可被单测锁住(见 PlayLoaderSeqTest)。
+     */
+    static boolean isStaleResult(int requestSeq, AtomicInteger seqHolder) {
+        return requestSeq != seqHolder.get();
+    }
+
     private void postPlayResult(AtomicInteger seqHolder, MutableLiveData<JSONObject> resultChannel, int requestSeq, JSONObject result) {
         mainHandler.post(new Runnable() {
             @Override
             public void run() {
-                if (requestSeq != seqHolder.get()) {
+                if (isStaleResult(requestSeq, seqHolder)) {
                     LOG.i("echo--getPlay--ignore stale result");
                     return;
                 }

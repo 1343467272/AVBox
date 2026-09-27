@@ -39,7 +39,6 @@ import com.github.tvbox.osc.util.M3u8;
 import com.github.tvbox.osc.util.MD5;
 import com.github.tvbox.osc.util.OkGoHelper;
 import com.github.tvbox.osc.util.PermissionHelper;
-import com.github.tvbox.osc.util.Proxy;
 import com.github.tvbox.osc.util.PySourcePack;
 import com.github.tvbox.osc.util.VideoParseRuler;
 import com.github.tvbox.osc.util.live.TxtSubscribe;
@@ -55,7 +54,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
-import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -96,7 +94,6 @@ public class ApiConfig {
     private volatile Map<String,String> vodHosts;
     private volatile Map<String,String> liveHosts;
     private List<IJKCode> ijkCodes;
-    private String currentPlaySourceKey = "";
     private String loadedLiveConfigUrl = "";
     private String danmaku = "";
     private volatile String configLogo = ""; // 配置级头像(接口 JSON 顶层 "logo")
@@ -109,6 +106,8 @@ public class ApiConfig {
 
     /** 爬虫装载:jar/js/py 加载器与 jar 下载链路 */
     private final SpiderLoader spiderLoader = new SpiderLoader();
+    /** /proxy 请求路由(jar/js/py 爬虫与直连回退) */
+    private final ProxyEntry proxyEntry = new ProxyEntry(this, spiderLoader);
     private final Gson gson;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService configLoadExecutor = Executors.newSingleThreadExecutor();
@@ -657,7 +656,7 @@ public class ApiConfig {
     private void resetConfigData() {
         configGeneration.incrementAndGet();
         clearSpiderCache();
-        currentPlaySourceKey = "";
+        proxyEntry.setCurrentPlaySourceKey("");
         configLogo = "";
         sourceBeanList.clear();
         liveChannelGroupList.clear();
@@ -1519,117 +1518,11 @@ public class ApiConfig {
     }
 
     public Object[] proxyLocal(Map<String, String> param) {
-        SourceBean source = getCurrentProxySource(param);
-        String api = source.getApi();
-
-        String siteKey = param.get("siteKey");
-        String action = param.get("do");
-
-        boolean isJs = "js".equals(action);
-        boolean isPy = "py".equals(action);
-        boolean isLive = KV.get(HawkConfig.PLAYER_IS_LIVE, false);
-        boolean isApiJs = api.contains(".js");
-        boolean isApiPy = api.contains(".py");
-
-        boolean canUseType3 = !TextUtils.isEmpty(siteKey)
-                && source.getType() == 3
-                && !isJs
-                && !isPy
-                && !isLive
-                && !isApiJs
-                && !isApiPy;
-
-        if (canUseType3) {
-            try {
-                Spider spider = getCSP(source);
-
-                Object[] result = spider.proxy(param);
-                if (result != null) return result;
-
-                result = spiderLoader.proxyInvokeJar(param);
-                if (result != null) return result;
-
-                result = proxyDirect(param);
-                if (result != null) return result;
-
-                return null;
-            } catch (Throwable th) {
-                LOG.e("echo-proxy siteKey error: " + th.getMessage());
-                return null;
-            }
-        }
-
-        if (isJs) {
-            return spiderLoader.proxyInvokeJs(param);
-        }
-
-        if (isLive) {
-            String liveApi = spiderLoader.getCurrentLiveSpider() != null ? spiderLoader.getCurrentLiveSpider() : "";
-
-            if (liveApi.contains(".py")) {
-                return spiderLoader.proxyInvokePy(param, spiderLoader.getCurrentLivePyKey());
-            }
-            if (liveApi.contains(".js")) {
-                return spiderLoader.proxyInvokeJs(param);
-            }
-            return spiderLoader.proxyInvokeJar(param);
-        }
-
-        if (isPy) {
-            return spiderLoader.proxyInvokePy(param, getCurrentPyKey());
-        }
-
-        if (isApiPy) {
-            return spiderLoader.proxyInvokePy(param, getCurrentPyKey());
-        }
-
-        return spiderLoader.proxyInvokeJar(param);
-    }
-
-    private Object[] proxyDirect(Map<String, String> param) {
-        try {
-            String url = param.get("url");
-            if (TextUtils.isEmpty(url)) return null;
-            url = URLDecoder.decode(url, "UTF-8");
-            if (!url.startsWith("http://") && !url.startsWith("https://")) return null;
-            if (!DefaultConfig.isVideoFormat(url)) return null;
-            if (url.contains(".m3u8")) {
-                param.put("url", url);
-                param.put("go", "live");
-                param.put("type", "m3u8");
-                return Proxy.itv(param);
-            }
-            return null;
-        } catch (Throwable th) {
-            LOG.e("echo-proxy direct fallback error: " + th.getMessage());
-            return null;
-        }
-    }
-
-    private SourceBean getCurrentProxySource(Map<String, String> param) {
-        String siteKey = param.get("siteKey");
-        if (TextUtils.isEmpty(siteKey)) {
-            siteKey = currentPlaySourceKey;
-            if (!TextUtils.isEmpty(siteKey)) param.put("siteKey", siteKey);
-        }
-        SourceBean sourceBean = TextUtils.isEmpty(siteKey) ? null : getSource(siteKey);
-        return sourceBean == null ? ApiConfig.get().getHomeSourceBean() : sourceBean;
+        return proxyEntry.proxyLocal(param);
     }
 
     public void setCurrentPlaySourceKey(String sourceKey) {
-        currentPlaySourceKey = sourceKey == null ? "" : sourceKey;
-    }
-
-    private String getCurrentPyKey() {
-        SourceBean sourceBean = getCurrentProxySource(new HashMap<String, String>());
-        if (sourceBean.getApi().contains(".py")) {
-            if (!sourceBean.getKey().equals(spiderLoader.getCurrentPyKey())) {
-                spiderLoader.setCurrentPyKey(sourceBean.getKey());
-                spiderLoader.pySpider(sourceBean.getKey(), sourceBean.getApi(), sourceBean.getExt());
-            }
-            return spiderLoader.getCurrentPyKey();
-        }
-        return spiderLoader.getCurrentPyKey();
+        proxyEntry.setCurrentPlaySourceKey(sourceKey);
     }
 
     public JSONObject jsonExt(String key, LinkedHashMap<String, String> jxs, String url) {

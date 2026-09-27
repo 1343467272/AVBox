@@ -18,7 +18,6 @@ import com.github.tvbox.osc.player.ExoPlayer;
 import com.github.tvbox.osc.player.IjkMediaPlayer;
 import com.github.tvbox.osc.player.TrackInfo;
 import com.github.tvbox.osc.player.PreloadManagerHolder;
-import com.github.tvbox.osc.ui.player.PreloadCoordinator;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.api.DanmakuApi;
@@ -41,7 +40,6 @@ import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.WatchProgressStore;
 import com.github.tvbox.osc.util.thunder.Jianpian;
 import com.github.tvbox.osc.util.thunder.Thunder;
-import com.github.tvbox.osc.ui.player.PlayerTipBridge;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 
 import org.greenrobot.eventbus.EventBus;
@@ -1190,12 +1188,12 @@ public class PlaybackController {
         }
     }
 
-    /** 页面侧预载协调器需要它取流(PreloadCoordinator 构造参数) */
     /** 把“已准备好的取流结果”直接喂给解析链(页面 play() 命中预载数据时调用) */
     public void deliverPlayResult(JSONObject info) {
         if (playResultObserver != null) playResultObserver.onChanged(info);
     }
 
+    /** 预载协调器需要它取流(PreloadCoordinator 构造参数) */
     public SourceViewModel sourceViewModel() {
         return sourceViewModel;
     }
@@ -1383,8 +1381,10 @@ public class PlaybackController {
         }
         EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_REFRESH, vod()));
         if (reusePlayer) {
-            // 复用播放器时提示已由上一集留着,直接清空(与原实现一致:绕过 setTip 的页面存活判断)
-            PlayerTipBridge.setTip("", true, false);
+            // 复用播放器时提示已由上一集留着,这里强制写一次空态(空文案 + loading,不判页面存活):
+            // 走 view.showTip 而非页面 setTip —— 提示层状态本来就归视图桥;页面/音乐页初始化都会先 hide(),
+            // 所以即使当时页面已销毁,也不会把旧态留给下一页
+            if (view != null) view.showTip("", true, false);
         } else if (view != null) {
             view.showTip(str(R.string.player_getting_info), true, false);
         }

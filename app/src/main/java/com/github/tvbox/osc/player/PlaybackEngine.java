@@ -13,8 +13,6 @@ import androidx.appcompat.view.ContextThemeWrapper;
 
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.player.usecase.PlayerSwitchUseCase;
-import com.github.tvbox.osc.ui.player.PlayContainer;
-import com.github.tvbox.osc.ui.player.PreloadCoordinator;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.KV;
 import com.github.tvbox.osc.util.LOG;
@@ -35,7 +33,7 @@ import xyz.doikki.videoplayer.player.VideoView;
  *
  * <p>**所有权模型**(照搬 fongmi,但落地为"进程级引擎 + 宿主服务"):播放器实例
  * ({@link MyVideoView} + {@link PlaybackController})由本引擎持有、由 {@link PlaybackService} 托管,
- * 页面({@link PlayContainer})只提供显示宿主与控制器覆盖层 ——
+ * 页面({@code PlayContainer})只提供显示宿主与控制器覆盖层 ——
  * 进入页面 = 把渲染容器(`VideoView.mPlayerContainer`)搬进页面宿主,离开页面 = 摘回引擎。
  * 由此"跨页复用播放器"成立:进出详情页不再重建 ExoPlayer/RenderView
  * (改造前 12 次进出 = 36 个内核实例 / 249 线程,见 MEMORY.md hprof 取证)。

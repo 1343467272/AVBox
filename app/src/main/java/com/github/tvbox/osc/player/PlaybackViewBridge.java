@@ -3,7 +3,6 @@ package com.github.tvbox.osc.player;
 import android.content.Context;
 import android.webkit.WebView;
 
-import com.github.tvbox.osc.ui.player.PreloadCoordinator;
 
 import org.json.JSONObject;
 

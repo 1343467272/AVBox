@@ -1,4 +1,4 @@
-package com.github.tvbox.osc.ui.player;
+package com.github.tvbox.osc.player;
 
 import android.content.Context;
 import android.os.Handler;
@@ -16,7 +16,6 @@ import com.github.tvbox.osc.util.MD5;
 import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.thunder.Jianpian;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
-import com.github.tvbox.osc.player.PreloadManagerHolder;
 import com.github.tvbox.osc.util.KV;
 
 import org.json.JSONObject;
@@ -24,6 +23,12 @@ import org.json.JSONObject;
 import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * 下一集预载的编排:目标评估时机(正片稳定/缓冲让路/缓冲结束补枪)、结果取用与冷却期都在这里。
+ *
+ * <p>归 {@code player} 而不是 {@code ui.player}:它由引擎创建、随引擎存活(页面只是喂快照),
+ * 且不依赖任何页面类型 —— 放在 ui 包会让 {@code player} 反向依赖 UI。
+ */
 public final class PreloadCoordinator {
     private static final long EVALUATE_DELAY_MS = 2000L;
     /** 持续缓冲多久才让路(取消预载+清数据):短暂缓冲(拖动/瞬断)不停预载,否则每次拖动都从头重下 */

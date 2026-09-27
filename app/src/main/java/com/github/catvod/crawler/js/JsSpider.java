@@ -37,6 +37,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 
@@ -71,7 +72,7 @@ public class JsSpider extends Spider {
     private byte[] emptyModuleBytecode;
     private final AtomicBoolean destroyed = new AtomicBoolean(false);
 
-    /** 单次 JS 调用（启动阶段/Promise 结果阶段）的最大等待时长，防外部调用线程永久悬挂 */
+    /** JS 线程任务（启动/准备参数/Promise 结果）单次等待上限，防外部调用线程永久悬挂 */
     private static final long CALL_TIMEOUT_MS = 120_000;
 
     public JsSpider(String key, String api, Class<?> cls) throws Exception {
@@ -163,6 +164,23 @@ public class JsSpider extends Spider {
         return executor.submit(callable);
     }
 
+    /**
+     * 提交到 JS 线程并带上限等待：JS 线程被死循环/挂死的原生调用占住时，
+     * 无上限的 get() 会把调用线程（含本机代理线程）一起拖死
+     */
+    private <T> T submitAndWait(Callable<T> task) {
+        try {
+            return executor.submit(task).get(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.i("echo-js-submitAndWait-interrupted");
+            return null;
+        } catch (Exception e) {
+            LOG.i("echo-js-submitAndWait-failed " + e);
+            return null;
+        }
+    }
+
     private Object call(String func, Object... args) {
         if (destroyed.get() || jsObject == null) return null;
         try {
@@ -191,7 +209,7 @@ public class JsSpider extends Spider {
     @Override
     public void init(Context context, String extend) {
         try {
-            if (cat) call("init", submit(() -> cfg(extend)).get());
+            if (cat) call("init", submitAndWait(() -> cfg(extend)));
             else call("init", Json.valid(extend) ? ctx.parse(extend) : extend);
         }catch (Exception e){
             LOG.e("JsSpider", "init js spider failed", e);
@@ -219,7 +237,7 @@ public class JsSpider extends Spider {
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend)  {
         try {
-            JSObject obj = submit(() -> new JSUtils<String>().toObj(ctx, extend)).get();
+            JSObject obj = submitAndWait(() -> new JSUtils<String>().toObj(ctx, extend));
             return (String) call("category", tid, pg, filter, obj);
         }catch (Exception e){
             return null;
@@ -248,7 +266,7 @@ public class JsSpider extends Spider {
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) {
         try {
-            JSArray array = submit(() -> new JSUtils<String>().toArray(ctx, vipFlags)).get();
+            JSArray array = submitAndWait(() -> new JSUtils<String>().toArray(ctx, vipFlags));
             return (String) call("play", flag, id, array);
         }catch (Exception e){
             return null;
@@ -286,7 +304,8 @@ public class JsSpider extends Spider {
     public Object[] proxyLocal(Map<String, String> params)  {
         try {
             if ("catvod".equals(params.get("from"))) return proxy2(params);
-            else return submit(() -> proxy1(params)).get();
+            Object[] result = submitAndWait(() -> proxy1(params));
+            return result == null ? new Object[0] : result;
 
         }catch (Exception E){
             return new Object[0];
@@ -340,7 +359,7 @@ public class JsSpider extends Spider {
             "    }\n" +
             "}\n";
     private void initializeJS() throws Exception {
-        submit(() -> {
+        Future<?> init = submit(() -> {
             if (ctx == null) createCtx();
             if (dex != null) createDex();
 
@@ -381,7 +400,18 @@ public class JsSpider extends Spider {
             jsObject = (JSObject) get(ctx.getGlobalObject(), key);
             if (jsObject != null) jsObject.hold();
             return null;
-        }).get();
+        });
+        try {
+            init.get(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof Exception) throw (Exception) cause;
+            throw new Exception(cause);
+        } catch (TimeoutException e) {
+            // 模块自身死循环/挂死时线程救不回来：构造函数不能跟着永久悬挂，放行为未就绪状态
+            LOG.i("echo-js-init-timeout " + api);
+            init.cancel(true);
+        }
     }
 
     public static byte[] byteFF(byte[] bytes) {
@@ -636,8 +666,9 @@ public class JsSpider extends Spider {
     private Object[] proxy2(Map<String, String> params) throws Exception {
         String url = params.get("url");
         String header = params.get("header");
-        JSArray array = submit(() -> new JSUtils<String>().toArray(ctx, Arrays.asList(url.split("/")))).get();
-        Object object = submit(() -> ctx.parse(header)).get();
+        JSArray array = submitAndWait(() -> new JSUtils<String>().toArray(ctx, Arrays.asList(url.split("/"))));
+        Object object = submitAndWait(() -> ctx.parse(header));
+        if (array == null || object == null) return new Object[0];
         String json = (String) call("proxy", array, object);
         Res res = Res.objectFrom(json);
         String contentType = res.getContentType();

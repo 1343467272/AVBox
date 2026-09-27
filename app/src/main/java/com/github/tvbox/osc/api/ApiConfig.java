@@ -1190,8 +1190,13 @@ public class ApiConfig {
             channelIndex = 0;
             for (JsonElement channelElement : ((JsonObject) groupElement).get("channels").getAsJsonArray()) {
                 JsonObject obj = (JsonObject) channelElement;
+                ArrayList<String> urls = DefaultConfig.safeJsonStringList(obj, "urls");
+                // 没有地址的频道点了必崩(频道地址表为空),与点不开的站点一样整条跳过
+                if (urls.isEmpty()) {
+                    LOG.i("echo-skip live channel without url: " + obj);
+                    continue;
+                }
                 LiveChannelItem liveChannelItem = new LiveChannelItem();
-                liveChannelItem.setChannelName(obj.get("name").getAsString().trim());
                 liveChannelItem.setChannelLogo(DefaultConfig.safeJsonString(obj, "logo", ""));
                 liveChannelItem.setChannelEpg(DefaultConfig.safeJsonString(obj, "epg", ""));
                 liveChannelItem.setChannelUa(DefaultConfig.safeJsonString(obj, "ua", ""));
@@ -1208,17 +1213,8 @@ public class ApiConfig {
                         LOG.d("ApiConfig", "channel parse flag not an int, use default");
                     }
                 }
-                if (obj.has("catchup")) {
-                    JsonObject catchupObj = new JsonObject();
-                    if (obj.get("catchup").isJsonObject()) {
-                        catchupObj = obj.getAsJsonObject("catchup");
-                    } else {
-                        catchupObj.addProperty("type", obj.get("catchup").getAsString());
-                        if (obj.has("catchup-source")) catchupObj.addProperty("source", obj.get("catchup-source").getAsString());
-                        if (obj.has("catchup-replace")) catchupObj.addProperty("replace", obj.get("catchup-replace").getAsString());
-                    }
-                    liveChannelItem.setChannelCatchup(catchupObj);
-                }
+                JsonObject catchupObj = ConfigParser.parseLiveCatchup(obj);
+                if (catchupObj != null) liveChannelItem.setChannelCatchup(catchupObj);
                 if (obj.has("header") && obj.get("header").isJsonObject()) {
                     JsonObject headerObj = obj.getAsJsonObject("header");
                     HashMap<String, String> channelHeader = new HashMap<>();
@@ -1233,7 +1229,6 @@ public class ApiConfig {
                     }
                     liveChannelItem.setChannelHeader(channelHeader);
                 }
-                ArrayList<String> urls = DefaultConfig.safeJsonStringList(obj, "urls");
                 ArrayList<String> sourceNames = new ArrayList<>();
                 ArrayList<String> sourceUrls = new ArrayList<>();
                 int sourceIndex = 1;
@@ -1246,6 +1241,12 @@ public class ApiConfig {
                         sourceNames.add(str(R.string.live_source_index_name, sourceIndex));
                     sourceIndex++;
                 }
+                String channelName = ConfigParser.parseLiveChannelName(obj, sourceUrls);
+                if (channelName.isEmpty()) {
+                    LOG.i("echo-skip live channel without name/url: " + obj);
+                    continue;
+                }
+                liveChannelItem.setChannelName(channelName);
                 liveChannelItem.setChannelSourceNames(sourceNames);
                 liveChannelItem.setChannelUrls(sourceUrls);
                 if (mergeLiveChannel(liveChannelGroup.getLiveChannels(), liveChannelItem)) {

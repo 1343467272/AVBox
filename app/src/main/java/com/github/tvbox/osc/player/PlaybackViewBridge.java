@@ -178,7 +178,7 @@ public interface PlaybackViewBridge {
     /** 由页面组装的"下一集预载"目标快照(需要页面上下文与真实播放器实例判内核) */
     PreloadCoordinator.Snapshot buildPreloadSnapshot();
 
-    /** 显示「下一集已就绪」Toast(页面持有 Toast 实例,约 5s 自动撤下) */
+    /** 显示「下一集已就绪」Toast(页面持有 Toast 实例,约 3s 自动撤下) */
     void showPreloadReadyTip();
 
     /** 立即撤下「下一集已就绪」Toast */

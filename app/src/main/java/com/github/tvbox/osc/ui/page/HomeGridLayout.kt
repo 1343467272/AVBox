@@ -90,6 +90,8 @@ private val HomeGridItemSpacing = 16.dp
 
 private val HomeGridContentTopPadding = 4.dp
 
+private const val HomeGridSkeletonCount = 18
+
 /** 末尾"加载更多"哨兵压在视口外时不会组合 ⇒ 首屏末行右侧会空一格,离末尾不足一行就先取下一页 */
 internal fun shouldPrefetchNextPage(
     lastVisibleIndex: Int,
@@ -205,10 +207,10 @@ fun HomeGridLayout(
                             HomeGridHint(text = stringResource(R.string.common_empty_content))
                         }
                     } else {
-                        items(6) { HomeGridSkeleton(titleLine) }
+                        items(HomeGridSkeletonCount) { HomeGridSkeleton(titleLine) }
                     }
 
-                    HomeViewModel.PartitionState.Idle, HomeViewModel.PartitionState.Loading -> items(6) {
+                    HomeViewModel.PartitionState.Idle, HomeViewModel.PartitionState.Loading -> items(HomeGridSkeletonCount) {
                         HomeGridSkeleton(titleLine)
                     }
 

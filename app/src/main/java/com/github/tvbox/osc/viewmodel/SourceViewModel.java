@@ -1646,9 +1646,10 @@ public class SourceViewModel extends ViewModel {
                                 });
                                 try {
                                     countDownLatch.await(15, TimeUnit.SECONDS);
-                                    threadPool.shutdown();
                                 } catch (InterruptedException e) {
                                     e.printStackTrace();
+                                } finally {
+                                    threadPool.shutdown();
                                 }
                                 if (resData[0] != null) {
                                     AbsXml res = resData[0];
@@ -1689,8 +1690,9 @@ public class SourceViewModel extends ViewModel {
                 thunderLoop:
                 for (int idx=0;idx<video.urlBean.infoList.size();idx++) {
                     Movie.Video.UrlBean.UrlInfo urlInfo = video.urlBean.infoList.get(idx);
+                    if (urlInfo == null || urlInfo.beanList == null) continue;
                     for (Movie.Video.UrlBean.UrlInfo.InfoBean infoBean : urlInfo.beanList) {
-                        if(Thunder.isSupportUrl(infoBean.url)){
+                        if(infoBean != null && infoBean.url != null && Thunder.isSupportUrl(infoBean.url)){
                             hasThunder=true;
                             break thunderLoop;
                         }
@@ -1704,7 +1706,11 @@ public class SourceViewModel extends ViewModel {
                             if (code >= 0) {
                                 LOG.i(info);
                             } else {
-                                video.urlBean.infoList.get(0).beanList.get(0).name = info;
+                                // 这个回调在线程池线程上跑,越界/空指针会直接崩进程:源结构不完整时只放弃改首集名
+                                Movie.Video.UrlBean.UrlInfo first = video.urlBean.infoList.isEmpty() ? null : video.urlBean.infoList.get(0);
+                                if (first != null && first.beanList != null && !first.beanList.isEmpty()) {
+                                    first.beanList.get(0).name = info;
+                                }
                                 detailResult.postValue(data);
                             }
                         }
@@ -1712,8 +1718,11 @@ public class SourceViewModel extends ViewModel {
                         @Override
                         public void list(Map<Integer, String> urlMap) {
                             for (int key : urlMap.keySet()) {
+                                if (key < 0 || key >= video.urlBean.infoList.size()) continue;
+                                Movie.Video.UrlBean.UrlInfo urlInfo = video.urlBean.infoList.get(key);
+                                if (urlInfo == null) continue;
                                 String playList=urlMap.get(key);
-                                video.urlBean.infoList.get(key).urls = playList;
+                                urlInfo.urls = playList;
                                 String[] str = playList.split("#");
                                 List<Movie.Video.UrlBean.UrlInfo.InfoBean> infoBeanList = new ArrayList<>();
                                 for (String s : str) {
@@ -1729,7 +1738,7 @@ public class SourceViewModel extends ViewModel {
                                         }
                                     }
                                 }
-                                video.urlBean.infoList.get(key).beanList = infoBeanList;
+                                urlInfo.beanList = infoBeanList;
                             }
                             detailResult.postValue(data);
                         }

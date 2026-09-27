@@ -121,6 +121,8 @@ public class VodInfo implements Serializable {
     }
 
     public void reverse() {
+        // 无线路时 setVideo 不会建 seriesMap:历史里存过"倒序"的片子再打开不能崩在这里
+        if (seriesMap == null) return;
         Set<String> flags = seriesMap.keySet();
         for (String flag : flags) {
             Collections.reverse(seriesMap.get(flag));

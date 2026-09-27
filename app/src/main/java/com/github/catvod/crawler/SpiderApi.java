@@ -81,9 +81,10 @@ public class SpiderApi {
     }
 
     public String multiReq(JsonArray array) {
+        ExecutorService executor = null;
         try {
             if (array == null || array.size() == 0) return "";
-            ExecutorService executor = Executors.newFixedThreadPool(Math.min(array.size(), 6));
+            executor = Executors.newFixedThreadPool(Math.min(array.size(), 6));
             java.util.ArrayList<Future<String>> futures = new java.util.ArrayList<>();
             for (JsonElement element : array) {
                 if (!element.isJsonObject()) continue;
@@ -92,10 +93,11 @@ public class SpiderApi {
             }
             JsonArray result = new JsonArray();
             for (Future<String> future : futures) result.add(toResult(future.get()));
-            executor.shutdown();
             return result.toString();
         } catch (Throwable th) {
             return "";
+        } finally {
+            if (executor != null) executor.shutdown();
         }
     }
 

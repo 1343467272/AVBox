@@ -381,7 +381,7 @@ private fun AppInfoHeaderCard(versionName: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(32.dp))
             .background(
                 Brush.linearGradient(
                     colors = listOf(scheme.primaryContainer, scheme.tertiaryContainer),

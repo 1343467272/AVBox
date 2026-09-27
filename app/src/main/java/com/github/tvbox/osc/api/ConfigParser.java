@@ -215,6 +215,40 @@ final class ConfigParser {
         return header.isEmpty() ? null : header;
     }
 
+    /** 频道显示名:优先 name,没写时用首地址兜底(与 Depot/parseApiCollection 同口径);两者都空返回空串=该条不该进列表 */
+    static String parseLiveChannelName(JsonObject obj, ArrayList<String> sourceUrls) {
+        if (obj != null && obj.has("name")) {
+            JsonElement name = obj.get("name");
+            if (name != null && name.isJsonPrimitive()) {
+                String text = name.getAsString().trim();
+                if (!text.isEmpty()) return text;
+            }
+        }
+        for (String url : sourceUrls) {
+            if (url != null && !url.isEmpty()) return url;
+        }
+        return "";
+    }
+
+    /**
+     * 直播 catchup:对象原样用;标量转 type 并按需带上 catchup-source/replace;null 与非标量非对象算"未配"。
+     * 这些脏值以前各抛一种异常,而加载链路(ApiConfig.loadLives)在主线程且没有 try。
+     */
+    static JsonObject parseLiveCatchup(JsonObject obj) {
+        if (obj == null || !obj.has("catchup")) return null;
+        JsonElement catchup = obj.get("catchup");
+        if (catchup == null || catchup.isJsonNull()) return null;
+        if (catchup.isJsonObject()) return catchup.getAsJsonObject();
+        if (!catchup.isJsonPrimitive()) return null;
+        JsonObject catchupObj = new JsonObject();
+        catchupObj.addProperty("type", catchup.getAsString());
+        String source = DefaultConfig.safeJsonString(obj, "catchup-source", "");
+        if (!source.isEmpty()) catchupObj.addProperty("source", source);
+        String replace = DefaultConfig.safeJsonString(obj, "catchup-replace", "");
+        if (!replace.isEmpty()) catchupObj.addProperty("replace", replace);
+        return catchupObj;
+    }
+
 
     /**
      * clan:// 地址转真实地址。

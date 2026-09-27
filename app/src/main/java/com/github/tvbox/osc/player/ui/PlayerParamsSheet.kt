@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.player.ui
 
+import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -20,7 +25,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.player.state.ParamsChoice
 import com.github.tvbox.osc.player.state.ParamsSheetState
@@ -49,16 +56,23 @@ internal fun PlayerParamsSheet(
                     bottom = playerDim(R.dimen.vs_30),
                 ),
         ) {
-            ParamsChoiceGroup(R.string.player_params_player, sheet.player)
-            ParamsChoiceGroup(R.string.settings_play_decode, sheet.decode)
-            ParamsSliderGroup(R.string.player_params_speed, sheet.speed)
+            ParamsChoiceGroup(R.string.player_params_player, sheet.player, R.drawable.player_ic_params_player)
+            ParamsGroupDivider()
+            ParamsChoiceGroup(R.string.settings_play_decode, sheet.decode, R.drawable.player_ic_params_decode)
+            ParamsGroupDivider()
+            ParamsSliderGroup(R.string.player_params_speed, sheet.speed, R.drawable.player_ic_params_speed)
+            ParamsGroupDivider()
             ParamsTimeGroup(sheet)
-            ParamsChoiceGroup(R.string.live_group_scale, sheet.scale)
+            ParamsGroupDivider()
+            ParamsChoiceGroup(R.string.live_group_scale, sheet.scale, R.drawable.player_ic_params_scale)
             sheet.onSearchDanmu?.let { onSearch ->
+                Spacer(Modifier.height(playerDim(R.dimen.vs_30)))
                 // 走 dismissThen：先收起本面板再开弹幕搜索，否则两个面板会重叠
                 val dismissThen = LocalSheetDismissThen.current
                 SheetButton(
                     text = stringResource(R.string.player_menu_search_danmu),
+                    iconRes = R.drawable.player_ic_menu_danmu,
+                    fontWeight = FontWeight.Medium,
                     onClick = {
                         dismissThen {
                             onSearch()
@@ -74,8 +88,12 @@ internal fun PlayerParamsSheet(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ParamsChoiceGroup(@StringRes labelRes: Int, choice: ParamsChoice) {
-    ParamsGroupLabel(labelRes)
+private fun ParamsChoiceGroup(
+    @StringRes labelRes: Int,
+    choice: ParamsChoice,
+    @DrawableRes iconRes: Int? = null,
+) {
+    ParamsGroupHeader(labelRes, iconRes)
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(playerDim(R.dimen.vs_10)),
         verticalArrangement = Arrangement.spacedBy(playerDim(R.dimen.vs_10)),
@@ -87,47 +105,65 @@ private fun ParamsChoiceGroup(@StringRes labelRes: Int, choice: ParamsChoice) {
                 onClick = { choice.onSelect(index) },
                 contentPadding = playerDim(R.dimen.vs_20),
                 boldOnSelect = false,
+                fontWeight = FontWeight.Medium,
             )
         }
     }
-    Spacer(Modifier.height(playerDim(R.dimen.vs_30)))
 }
 
+/** 组标题行:组名在左、当前值贴右(倍速滑块组在用) */
 @Composable
-private fun ParamsGroupLabel(@StringRes labelRes: Int) {
-    Text(
-        text = stringResource(labelRes),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        fontSize = playerTextSize(R.dimen.ts_20),
-    )
-    Spacer(Modifier.height(playerDim(R.dimen.vs_10)))
-}
-
-/** 带当前值的标签行：组名在左、当前值贴右（倍速与片头片尾两组共用，保证两组同款） */
-@Composable
-private fun ParamsLabelRow(@StringRes labelRes: Int, valueText: String) {
+private fun ParamsGroupHeader(
+    @StringRes labelRes: Int,
+    @DrawableRes iconRes: Int? = null,
+    valueText: String? = null,
+) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        if (iconRes != null) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(playerDim(R.dimen.vs_24)),
+            )
+            Spacer(Modifier.width(playerDim(R.dimen.vs_10)))
+        }
         Text(
             text = stringResource(labelRes),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = playerTextSize(R.dimen.ts_20),
+            fontSize = playerTextSize(R.dimen.ts_22),
+            fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f),
         )
-        Text(
-            text = valueText,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = playerTextSize(R.dimen.ts_20),
-        )
+        valueText?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = playerTextSize(R.dimen.ts_22),
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
     Spacer(Modifier.height(playerDim(R.dimen.vs_10)))
+}
+
+@Composable
+private fun ParamsGroupDivider() {
+    Spacer(Modifier.height(playerDim(R.dimen.vs_15)))
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    Spacer(Modifier.height(playerDim(R.dimen.vs_15)))
 }
 
 /** 档位滑块组:值 = 档位下标(档位间距在轨道上等分,倍速本身非等步长);拖动实时跟随、松手才提交 */
 @Composable
-private fun ParamsSliderGroup(@StringRes labelRes: Int, choice: ParamsChoice) {
+private fun ParamsSliderGroup(
+    @StringRes labelRes: Int,
+    choice: ParamsChoice,
+    @DrawableRes iconRes: Int? = null,
+) {
     var index by remember(choice) { mutableFloatStateOf(choice.selected.toFloat()) }
     val stop = index.roundToInt().coerceIn(choice.options.indices)
-    ParamsLabelRow(labelRes, choice.options[stop])
+    ParamsGroupHeader(labelRes, iconRes, choice.options[stop])
     Slider(
         value = index,
         onValueChange = { index = it },
@@ -137,37 +173,42 @@ private fun ParamsSliderGroup(@StringRes labelRes: Int, choice: ParamsChoice) {
         steps = choice.options.size - 2,
         modifier = Modifier.fillMaxWidth(),
     )
-    Spacer(Modifier.height(playerDim(R.dimen.vs_30)))
 }
 
 @Composable
 private fun ParamsTimeGroup(sheet: ParamsSheetState) {
-    val unset = stringResource(R.string.common_not_set)
-    ParamsLabelRow(
-        labelRes = R.string.player_params_time,
-        valueText = "${stringResource(R.string.player_time_start)} ${sheet.timeStartText.ifEmpty { unset }}" +
-                "  ·  " +
-                "${stringResource(R.string.player_time_end)} ${sheet.timeEndText.ifEmpty { unset }}",
-    )
+    ParamsGroupHeader(R.string.player_params_time, R.drawable.player_ic_params_time)
+    val startActive = sheet.timeStartText.isNotEmpty()
+    val endActive = sheet.timeEndText.isNotEmpty()
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(playerDim(R.dimen.vs_10)),
     ) {
         SheetButton(
-            text = stringResource(R.string.player_params_set_start),
+            text = timeMarkText(sheet.timeStartText, R.string.player_time_start, R.string.player_params_set_start),
+            iconRes = R.drawable.player_ic_params_time_start,
+            selected = startActive,
+            fontWeight = FontWeight.Medium,
             onClick = sheet.onSetTimeStart,
             modifier = Modifier.weight(1f),
         )
         SheetButton(
-            text = stringResource(R.string.player_params_set_end),
+            text = timeMarkText(sheet.timeEndText, R.string.player_time_end, R.string.player_params_set_end),
+            iconRes = R.drawable.player_ic_params_time_end,
+            selected = endActive,
+            fontWeight = FontWeight.Medium,
             onClick = sheet.onSetTimeEnd,
             modifier = Modifier.weight(1f),
         )
         SheetButton(
             text = stringResource(R.string.common_clear),
+            fontWeight = FontWeight.Medium,
             onClick = sheet.onResetTime,
             modifier = Modifier.weight(1f),
         )
     }
-    Spacer(Modifier.height(playerDim(R.dimen.vs_30)))
 }
+
+@Composable
+private fun timeMarkText(time: String, @StringRes labelRes: Int, @StringRes setRes: Int): String =
+    if (time.isEmpty()) stringResource(setRes) else "${stringResource(labelRes)} $time"

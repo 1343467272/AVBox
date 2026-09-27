@@ -14,6 +14,7 @@ import com.google.gson.JsonObject;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -293,6 +294,48 @@ public class ConfigParserTest {
         assertEquals(2, hosts.size());
         assertEquals("1.2.3.4", hosts.get("a.com"));
         assertEquals("2.3.4.5=x", hosts.get("b.com"));
+    }
+
+    /**
+     * 频道显示名:name 优先,缺失/null/非标量一律回落到首条非空地址(与 Depot/parseApiCollection 同口径)。
+     * 不兜底的话:加载链路会在主线程 NPE,或列表里出现认不出的空行(频道名还是"上次看过的台"的匹配键)。
+     */
+    @Test
+    public void parseLiveChannelName_prefersNameThenFirstUrl() {
+        ArrayList<String> urls = new ArrayList<>(Arrays.asList("http://a/1", "http://a/2"));
+
+        assertEquals("CCTV1", ConfigParser.parseLiveChannelName(json("{\"name\":\" CCTV1 \"}"), urls));
+        assertEquals("http://a/1", ConfigParser.parseLiveChannelName(json("{\"urls\":[\"http://a/1\"]}"), urls));
+        assertEquals("http://a/1", ConfigParser.parseLiveChannelName(json("{\"name\":null}"), urls));
+        assertEquals("http://a/1", ConfigParser.parseLiveChannelName(json("{\"name\":[\"CCTV1\"]}"), urls));
+        assertEquals("http://a/1", ConfigParser.parseLiveChannelName(json("{\"name\":{\"id\":1}}"), urls));
+        // 数字/布尔是标量,按字符串取
+        assertEquals("3", ConfigParser.parseLiveChannelName(json("{\"name\":3}"), urls));
+        // 首条地址是空串时继续找下一条非空地址
+        assertEquals("http://a/2",
+                ConfigParser.parseLiveChannelName(json("{}"), new ArrayList<>(Arrays.asList("", "http://a/2"))));
+        // 名字与地址都空 → 空串,调用方据此整条丢弃
+        assertEquals("", ConfigParser.parseLiveChannelName(json("{}"), new ArrayList<>()));
+        assertEquals("", ConfigParser.parseLiveChannelName(null, new ArrayList<>()));
+    }
+
+    /** catchup:对象原样用、标量转 type 带上 source/replace、null 与数组算"未配"(以前这三种各抛一种异常) */
+    @Test
+    public void parseLiveCatchup_shapesAndBadValues() {
+        JsonObject asObject = ConfigParser.parseLiveCatchup(
+                json("{\"catchup\":{\"type\":\"default\",\"source\":\"http://a/{date}\"}}"));
+        assertEquals("default", asObject.get("type").getAsString());
+        assertEquals("http://a/{date}", asObject.get("source").getAsString());
+
+        JsonObject asScalar = ConfigParser.parseLiveCatchup(json(
+                "{\"catchup\":\"default\",\"catchup-source\":\"http://a/{date}\",\"catchup-replace\":\"a,b\"}"));
+        assertEquals("default", asScalar.get("type").getAsString());
+        assertEquals("http://a/{date}", asScalar.get("source").getAsString());
+        assertEquals("a,b", asScalar.get("replace").getAsString());
+
+        assertNull(ConfigParser.parseLiveCatchup(json("{\"catchup\":null}")));
+        assertNull(ConfigParser.parseLiveCatchup(json("{\"name\":\"CCTV1\"}")));
+        assertNull(ConfigParser.parseLiveCatchup(json("{\"catchup\":[\"default\"]}")));
     }
 
     // ---------- clan:// 地址改写 ----------

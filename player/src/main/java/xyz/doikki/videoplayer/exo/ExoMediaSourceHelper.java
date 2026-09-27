@@ -7,6 +7,7 @@ import android.text.TextUtils;
 
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
 import androidx.media3.database.StandaloneDatabaseProvider;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultDataSource;
@@ -21,7 +22,6 @@ import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.rtsp.RtspMediaSource;
 
 import java.io.File;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
@@ -34,7 +34,7 @@ public final class ExoMediaSourceHelper {
     public static final String EXTRA_HEADERS = "avbox.extras.httpHeaders";
 
     private static ExoMediaSourceHelper sInstance;
-    /** 进程级共享缓存(预载写盘与播放读盘共用同一实例,见 skill/avbox-preload-next-episode-spec.md §10) */
+    /** 进程级共享缓存(预缓存写盘与播放读盘共用同一实例;SimpleCache 同一目录不允许多实例) */
     private static volatile Cache sSharedCache;
     /** 共享缓存容量(字节,默认 512MB):须在 getSharedCache 首次创建前注入(设置改动→重启 App 生效) */
     private static volatile long sSharedCacheSizeBytes = 512L * 1024 * 1024;
@@ -76,23 +76,31 @@ public final class ExoMediaSourceHelper {
     }
 
     public MediaSource getMediaSource(String uri, Map<String, String> headers, boolean isCache) {
-        return getMediaSource(uri, headers, isCache, inferContentType(uri, headers));
+        return getMediaSource(uri, headers, isCache, /*useDefaultCacheKey=*/false, inferContentType(uri, headers));
+    }
+
+    /**
+     * 预载目标专用的 cache 版 MediaSource:读盘 key 用 media3 默认(=uri,不带 headers 后缀)。
+     * 预缓存写盘 key 由 media3 内部 CacheWriter 决定、注入不了本类的后缀工厂,不回落默认 key 会永远 miss。
+     */
+    public MediaSource getPreloadTargetMediaSource(String uri, Map<String, String> headers) {
+        return getMediaSource(uri, headers, true, /*useDefaultCacheKey=*/true, inferContentType(uri, headers));
     }
 
     public MediaSource getHlsMediaSource(String uri, Map<String, String> headers) {
-        return getMediaSource(uri, headers, false, C.TYPE_HLS);
+        return getMediaSource(uri, headers, false, /*useDefaultCacheKey=*/false, C.TYPE_HLS);
     }
 
-    private MediaSource getMediaSource(String uri, Map<String, String> headers, boolean isCache, int contentType) {
+    private MediaSource getMediaSource(String uri, Map<String, String> headers, boolean isCache, boolean useDefaultCacheKey, int contentType) {
         Uri contentUri = Uri.parse(uri);
         if ("rtsp".equals(contentUri.getScheme())) {
             return new RtspMediaSource.Factory().createMediaSource(MediaItem.fromUri(contentUri));
         }
+        Map<String, String> requestHeaders = toRequestHeaders(headers);
         MediaItem mediaItem = buildMediaItem(uri, headers);
-        DataSource.Factory factory = createDataSourceFactory(mediaItem);
+        DataSource.Factory factory = createDataSourceFactory(requestHeaders);
         if (isCache) {
-            // headers 取自 MediaItem(已归一化:过滤内部标记/trim),预载侧与播放侧 key 同源
-            factory = getCacheDataSourceFactory(factory, getHeadersFrom(mediaItem));
+            factory = getCacheDataSourceFactory(factory, requestHeaders, useDefaultCacheKey);
         }
         switch (contentType) {
             case C.TYPE_DASH:
@@ -124,6 +132,28 @@ public final class ExoMediaSourceHelper {
     }
 
     /**
+     * 预缓存(PreCacheHelper/DownloadHelper)专用 MediaItem:显式带上推断出的 mimeType ——
+     * DownloadHelper 只按 uri/mimeType 判类型、读不到 TVBox-Format 约定,HLS/DASH 会被当进度流下载。
+     */
+    public static MediaItem buildPreloadMediaItem(String uri, Map<String, String> headers) {
+        MediaItem item = buildMediaItem(uri, headers);
+        String mimeType = mimeTypeOf(inferContentType(uri, headers));
+        return mimeType == null ? item : item.buildUpon().setMimeType(mimeType).build();
+    }
+
+    /** 内容类型 → MediaItem mimeType(media3 类型推断依据；进度流返回 null 保持原样) */
+    private static String mimeTypeOf(int contentType) {
+        switch (contentType) {
+            case C.TYPE_HLS:
+                return MimeTypes.APPLICATION_M3U8;
+            case C.TYPE_DASH:
+                return MimeTypes.APPLICATION_MPD;
+            default:
+                return null;
+        }
+    }
+
+    /**
      * 从 buildMediaItem 构建的 MediaItem 中取回 headers（未携带时返回 null）。
      */
     @SuppressWarnings("unchecked")
@@ -136,18 +166,14 @@ public final class ExoMediaSourceHelper {
     }
 
     /**
-     * 从 MediaItem 的 requestMetadata.extras 构建 per-item DataSource factory。
+     * 由 headers 构建 per-item DataSource factory(headers 未落在 MediaItem 上时使用,如预缓存下载)。
      * 不再复用全局共享 factory，避免多次构建 MediaSource 时 headers 相互覆盖。
      */
-    @SuppressWarnings("unchecked")
-    public DataSource.Factory createDataSourceFactory(MediaItem mediaItem) {
-        Map<String, String> headers = getHeadersFrom(mediaItem);
-        if (headers == null) {
-            headers = Collections.emptyMap();
-        }
+    public DataSource.Factory createDataSourceFactory(Map<String, String> headers) {
+        Map<String, String> normalized = toRequestHeaders(headers);
         String userAgent = null;
         Map<String, String> requestHeaders = new HashMap<>();
-        for (Map.Entry<String, String> entry : headers.entrySet()) {
+        for (Map.Entry<String, String> entry : normalized.entrySet()) {
             if ("User-Agent".equalsIgnoreCase(entry.getKey())) {
                 userAgent = entry.getValue();
             } else {
@@ -159,6 +185,11 @@ public final class ExoMediaSourceHelper {
         httpFactory.setUserAgent(userAgent);
         httpFactory.setDefaultRequestProperties(requestHeaders);
         return new DefaultDataSource.Factory(mAppContext, httpFactory);
+    }
+
+    /** 从 buildMediaItem 构建的 MediaItem 取 headers 后建 factory(播放/预载源常规入口) */
+    public DataSource.Factory createDataSourceFactory(MediaItem mediaItem) {
+        return createDataSourceFactory(getHeadersFrom(mediaItem));
     }
 
     /**
@@ -192,7 +223,7 @@ public final class ExoMediaSourceHelper {
         return requestHeaders;
     }
 
-    private int inferContentType(String fileName, Map<String, String> headers) {
+    private static int inferContentType(String fileName, Map<String, String> headers) {
         int formatType = inferFormatContentType(headers);
         if (formatType != C.TYPE_OTHER) {
             return formatType;
@@ -207,7 +238,7 @@ public final class ExoMediaSourceHelper {
         }
     }
 
-    private int inferFormatContentType(Map<String, String> headers) {
+    private static int inferFormatContentType(Map<String, String> headers) {
         if (headers == null || !headers.containsKey(HEADER_FORMAT)) {
             return C.TYPE_OTHER;
         }
@@ -225,7 +256,7 @@ public final class ExoMediaSourceHelper {
         return C.TYPE_OTHER;
     }
 
-    private boolean isHlsUri(String uri) {
+    private static boolean isHlsUri(String uri) {
         if (isAudioUri(uri)) {
             return false;
         }
@@ -241,7 +272,7 @@ public final class ExoMediaSourceHelper {
         return path.endsWith("/live.php") || path.contains("/live/");
     }
 
-    private boolean isAudioUri(String uri) {
+    private static boolean isAudioUri(String uri) {
         Uri parsedUri = Uri.parse(uri);
         String path = parsedUri.getPath();
         if (path == null) {
@@ -263,22 +294,23 @@ public final class ExoMediaSourceHelper {
      * media3 默认的 CacheKeyFactory 只认 dataSpec.key/uri —— 同一 URL 配不同 Referer/UA/token
      * 的源会互相读到对方写到盘上的数据;此处改为「分片 uri + 规范化 headers」作为 key。
      *
-     * <p>两侧一致性(预载写盘 / 播放读盘):预载侧 {@code PreloadMediaSourceFactory} 与播放侧
-     * 都经 {@link #getMediaSource(String, Map, boolean)} → 本方法,headers 均取自
-     * {@link #getHeadersFrom(MediaItem)}(已过滤 HEADER_FORMAT 等内部标记),故 key 完全同源;
-     * 规范化规则(排序/trim/大小写不敏感)与预载侧 {@code PreloadManagerHolder.keyOf} 保持一致。
+     * <p>规范化规则(排序/trim/大小写不敏感)与预载侧 {@code PreloadManagerHolder.keyOf} 保持一致。
+     * 无 headers 时保持 media3 默认行为(key=uri),不改变原有命中语义。
      *
-     * <p>无 headers 时保持 media3 默认行为(key=uri),不改变原有命中语义。
+     * <p>{@code useDefaultCacheKey=true}(预载目标):读盘回落到 media3 默认 key(=uri),
+     * 因为预缓存写盘 key 由 media3 内部 CacheWriter 决定,注入不了这里的后缀工厂。
      */
-    private DataSource.Factory getCacheDataSourceFactory(DataSource.Factory upstream, Map<String, String> headers) {
+    private DataSource.Factory getCacheDataSourceFactory(DataSource.Factory upstream, Map<String, String> headers, boolean useDefaultCacheKey) {
         Cache cache = mCache != null ? mCache : getSharedCache(mAppContext);
         CacheDataSource.Factory factory = new CacheDataSource.Factory()
                 .setCache(cache)
                 .setUpstreamDataSourceFactory(upstream)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR);
-        final String keySuffix = headerKeySuffix(headers);
-        if (!keySuffix.isEmpty()) {
-            factory.setCacheKeyFactory(dataSpec -> dataSpec.uri + keySuffix);
+        if (!useDefaultCacheKey) {
+            final String keySuffix = headerKeySuffix(headers);
+            if (!keySuffix.isEmpty()) {
+                factory.setCacheKeyFactory(dataSpec -> dataSpec.uri + keySuffix);
+            }
         }
         return factory;
     }

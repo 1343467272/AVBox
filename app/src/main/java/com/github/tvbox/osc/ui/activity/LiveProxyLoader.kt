@@ -95,6 +95,11 @@ internal class LiveProxyLoader(private val host: Host) {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 } finally {
+                    try {
+                        executor.shutdown()
+                    } catch (th: Throwable) {
+                        th.printStackTrace()
+                    }
                     if (sortJson.isNullOrEmpty()) {
                         mHandler.post { host.onEmpty() }
                         return@Runnable
@@ -109,14 +114,12 @@ internal class LiveProxyLoader(private val host: Host) {
                             host.onGroupsLoaded(ArrayList(list))
                         }
                     }
-                    try {
-                        executor.shutdown()
-                    } catch (th: Throwable) {
-                        th.printStackTrace()
-                    }
                 }
             }
-            Executors.newSingleThreadExecutor().execute(waitResponse)
+            Executors.newSingleThreadExecutor().also {
+                it.execute(waitResponse)
+                it.shutdown()
+            }
         } else {
             OkGo.get<String>(realUrl).execute(object : AbsCallback<String>() {
                 override fun convertResponse(response: okhttp3.Response): String {

@@ -3012,3 +3012,77 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 - **真因 = 渲染容器跨窗口搬运后的 Surface 换代空窗**:`PlaybackEngine.attach()`(:374-378)先把容器盖**纯黑罩**再 `attachContainerTo(新页面槽位)` ⇒ 旧 Surface `surfaceDestroyed → setDisplay(null)`(`SurfaceRenderView.java:92-108`),新窗口的 `surfaceCreated → setDisplay(holder)` 尚未到;与此同时 `start()` → `startInPlaybackState()`(`player/.../VideoView.java:347-350`)**当场**置 `STATE_PLAYING`,引擎同帧掀罩(:163-169)⇒ 露出的是没有任何帧的空 Surface。IJK 侧要重建视频输出(疑等下一个关键帧,2s 级,未证实);EXO 因 media3 在 Surface 重建时重渲染最后一帧、且 `keepRenderViewOnReset()=true` 不重绑 display,所以观感正常。全仓无 `waitForSurface`/`isSurfaceAvailable` 门控(fork 里唯一等 surface 的分支在 `VideoView.resume():378-415`,新开页面走不到)。
 - **真机验证(用户当日反馈)**:把「画面渲染」切成 **TextureView** 后该现象消失 —— TextureView `onSurfaceTextureDestroyed` 返回 false 并复用同一 `SurfaceTexture`/`Surface`(`TextureRenderView.java:88-108`),内核侧窗口身份不变,整段绕开"输出重建+等关键帧"。与 2026-09-13 纯音频三联症状的结论同向(那次的判据就是"仅 SurfaceView 有此问题,TextureView 三症状全无")。
 - **未改动代码**;结论与三条收口候选(默认改 TextureView / 仅跨页复用窗口自动 Texture〔时序脆弱〕/ 登记不修)记入活规范 §7。**用户 2026-09-27 看过"引擎自带承载窗口"的评估后决定:保持现状、不修**(候选 ③)——他自己设备把「画面渲染」设为 TextureView 即为规避手段;默认值仍是 SurfaceView,未改过该键的设备在 IJK 下仍会复现这 2~3 秒黑窗,属已知接受。
+
+### 下一集预载:改方案 A(磁盘预缓存,治「预载完成死锁」)(2026-09-27)
+
+- **背景**:拖动进度条后「下一集已就绪」toast 概率不出现,根因是 media3 1.11.1 预载完成死锁(时长目标 vs 32MB 字节闸门互不收敛),详见 `history/preload-toast-deadlock.md`;用户拍板走 A。
+- **改动 3 文件**:`ExoMediaSourceHelper`(player 模块):新增 `getPreloadTargetMediaSource()`(读盘走 media3 默认 key)、`createDataSourceFactory(Map)` 重载、`buildPreloadMediaItem()`(显式带 mimeType);`getCacheDataSourceFactory` 增 `useDefaultCacheKey`;内容类型推断方法静态化。`PreloadManagerHolder`:`specifiedRangeCached` + `setCache(共享 SimpleCache)` + `setDataSourceFactory(带 headers 的下载源)`,删 32MB LoadControl 与内存接管(`tryAcquire`/`confirmTaken`/`sPendingItem`),`sPreloadTargets` 升级为「url → headers 签名」。`ExoPlayer`:预载目标改用 `getPreloadTargetMediaSource`,删 `prepareAsync()` 覆盖(原内存接管入口)。
+- **实施期两个新发现(方案里没预告)**:①预缓存写盘 key 由 media3 内部 CacheWriter 决定(默认分片 uri),本项目播放侧是「uri + headers 后缀」⇒ 必须让预载目标读盘回落默认 key,并用 headers 签名守卫防误读他线路数据;②DownloadHelper 只按 uri/mimeType 推断类型,不吃 `TVBox-Format` 头部约定 ⇒ 预载 MediaItem 必须显式带 mimeType,否则无 `.m3u8` 特征的 HLS 源会被当进度流下载。
+- **旁证发现**:全仓无 `CacheDataSink` / `setCacheWriteDataSinkFactory` / `CacheWriter` ⇒ 共享 SimpleCache 此前**没有写入方**,「边播边缓存」与旧版"预载落盘兜底"实为空转(独立缺陷,本次未处理)。
+- **语义代价**:media3 的 `remove/reset/release` 都会删掉已缓存数据,故预缓存完成的条目不主动移除(磁盘数据留给播放读盘);拖动/退出页仍按既有语义清数据,磁盘数据一并清掉。
+- **验证**:BUILD SUCCESSFUL;351 用例 / 0 失败 / 0 错误。**未装包、未真机验证** —— 待走查:高码率源拖动后 toast 必现 + `echo-preload-complete`;切集出现 `echo-preload-disk-source` 且全程无 `echo-preload-error`;HLS(含无 .m3u8 特征)与无 headers 站点各覆盖一次。
+### 下一集预载:拖动进度条后要等十几二十秒(2026-09-27,用户报「预加载的速度感觉很慢」)
+
+- **量化(真机日志取证)**:`echo-preload-start` 之后 0.77s 就出现 `echo-preload-clear: 1`(拖动触发的缓冲把在途下载连同数据一起清掉),紧接着 `echo-preload-skip: buffering cooldown, retry in 7865ms`(10s 冷却还没走完),之后才重新 resolve + 从头下 60s 数据 ⇒ 感知延迟 = 清数据 + ≤10s 冷却 + 整段重下。
+- **改动 2 文件(纯策略层)**:`PreloadCoordinator`:①`onMainPlayerBuffering` 不再立即清预载,改为 `handler.postDelayed(bufferingYield, 4000ms)` 延迟让路,`scheduleEvaluate`(正片恢复播放/缓冲结束)撤销它 ⇒ 短暂缓冲(拖动/瞬断)不打断在途下载、已下字节保留;持续缓冲 >4s 才真正让路(取消 + 清数据,冷却从让路时刻重算)。②`BUFFERING_COOLDOWN_MS` 10s → 5s。③新增 `replayReadyPending`:拖动/缓冲结束后在冷却判断**之前**重放就绪提示(目标未变且已完成时)。`PreloadManagerHolder`:新增已完成目标记录 `sCompletedUrl`(清数据/发起新预载即失效)与 `replayReadyIfCompleted()`。
+- **为什么必须带重放**:数据不再被删除 ⇒ `evaluate` 命中「already preloaded」直接 return;不重放的话拖动后 toast 永不出现(等于退回用户最初报的那类问题)。重放让 toast 在拖动后约 2s 出现且零下载。
+- **收益**:拖动后 toast 由 15~25s 降到 ~2s(已完成时)或「剩余字节下完即弹」(在途时),且不再重复下载已下数据;弱网(持续缓冲 >4s)仍保留让路语义。
+- **验证**:BUILD SUCCESSFUL;351 用例 / 0 失败 / 0 错误;已装 `AVBox_debug.apk`(07:53)。**未真机走查** —— 待走查:拖动后 toast 应约 2s 内再现;logcat 不再出现拖动后的 `echo-preload-clear` 与 `buffering cooldown`,而是 `echo-preload-ready-replay`;持续弱网(>4s 缓冲)应看到 `echo-preload-yield: sustained buffering`。
+### 下一集预载:「下一集已就绪」Toast 停留时间 5s → 约 3s(2026-09-27,用户「改成3s左右,不要停留太久」)
+
+- **原实现**:`Toast.LENGTH_LONG`(3.5s)+ 1.5s 处对同一 Toast 再 `show()` 一次重计时 ⇒ 停留 ≈ 5s。
+- **改动 3 处**:`PlayContainer`:`PRELOAD_TOAST_REFRESH_DELAY_MS` 1500 → 1000、`Toast.LENGTH_SHORT`(2s) ⇒ 停留 ≈ 1 + 2 = 3s;`PlaybackViewBridge` 的接口 KDoc 同步为「约 3s 自动撤下」。
+- **验证**:BUILD SUCCESSFUL;351 用例 / 0 失败 / 0 错误;已装 `AVBox_debug.apk`(07:57)。**未真机走查** —— 待走查:提示弹出后约 3s 自行消失;切集/换线/退出播放页仍立即撤下。
+### 下一集预载:方案 A 落地后按 SKILL.md 做一轮审查收敛(2026-09-27)
+
+- **范围**:本轮 6 个代码文件(`ExoMediaSourceHelper` / `PreloadManagerHolder` / `ExoPlayer` / `PreloadCoordinator` / `PlayContainer` / `PlaybackViewBridge`)+ `HawkConfig` / `PlaybackController` 的相邻注释。
+- **两轴记账**:阻断 0、高 0;**中 4 条已全部修**:①本次新增注释 9 处超「单条 ≤2 行」→ 压缩;②`ExoMediaSourceHelper` 仍引用**不存在的文档** `skill/avbox-preload-next-episode-spec.md §10`(既有,本次触碰的同文件)→ 改为纯事实注释;③`HawkConfig.PRELOAD_DURATION` 注释仍写「内存缓冲 + 磁盘写盘」(既有,本次语义变更后失效)→ 改「写共享 SimpleCache,不占播放内存」;④`PlaybackController.extractHeaders` KDoc 仍用 `keyOf(url,headers)` 解释「两侧必须一致」(既有,守卫已换成 headers 签名)→ 改为 `isPreloadTargetUrl` 守卫口径。
+- **低/口味差异(未修,登记备查)**:①延后让路 4s 使弱网前 4s 仍与正片抢带宽(用户要的是拖动后快,属有意取舍);②网络抖动恢复后会多弹一次「已就绪」(此时提示为真);③512MB LRU 淘汰后仍可能重放提示而数据已不在(仅退化为走网络);④`hasActivePreload()` 为既有死代码;⑤「边播边缓存」依旧只有读、无写入方(独立缺陷)。
+- **两处静态取证(阻断级疑点排除)**:①`PreloadStatus.STAGE_SPECIFIED_RANGE_CACHED = -1` 的负值只参与 `PreloadMediaSourceControl` 的内存预载路径,而 cached 状态从不 `preloadMediaSource.preload()`,故 stage 比较不受影响;②`PreloadManagerHolder.clearAll` 删除正在读的 span 时 `SimpleCache` 直接删文件(无锁判断),Linux 下已打开句柄继续可读、后续读回落网络 —— 无崩溃、不打断在播。
+- **验证**:BUILD SUCCESSFUL;351 用例 / 0 失败 / 0 错误。**装包被系统弹窗拒绝**(`INSTALL_FAILED_ABORTED: User rejected permissions`,需用户在机上点允许);设备上现有包(07:57)已含全部功能性改动,本轮仅注释差异。**未真机走查**。
+### 修复:滑动快进后立刻双击暂停,画面/声音已停但中央仍显示"在播"(2026-09-27,用户报「这是bug吗」+截图)
+
+- **根因(事件顺序确定性)**:①`seekTo` 只在"seek 前状态是 PAUSED"时置 `mPausedBeforeSeek`;②滑动快进时状态是 PLAYING/随后 BUFFERING,双击暂停走 `togglePlay()`——缓冲中 `ExoMediaPlayer.isPlaying()` 返回 `playWhenReady`(仍为 true)⇒ 判定在播 ⇒ `pause()`,而 `pause()` 里原有一行 `mPausedBeforeSeek = false`(主动清记忆);③seek 完成 → `BUFFERING_END` → 首帧 `RENDERING_START` ⇒ `onInfo` 里无条件 `setPlayState(STATE_PLAYING)`(该判据只覆盖"暂停中的 seek")⇒ `PlayerUiState.playState` 写成 PLAYING,中央按钮显示"在播",而内核 `playWhenReady=false` 仍在停(Exo 暂停态也会渲染 seek 位置那一帧,正好骗过"首帧=在播")。再双击能续播:此时 `isPlaying()==false` ⇒ 走 `start()` 分支清记忆 ✔。
+- **改动 1 处语义 + 2 处注释**(`player/.../VideoView.java`):`pause()` 内 `mPausedBeforeSeek = false` → `= true`(**暂停生效即记**);字段与 `keepPausedStateAfterSeek()` 的 KDoc 按新语义改写。播放意图入口(`startInPlaybackState`/`resumePlay`/`startPrepare`/`setUrl`/`release`)原本就清标记,故用户真按播放不会被按回暂停。覆盖范围同时含"暂停后拖进度条""缓冲窗口内任何暂停"。
+- **核对**:全仓 `setPlayState(STATE_PLAYING)` 仅 3 处(startInPlaybackState/resumePlay/onInfo RENDERING_START),且无任何代码绕过 `VideoView` 直接调内核 `start()/pause()` ⇒ 该轴修复完整。
+- **验证**:BUILD SUCCESSFUL(`:player:bundleLibCompileToJarDebug` 已重跑);351 用例 / 0 失败 / 0 错误;已装 `AVBox_debug.apk`(08:12)。**未真机走查** —— 待走查:滑动快进→立刻双击暂停,中央图标应为"▶"且缓冲结束/首帧后不再跳回"❚❚";再双击正常续播;EXO 与 IJK 各试一次。
+
+### 片头片尾按钮承载时间 + 激活态(2026-09-27,用户"片头片尾这一项,在点击设定为片头片尾后,把时间显示在设为片头,设为片尾控件里面,并且表现为动态取色的激活状态,右上角的标题就删了")
+
+- **改动 1 文件**(`player/ui/PlayerParamsSheet.kt`):`ParamsTimeGroup` 不再向 `ParamsGroupHeader` 传 `valueText`(删掉标签行右侧的「片头 xx:xx · 片尾 xx:xx」);新增私有 `timeMarkText(time, labelRes, setRes)` —— 值为空串走动作文案(`player_params_set_start` / `_end`),已设值走「片头 / 片尾 + 时间」;两颗按钮分别按 `timeStartText` / `timeEndText` 是否为空置 `SheetButton(selected = ...)`,激活态 = 既有 M3 动态取色的 `primaryContainer` 底 + `onPrimaryContainer` 字(与硬解码 / 画面比例同款,项目主题在 Android 12+ 走系统 Material You、否则 `materialkolor` 种子色),点「清空」后自动回落。
+- **宽度验算(静态估算,未真机)**:横屏侧滑面板内容区(2800 长边设备 ≈1112px)三键等分后每键 ≈356px;键内 = 图标 `vs_24`(≈53px) + 间距 `vs_8`(≈18px) + 文字,「片头 13:14」≈208px ⇒ 合计 ≈279px 放得下;带小时「片头 1:23:45」≈320px 仍可容纳,超长兜底是 `SheetButton` 既有的 `maxLines = 1` + Ellipsis。未改任何资源 key(`common_not_set` 仍由设置页在用)。
+- **选中态刷新链路(核对)**:`markTimeStart` / `markTimeEnd` / `onTimeResetClicked` → 写 cfg → `updatePlayerCfgState()`(回填 `state.timeStartText` / `timeEndText` 并 `refreshParamsSheet()`)⇒ 面板在屏时按钮即时变更为激活态,无需新增状态字段。
+- **验证**:BUILD SUCCESSFUL;351 用例 / 0 失败 / 0 错误。**未真机走查** —— 待走查:①点「设为片头 / 设为片尾」后按钮文字变「片头 mm:ss」并进入高亮;②点「清空」两键回落、高亮消失;③英文/繁中下按钮不溢出(英文 `Opening 01:23`)。
+
+### 播放参数弹窗:字重全 500 + 组标题升 ts_22 + 补两颗组图标(2026-09-27,用户"字重全部改为500,组标题改为ts22,组标题右侧当前值改为ts22,其余不变,然后加上.tubiao文件夹里的两个icon图标")
+
+- **改动 3 文件**:①`player/ui/PlayerSheets.kt` —— `SheetButton` 新增可选 `fontWeight: FontWeight? = null`,非 null 时绕过 `boldOnSelect` 的"选中加粗"逻辑(其他面板不传参、行为零变化);②`player/ui/PlayerParamsSheet.kt` —— `ParamsGroupHeader` 组名与右侧当前值 `ts_20` → `ts_22` 并加 `FontWeight.Medium`;弹窗内全部按钮(chips / 片头片尾三键 / 搜弹幕)传 `fontWeight = FontWeight.Medium` ⇒ 弹窗内字重恒 500(标题本就是 `titleMedium` 的 Medium);③新增 `drawable/player_ic_params_scale.xml` / `player_ic_params_time.xml` —— 由 `.tubiao/画面比例.svg`、`.tubiao/片头片尾.svg` 按既有范式转出(viewport 960 + `translateY=960` 抵消负 viewBox、`fillColor #FFFFFFFF`),分别挂到画面比例组与片头片尾组标题(`vs_24` + `vs_10`、`onSurfaceVariant` 着色)。
+- **登记一处必然回归(待用户拍板)**:画面比例六枚 chips 由 Normal 全部转 Medium 后,总宽从实测 1126px 增至 ≈1156px,超出侧滑面板内容区 1129px(45% 屏宽 − 2×`vs_30`)⇒ 末位「裁剪」会掉到第二行(该问题 2026-09-27 曾专门修过)。可选收口:①该组 chips 恢复 Normal;②缩 chips 行间距(`vs_10`)或水平内距(`vs_20`)腾出 ≈30px。**未擅自改"其余"**。
+- **验证**:BUILD SUCCESSFUL;`:app:testDebugUnitTest` 351 用例 / 0 失败 / 0 错误;已装 `AVBox_debug.apk`。**未真机走查** —— 待走查:①五组标题字号/字重与两颗新图标(画面比例、片头片尾);②画面比例那行是否换行;③倍速滑块组右侧当前值「1.0x」的字号变化。
+
+### 播放参数弹窗:组间加水平分隔线(2026-09-27,用户"采用分隔线隔开来"→追问后选定「各个分组之间加一条水平分隔线做视觉分区」)
+
+- **改动 1 文件**(`player/ui/PlayerParamsSheet.kt`):新增 `ParamsGroupDivider`(`Spacer(vs_15)` + `HorizontalDivider(color = outlineVariant)` + `Spacer(vs_15)`),在 5 组之间的调用点插入 4 条;`ParamsChoiceGroup` / `ParamsSliderGroup` / `ParamsTimeGroup` 三处末尾的 `Spacer(vs_30)` 随之删除(组间节奏改由分隔线统一承载,线两侧各 ≈9.4dp),「搜弹幕」按钮前补回 `Spacer(vs_30)`(原先靠画面比例组末尾间距)。线宽 1dp 固定、不随 mm 缩放,与底栏 `PlayerPillDivider` 口径一致;颜色取 M3 默认 `outlineVariant`。
+- **口径澄清**:用户首条回复「采用分隔线隔开来」未给宾语(可指 chips 之间 / 三键之间 / 组间 / 标题下),追问后确认是**组间**水平线;**画面比例 chips 加粗换行的 A/B 收口仍未拍板**(当前实现全 Medium ⇒ 会换行)。
+- **验证**:BUILD SUCCESSFUL;351 用例 / 0 失败 / 0 错误;已装 `AVBox_debug.apk`。**未真机走查** —— 待走查:①四条分隔线的位置与浓淡(深色主题下 `outlineVariant` 是否够清晰);②组间节奏(原 `vs_30` 拆成两段 `vs_15` + 线);③竖屏贴底形态下同样观感。
+
+### 设置页顶部应用信息卡圆角 28dp → 32dp(2026-09-27,用户先问"设置页顶部卡片的圆角是多少"、答 28dp 后要求"改为32dp")
+
+- **改动 1 行**(`ui/page/SettingsPage.kt` 的 `AppInfoHeaderCard`):`RoundedCornerShape(28.dp)` → `RoundedCornerShape(32.dp)`;渐变底 / 内容 / 尺寸未动。今日稍早 `SettingsCard` 外圆角也已由 28dp 调为 32dp(§4.3),两处现一致。
+- **验证**:BUILD SUCCESSFUL;351 用例 / 0 失败 / 0 错误;已装 `AVBox_debug.apk`。**未真机走查**。
+
+### 首页骨架屏:流光看不见 + 网格只铺两行(2026-09-27,用户"没有动画,而且怎么只显示两排"+截图)
+
+- **现象与根因**:①"没有动画" —— 流光一直在跑且设备未关动画(adb 核实 `animator_duration_scale = 1.0`),问题是 `shimmer` 的高光 `Color.White.copy(alpha = 0.15f)` 叠在底色上不可见:底色 `cardContainer` 在 `ui/theme/Color.kt` 里就是 `surfaceBright` 的别名,浅色主题下近白底 + 白 15% ⇒ 对比度≈0;②"只显示两排" —— `HomeGridLayout` 骨架写死 `items(6)`,竖屏 3 列正好两行,屏幕下方大片空白(Hero 骨架 1 个、横排行 3 个数量本身合理,未动)。
+- **改动 2 文件 3 处**:①`ui/components/Skeleton.kt`:`shimmer(highlight)` 默认值改为 `MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)`(参数改可空后内部解析;全仓无调用点显式传 highlight,零影响),浅色主题下"压暗"、深色主题下"提亮",两套主题都可见;②`ui/page/HomeGridLayout.kt`:新增 `HomeGridSkeletonCount = 18`,两处 `items(6)` → `items(HomeGridSkeletonCount)` —— LazyGrid 只组合可见项,多给的骨架无渲染成本。
+- **当日二次回调**:首版高光 `onSurface` 10% 用户仍判"不是很明显" ⇒ 提到 **18%**、循环周期 1200ms → **1000ms**(两个参数都在 `shimmer` 里,要再强/再弱都是单点调值)。
+- **验证**:BUILD SUCCESSFUL;351 用例 / 0 失败 / 0 错误;已装 `AVBox_debug.apk`。**未真机走查** —— 待走查:①首屏骨架能看到流光横向扫过(浅色/深色主题各看一次);②骨架铺满首屏、向滚动方向延伸,不再两排后留白;③Hero 与横排骨架同款流光。
+
+### NPE 审查:崩溃级 3 项修复(2026-09-27,用户"分析本项目,存在哪些可能导致npe的错误"→"先修复前三项"→"根据SKILL.md,审查一下是否有错误遗漏和引入新回归")
+
+- **根因**:三处都是"源侧脏数据 / 结构缺失"经未捕获异常打到无 try 的执行栈上 —— ①`ApiConfig.loadLives` 读 `channels[].name` 用 Gson `get()`(缺键返回 null),而该链路跑在**主线程**且没有任何 try(`LiveProxyLoader.kt:108/131` 两个入口也没有);②`SourceViewModel.checkThunder` 的磁力回调由 Thunder 线程池触发,已飞出 `xml()`/`json()` 的 `catch (Exception)` 保护域;③`VodInfo.reverse()` 直接用 `seriesMap.keySet()`,而 `seriesMap` 只在"这部片有可播线路"时才由 `setVideo` 建立。
+- **改动(4 主源码 + 2 测试)**:①抽 `ConfigParser.parseLiveChannelName` / `parseLiveCatchup` 两个纯函数(脏值归一在这里,便于单测),`loadLives` 改用它并按新口径丢条目;②`checkThunder` 的 `status()` 首集名改为有条件写、`list()` 补下标与 null 元素守卫、同步 `hasThunder` 扫描跳过 null 结构;③`VodInfo.reverse()` 补 `seriesMap == null` 早退(`DetailViewModel.kt:263` 的调用点因此安全;`toggleReverse()` 那条路径本来就有 `seriesMap?.get(...) ?: return`,行为不变)。
+- **口径修正(本轮自查得出,非首版设计)**:首版把"无名频道"整条丢弃 ⇒ 与既有三处同类口径(`Depot.arrayFrom`/`parseApiCollection` 用地址兜底、`parseSites` 只丢结构性缺失)不一致,且 m3u 源的 `#EXTINF` 无名条目(`TxtSubscribe` 的 name 是用正则尽力截的,可返回空串)本来可播 ⇒ 改为"name 优先,否则用首条非空地址兜底",只丢弃"名字与地址都空"的条目;另补"`urls` 为空/非数组整条跳过"(此前这类频道会在点击时崩在 `LiveChannelItem.getUrl()` 的 `get(0)`)。fongmi 对照:`Channel` 是"留空 + `getName()`/`getCurrent()` 空串兜底",本项目取值链无这层守卫,故不照搬 —— 已记入 §6.12。
+- **验证**:BUILD SUCCESSFUL;`:app:testDebugUnitTest` 42 类 / **355 用例 / 0 失败 / 0 错误**;新增 `ConfigParserTest.parseLiveChannelName_prefersNameThenFirstUrl`、`parseLiveCatchup_shapesAndBadValues` 与 `VodInfoReverseTest`(2 例)。`loadLives`/`checkThunder` 本体无法 JVM 单测(`ApiConfig` 构造函数要 `Looper`、`SourceViewModel` 是 Android ViewModel),这两处是编译 + 读码核对。
+- **未真机走查**,待走查:①喂一份缺 `name`/缺 `urls`/`catchup` 为 null 的直播 JSON 源,加载不崩且无名台显示为地址;②磁力片详情页(解析成功 / 失败两条路径)的首集名与详情数据;③历史里点过"倒序"、源侧已无线路的片子再打开详情。
+- **残留(既有,未改)**:`loadLives` 的 group 级 `get("group")`/`get("channels")` 与 `(JsonObject)` 强转仍无守卫(由 `TxtSubscribe` 的三个分支保证结构,当前不可达);`LiveChannelItem.equals/hashCode` 直接 `channelUrls.get(sourceIndex)`,当前唯一构造点保证非空。

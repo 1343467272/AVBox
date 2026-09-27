@@ -23,15 +23,16 @@ import com.github.tvbox.osc.ui.theme.cardContainer
 
 fun Modifier.shimmer(
     base: Color? = null,
-    highlight: Color = Color.White.copy(alpha = 0.15f),
+    highlight: Color? = null,
 ): Modifier = composed {
     val baseColor = base ?: MaterialTheme.colorScheme.cardContainer
+    val shineColor = highlight ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)
     val transition = rememberInfiniteTransition(label = "shimmer")
     val progress by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            animation = tween(durationMillis = 1000, easing = LinearEasing),
         ),
         label = "shimmerProgress",
     )
@@ -39,7 +40,7 @@ fun Modifier.shimmer(
         val bandWidth = size.width
         val startX = -bandWidth + 2f * bandWidth * progress
         val brush = Brush.linearGradient(
-            colors = listOf(baseColor, highlight, baseColor),
+            colors = listOf(baseColor, shineColor, baseColor),
             start = Offset(startX, 0f),
             end = Offset(startX + bandWidth, size.height),
         )

@@ -332,9 +332,8 @@ public class PlaybackController {
     // ==================== 播放请求头 ====================
 
     /**
-     * 提取播放请求头(与预载侧 `PreloadCoordinator.extractHeaders` 共用
-     * `PlayerHelper.extractPlayHeaders` —— 两侧口径必须逐字一致,否则预载与播放的
-     * keyOf(url,headers) 不匹配,共享 SimpleCache 的「下一集预载」永不命中)。
+     * 提取播放请求头:与预载侧共用 `PlayerHelper.extractPlayHeaders` —— 两侧逐字一致才满足预载读盘
+     * 守卫(`PreloadManagerHolder.isPreloadTargetUrl`),否则预缓存数据不命中、退化成网络重下。
      */
     public static HashMap<String, String> extractHeaders(JSONObject object) {
         return PlayerHelper.extractPlayHeaders(object);

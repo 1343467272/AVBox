@@ -93,8 +93,8 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
     protected int mCurrentPlayState = STATE_IDLE;//当前播放器的状态
 
     /**
-     * seek 前处于暂停:内核围绕 seek 会发缓冲/首帧回调把播放状态顶离 PAUSED,而 setPlayState(STATE_PAUSED)
-     * 只在 pause() 里 ⇒ 暂停语义丢失(暂停浮层不再出现、中央播放暂停图标与实际画面不一致)。改变播放意图的动作清除。
+     * 暂停记忆:内核围绕 seek 会发缓冲/首帧回调把播放状态顶回"在播",而 setPlayState(STATE_PAUSED) 只在
+     * pause() 里 ⇒ 暂停语义丢失(中央播放暂停图标与实际画面相反)。暂停生效即记(含"seek 中暂停"),播放意图动作清除。
      */
     private boolean mPausedBeforeSeek;
 
@@ -361,8 +361,8 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
     public void pause() {
         if (isInPlaybackState()
                 && mMediaPlayer.isPlaying()) {
-            // 只在暂停真正生效时清:无效的 pause()(内核本就没在播)不能把"暂停记忆"提前丢掉
-            mPausedBeforeSeek = false;
+            // 暂停生效即记:seek 后立刻暂停时状态停在 BUFFERING(不是 PAUSED),不记的话随后的首帧回调会把 UI 顶回在播
+            mPausedBeforeSeek = true;
             mMediaPlayer.pause();
             setPlayState(STATE_PAUSED);
             if (mAudioFocusHelper != null && !isMute()) {
@@ -597,8 +597,8 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
     }
 
     /**
-     * seek 期间的缓冲/首帧回调是否仍按"暂停"呈现:返回 true 时调用方不得再改播放状态。
-     * 用户 seek 后自己点了播放(start/resume)会先清掉标记,不会被误按回暂停。
+     * 暂停记忆生效期间(seek/缓冲回调)是否仍按"暂停"呈现:返回 true 时调用方不得再改播放状态。
+     * 用户按下播放(start/resume)会先清掉标记,不会被误按回暂停。
      */
     private boolean keepPausedStateAfterSeek() {
         if (!mPausedBeforeSeek) return false;

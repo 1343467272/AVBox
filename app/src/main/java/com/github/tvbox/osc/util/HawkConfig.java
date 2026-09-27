@@ -116,7 +116,7 @@ public class HawkConfig {
     public static final String BUFFER_TIMES = "buffer_times";
     public static final int BUFFER_TIMES_DEFAULT = 3;
     public static final String PRELOAD_NEXT_EPISODE = "preload_next_episode";
-    /** 下一集预载时长(秒,20~120 步长 10,第二期参数化):控制预载数据范围(内存缓冲 + 磁盘写盘) */
+    /** 下一集预载时长(秒,20~120 步长 10):预缓存数据范围(写共享 SimpleCache,不占播放内存) */
     public static final String PRELOAD_DURATION = "preload_duration";
     public static final int PRELOAD_DURATION_DEFAULT = 60;
     /**

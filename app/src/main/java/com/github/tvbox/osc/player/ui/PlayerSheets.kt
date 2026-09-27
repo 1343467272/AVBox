@@ -3,6 +3,7 @@ package com.github.tvbox.osc.player.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,6 +29,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,6 +49,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -241,11 +245,18 @@ internal fun SheetButton(
     selected: Boolean = false,
     contentPadding: Dp = 0.dp,
     boldOnSelect: Boolean = true,
+    @DrawableRes iconRes: Int? = null,
+    fontWeight: FontWeight? = null,
 ) {
     val container = if (selected) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
         MaterialTheme.colorScheme.surfaceBright
+    }
+    val contentColor = if (selected) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
     }
     val m = modifier
         .background(container, ItemShape)
@@ -253,18 +264,25 @@ internal fun SheetButton(
         .padding(horizontal = contentPadding)
         .height(playerDim(R.dimen.vs_50))
     Box(modifier = m, contentAlignment = Alignment.Center) {
-        Text(
-            text = text,
-            color = if (selected) {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
-            fontSize = playerTextSize(R.dimen.ts_20),
-            fontWeight = if (selected && boldOnSelect) FontWeight.Medium else FontWeight.Normal,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (iconRes != null) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(playerDim(R.dimen.vs_24)),
+                )
+                Spacer(Modifier.width(playerDim(R.dimen.vs_8)))
+            }
+            Text(
+                text = text,
+                color = contentColor,
+                fontSize = playerTextSize(R.dimen.ts_20),
+                fontWeight = fontWeight ?: if (selected && boldOnSelect) FontWeight.Medium else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

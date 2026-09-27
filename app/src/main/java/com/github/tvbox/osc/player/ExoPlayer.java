@@ -203,11 +203,11 @@ public class ExoPlayer extends ExoMediaPlayer {
         defaultSubtitleTrackSelected = false;
         defaultSubtitleTrackSelectionClosed = false;
         super.setDataSource(path, headers);
-        // 磁盘缓存数据源(第二期,见 spec §10/§11):
-        // ① 预载过的下一集 → 必走:读预载写盘数据,内存交接 miss 时免网络冷启动;
+        // 磁盘缓存数据源:
+        // ① 预载过的下一集 → 必走:读预缓存(PreCacheHelper)写盘数据,免网络冷启动;
         // ② 普通点播(MyVideoView 点播标记 + 设置「边播边缓存」) → 边播边缓存,回拖/重看/弱网读盘命中;
         // 直播页未打点播标记恒不走;未命中部分照常走网络
-        boolean preloadTarget = PreloadManagerHolder.isPreloadTargetUrl(path);
+        boolean preloadTarget = PreloadManagerHolder.isPreloadTargetUrl(path, headers);
         boolean playCache = useDiskCache && KV.get(HawkConfig.PLAY_CACHE, false);
         // 本地代理 URL 跳过磁盘缓存(2026-09-13):CacheDataSource 与 App 内代理(网盘 spider 自建/
         // M3U8 净化/DASH)的区间读取语义不兼容 —— 实测夸克 4K mp4 源需跳读文件尾 moov 时抛
@@ -220,7 +220,10 @@ public class ExoPlayer extends ExoMediaPlayer {
             playCache = false;
         }
         if (preloadTarget || playCache) {
-            MediaSource cached = mMediaSourceHelper.getMediaSource(path, headers, true);
+            // 预载目标必须用与预缓存写盘一致的 key(media3 默认 key=uri);常规链路仍用 headers 后缀 key 防串缓存
+            MediaSource cached = preloadTarget
+                    ? mMediaSourceHelper.getPreloadTargetMediaSource(path, headers)
+                    : mMediaSourceHelper.getMediaSource(path, headers, true);
             if (cached != null) {
                 mMediaSource = cached;
                 LOG.i((preloadTarget ? "echo-preload-disk-source: " : "echo-play-cache-source: ") + path);
@@ -233,42 +236,6 @@ public class ExoPlayer extends ExoMediaPlayer {
         useDiskCache = enabled;
     }
 
-    /**
-     * 预载命中注入（预载方案第一期,见 skill/avbox-preload-next-episode-spec.md §5.4）:
-     * prepare 前用 url+headers 查预载 registry,命中则把预载中的 PreloadMediaSource（含已缓冲数据）
-     * 直接替换为本 player 的 MediaSource,跳过网络冷启动,实现秒开;未命中走原逻辑,行为不变。
-     */
-    @Override
-    public void prepareAsync() {
-        MediaSource preloaded = PreloadManagerHolder.tryAcquire(currentPlayPath, currentHeaders);
-        if (preloaded != null) {
-            mMediaSource = preloaded;
-        }
-        super.prepareAsync();
-        if (preloaded != null) {
-            // setMediaSource/prepare 消息已先入队(同一 looper):此时 remove 通知 manager 释放条目
-            PreloadManagerHolder.confirmTaken();
-        }
-    }
-
-    /**
-     * 关闭 Exo 的"帧率匹配"(2026-09-12,用户定稿:**底层默认开启,不设开关**)。
-     *
-     * 现象:竖屏详情页/直播页播放小窗时,列表滑动与 bottom sheet 动画从 120fps 掉到 60fps,暂停播放即恢复;
-     * 换 IJK 内核不出现,只有 Exo 出现。
-     *
-     * 根因:media3 的 `VideoFrameReleaseHelper` 默认会把视频帧率写进播放 Surface
-     * (`Surface.setFrameRate(fps, FRAME_RATE_COMPATIBILITY_DEFAULT)`,策略默认
-     * `C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS`,见 media3 1.9.0 源码 L140/L460)。
-     * 系统据此做显示模式匹配,部分 ROM(实测 vivo V2425A / OriginOS)进一步把**整机刷新率**降到 60Hz ——
-     * App 窗口级申请(preferredRefreshRate/preferredDisplayModeId/setRequestedFrameRate)压不住,
-     * 只能从源头掐掉这个帧率提示。IJK 不写帧率,所以不受影响。
-     *
-     * 做法:向视频渲染器发 `Renderer.MSG_SET_CHANGE_FRAME_RATE_STRATEGY` + `C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF`,
-     * media3 内部随即不再调用 `Surface.setFrameRate`(`updateSurfaceMediaFrameRate/clearSurfaceFrameRate` 直接返回)。
-     * 代价:放弃"显示刷新率随视频帧率匹配"(24p→24Hz 这类完美匹配);手机高刷屏上 24/30p 在 120Hz 下本就是整除,
-     * 影响很小。若要恢复 media3 默认行为,删掉 initPlayer 里的本方法调用即可。
-     */
     private void disableFrameRateMatching() {
         if (mInternalPlayer == null || capturedVideoRenderers.isEmpty()) return;
         for (Renderer renderer : capturedVideoRenderers) {

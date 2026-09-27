@@ -26,7 +26,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class PreloadCoordinator {
     private static final long EVALUATE_DELAY_MS = 2000L;
-    private static final long BUFFERING_COOLDOWN_MS = 10_000L;
+    /** 持续缓冲多久才让路(取消预载+清数据):短暂缓冲(拖动/瞬断)不停预载,否则每次拖动都从头重下 */
+    private static final long BUFFERING_YIELD_MS = 4000L;
+    private static final long BUFFERING_COOLDOWN_MS = 5_000L;
     private static final long CACHE_TTL_MS = 60_000L;
     private static final String PRELOAD_KEY_SUFFIX = "-preload";
 
@@ -65,9 +67,18 @@ public final class PreloadCoordinator {
     private Snapshot activeSnapshot;
     private long bufferingCooldownUntil;
     private boolean observing;
+    private boolean replayReadyPending;
     private JSONObject cachedInfo;
     private String cachedKey;
     private long cachedAt;
+
+    /** 缓冲持续到阈值才执行的让路:取消预载并清数据(短暂缓冲不执行,见 onMainPlayerBuffering) */
+    private final Runnable bufferingYield = () -> {
+        LOG.i("echo-preload-yield: sustained buffering");
+        PreloadManagerHolder.clearAll();
+        preloadedKey = null;
+        bufferingCooldownUntil = System.currentTimeMillis() + BUFFERING_COOLDOWN_MS;
+    };
 
     private final Observer<JSONObject> preloadResultObserver = new Observer<JSONObject>() {
         @Override
@@ -90,6 +101,8 @@ public final class PreloadCoordinator {
             LOG.i("echo-preload-skip: " + (snapshot == null ? "no next episode" : "switch off"));
             return;
         }
+        // 已恢复播放/缓冲结束:撤销待执行的让路(短暂缓冲不打断预载,已下数据与在途下载都保留)
+        handler.removeCallbacks(bufferingYield);
         postEvaluate(snapshot, EVALUATE_DELAY_MS);
     }
 
@@ -104,6 +117,7 @@ public final class PreloadCoordinator {
     public void invalidate() {
         handler.removeCallbacksAndMessages(null);
         evaluatePending.set(false);
+        replayReadyPending = false;
         requestToken = null;
         activeSnapshot = null;
     }
@@ -116,13 +130,17 @@ public final class PreloadCoordinator {
     public void onMainPlayerBuffering() {
         if (!PreloadManagerHolder.enabled()) return;
         bufferingCooldownUntil = System.currentTimeMillis() + BUFFERING_COOLDOWN_MS;
-        PreloadManagerHolder.clearAll();
-        preloadedKey = null;
+        replayReadyPending = true;
+        // 先不动预载:拖动/瞬断造成的短暂缓冲结束后数据仍在(evaluate 会重放就绪提示);
+        // 持续缓冲才真正让路(取消 + 清数据),避免弱网下预载与正片抢带宽
+        handler.removeCallbacks(bufferingYield);
+        handler.postDelayed(bufferingYield, BUFFERING_YIELD_MS);
     }
 
     public void destroy() {
         handler.removeCallbacksAndMessages(null);
         evaluatePending.set(false);
+        replayReadyPending = false;
         requestToken = null;
         activeSnapshot = null;
         clearCache();
@@ -138,6 +156,13 @@ public final class PreloadCoordinator {
         if (!snapshot.exoKernel) {
             LOG.i("echo-preload-skip: non-exo kernel");
             return;
+        }
+        // 拖动/缓冲结束后:目标没变且已完成 → 立即重放「下一集已就绪」(数据未失效,不重下)
+        if (replayReadyPending) {
+            replayReadyPending = false;
+            if (snapshot.nextKey.equals(preloadedKey)) {
+                PreloadManagerHolder.replayReadyIfCompleted();
+            }
         }
         long cooldownRemain = bufferingCooldownUntil - System.currentTimeMillis();
         if (cooldownRemain > 0) {

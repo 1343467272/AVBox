@@ -522,7 +522,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
     }
 
     private static final int MSG_PARSE_TIMEOUT = 100;
-    private static final long PRELOAD_TOAST_REFRESH_DELAY_MS = 1500L;
+    private static final long PRELOAD_TOAST_REFRESH_DELAY_MS = 1000L;
     private MyVideoView mVideoView;
     private PlayerControlApi mController;
     private Toast preloadReadyToast;
@@ -1206,7 +1206,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         final Activity activity = mActivity;
         if (activity == null || !isAttached() || mHandler == null) return;
         if (preloadReadyToast != null) preloadReadyToast.cancel();
-        preloadReadyToast = Toast.makeText(activity, activity.getString(R.string.player_next_episode_ready), Toast.LENGTH_LONG);
+        preloadReadyToast = Toast.makeText(activity, activity.getString(R.string.player_next_episode_ready), Toast.LENGTH_SHORT);
         preloadReadyToast.show();
         mHandler.removeCallbacks(refreshPreloadToastRunnable);
         mHandler.postDelayed(refreshPreloadToastRunnable, PRELOAD_TOAST_REFRESH_DELAY_MS);

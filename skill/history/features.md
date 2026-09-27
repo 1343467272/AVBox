@@ -3387,3 +3387,36 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **等价性校验**(每笔都用「旧文件 `git show HEAD:` 逐行去空白 + 多重集比对」):ProxyEntry 95/95(差异=3 处 `owner.` 前缀 + 2 处可见性);WarmQueue 62/60(差异=2 行构造移到调用方);ConfigLoader 436/384(差异全为 `owner.`/`ApiConfig.` 前缀与签名);ConfigApplier+默认 ijk(差异=2 行改名、2 行注释、签名与 return)。**踩坑**:一次脚本替换的结束标记命中第二处(`loadDefaultConfig` 的 ads 段),误删 `parseJson` 收尾 + `loadDefaultConfig` 开头,已按 HEAD 原文补回并复验 —— 结论:行替换的 marker 必须全库查重,替换后必须做「方法级存在性 + 行集比对」双验证。
 
 **验证**:`assembleDebug` + `testDebugUnitTest`(**45 类 / 367 用例 / 0 失败**);APK 内 `assets/default_config.json` 与源文件逐字一致(SAME=True);已装机 vivo V2425A(iQOO Neo10)。**待走查**:①换源成功/失败两条路径上嗅探规则不真空(click/广告/`exclude`);②默认广告拦截与 ijk 硬/软解码档位仍在(播放器设置里切换仍生效);③直播代理源(py/js)与预热队列(首屏测速)不回归。
+
+## 文件级重构:阶段 5「SourceViewModel 六职责分段」(2026-09-28,按 `skill/review/refactor-plan-20260928.md`)
+
+**结果**:`SourceViewModel` **1873 → 168 行**(门面只剩通道 + 入口转发 + 跨 Loader 共享的缓存/线程池);12 个本地 commit(未推远程),新增 9 个同包文件共 2114 行:
+
+| commit | 内容 | 新文件(行数) |
+| --- | --- | --- |
+| `39342b0` | 共享取数支撑 | `SourceHelper.java`(199;线程池/`siteGet`/`absXml`/豆瓣与首页源判定/`getFixUrl`) |
+| `abeed50` | 详情后处理 | `PushDetailResolver.java`(263;`checkPush`/`checkThunder`/`str`) |
+| `22c6b3d` | 解析与分投 | `SourceResultParser.java`(242;`xml`/`json`/`sortXml`/`sortJson`/三通道身份分投/两处 XStream ThreadLocal) |
+| `44a95fd` | push:// 解析 | `PushUrlParser.java`(117;标记头摘取、URL 还原、`header` 合并、推送取流结果合成) |
+| `d036b7e` | 列表取数 | `ListLoader.java`(258;`getList` + 首页推荐 `getHomeRecList`) |
+| `3688b14` | 首页取数 | `SortLoader.java`(349;`getSort` + `sortCache` 命中和写入条件) |
+| `47b4b59` | 详情取数 | `DetailLoader.java`(202;`getDetail` + 空详情 + 推送详情合成) |
+| `1beef65` | 搜索取数 | `SearchLoader.java`(156;`getSearch`) |
+| `7b5d66f` | 取流 | `PlayLoader.java`(328;`getPlay`/`getPlayForPreload` + 双通道序号 + 结果组装) |
+| `aa5b132` | ⑫ sortCache 加锁 | 门面 `clearRuntimeCache` 与 `SortLoader` 的 `get`/`put` 统一进 `synchronized (sortCache)` |
+| `c7d88ba` | 清理 | 删掉被切片边界带进 `SourceResultParser` 的重复 `checkThunder` 委托(死代码) |
+| `6a52f96` | 收紧可见性 + 注释口径 | `parseMarkedHeaders` 降回 private;两处我写的 javadoc 表述修正 |
+
+**拆解口径(与计划的差异,理由是可达性而非取舍)**:计划的「6 个 sibling」落成 **5 个 Loader + `PushUrlParser`(共 6)＋ 3 个支撑类**。多出的 3 个不是可选拆分:`xml`/`json`/`sortXml`/`sortJson` 的解析-分投层被 5 个 Loader 共用,`push`/迅雷详情后处理被解析层与门面共用,`siteGet`/`absXml`/`getFixUrl` 被 6 处共用 —— 留在门面就得再造一个 ~430 行的门面类。池的归属也做了调整:计划写「两个线程池留在门面、经构造传入 sibling」,实际把**池声明落 `SourceHelper`、门面保留同名公开别名**(`public static final ExecutorService spThreadPool = SourceHelper.SPIDER_POOL;`)—— 构造注入要给 7 个类各加两个参数,而「池留门面 + sibling 引用 `SourceViewModel.spThreadPool`」会造出 sibling → 门面的文件级环。
+
+**API 与暴露面记账**:门面 **0 降级** —— 8 个 public 字段(7 通道 + `spThreadPool`)与 13 个 public 方法逐条保留,`public` 行集比对后唯一差异是 `spThreadPool` 的初始化表达式(池实例同一个);代价转为 sibling 之间的包级成员 **40 个**,暴露面限 `viewmodel` 包(对比阶段 2b 的 23、阶段 4 的 7,这次是最高的,属拆分的固有代价)。`sortCache`/`extendCache`/通道/池仍是门面单点持有,构造传入 sibling,`clearRuntimeCache()` 仍是唯一清理出口。
+
+**⑫ 顺带加锁**:`sortCache` 是 access-order 的 `LinkedHashMap` —— 连 `get` 都会改结构,而读写它的有多个池线程(原单线程改 3 线程后读者面被放大)。现在门面 `clearRuntimeCache` 与 `SortLoader` 的 `get`/`put` 都在 `synchronized (sortCache)` 内,持锁期间不做 IO。
+
+**顺带删除**:两处注释掉的死代码(共 24 行)—— `absXml` 里被 `split("\$", 2)` 取代的旧循环、`json` 里的测试 JSON 常量;`// i18n: keep` 与日期注释等存量按 ⑪ 原样保留。
+
+**验证**:每笔落地跑 `assembleDebug` + `testDebugUnitTest`(**45 类 / 367 用例 / 0 失败**);每笔用「旧文件 `git show HEAD:` 逐行去空白 + 多重集比对」,并加两道卡口 ——「67 个方法声明的存在性」(旧文件所有声明都能在新文件里找到)与「public 行集比对」。**累计口径下 111 条 missing 行全部可解释**(58 条调用点加 owner 前缀、26 条可见性/static 变化、24 条上述死注释、3 条 `ERR_NETWORK` 前缀),无语句丢失。
+
+**踩坑(两处,都会静默出错)**:① 用脚本按「区域」搬迁时,必须先切片、后改可见性 —— 我曾把**改过的切片**再拿去 `str.replace` 删原文,替换静默失败(Python `replace` 不报错),结果门面里同时留下定义与 `owner.` 前缀调用;② 切片结束标记必须在全库查重 —— `checkThunder` 的委托恰好横跨两个切片边界,被带进 `SourceResultParser` 变成死代码,靠额外的「成员清点」才发现。结论:行替换必须带 `count` 断言,替换后必须做「编译 + public 行集 + 方法存在性」三重核对。
+
+**未做/待真机走查**:计划 §8 的阶段 5 判据 —— t4 源首页/详情/起播不卡;换源后 `sortCache` 清理仍生效(加锁改动只有互斥语义,无行为变化);推送链接与磁力(迅雷)两条特殊详情路径不回归。

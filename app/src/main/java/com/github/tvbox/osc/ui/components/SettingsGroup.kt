@@ -55,11 +55,12 @@ fun SettingsCard(
     position: SettingsCardPosition,
     modifier: Modifier = Modifier,
     color: Color? = null,
+    shape: Shape? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = shapeFor(position),
+        shape = shape ?: shapeFor(position),
         color = color ?: MaterialTheme.colorScheme.cardContainer,
     ) {
         Column(content = content)

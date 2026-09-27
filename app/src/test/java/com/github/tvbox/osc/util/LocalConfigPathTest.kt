@@ -48,11 +48,15 @@ class LocalConfigPathTest {
     @Test
     fun externalStoragePrimaryDocId() {
         assertEquals("$root/Download/tvbox.json", externalStoragePath("primary:Download/tvbox.json", root))
+        // 小米文件管理器实测形态(2026-09-28 云真机):冒号后已是绝对路径,再拼根会拼出 `/storage/emulated/0//storage/...`
+        assertEquals("$root/摸鱼本地/config.json", externalStoragePath("primary:$root/摸鱼本地/config.json", root))
     }
 
     @Test
     fun externalStorageSecondaryVolumeDocId() {
         assertEquals("/storage/ABCD-1234/TVBox/x.json", externalStoragePath("ABCD-1234:TVBox/x.json", root))
+        // 同一「绝对路径形态」在副卷上的表现
+        assertEquals("/storage/ABCD-1234/TVBox/x.json", externalStoragePath("ABCD-1234:/storage/ABCD-1234/TVBox/x.json", root))
     }
 
     @Test

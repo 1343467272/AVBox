@@ -42,7 +42,6 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -84,6 +83,7 @@ import com.github.tvbox.osc.ui.components.VodCard
 import com.github.tvbox.osc.ui.components.VodCardMenu
 import com.github.tvbox.osc.ui.components.rememberVodCardMenuState
 import com.github.tvbox.osc.ui.page.openVodCardOrDetail
+import com.github.tvbox.osc.ui.theme.filterChipColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -404,6 +404,7 @@ private fun DetailContent(
                             onClick = { vm.onQualityClick(index) },
                             label = { Text(option) },
                             shape = RoundedCornerShape(20.dp),
+                            colors = MaterialTheme.colorScheme.filterChipColors(),
                         )
                     }
                 }
@@ -419,6 +420,7 @@ private fun DetailContent(
                             onClick = { vm.onFlagClick(flag.name ?: "") },
                             label = { Text(flag.name ?: "") },
                             shape = RoundedCornerShape(20.dp),
+                            colors = MaterialTheme.colorScheme.filterChipColors(),
                         )
                     }
                 }
@@ -513,7 +515,7 @@ private fun EpisodeRow(
                         )
                     },
                     shape = RoundedCornerShape(20.dp),
-                    colors = FilterChipDefaults.filterChipColors(
+                    colors = MaterialTheme.colorScheme.filterChipColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainer,
                     ),
                 )
@@ -595,6 +597,7 @@ private fun SourceSection(vm: DetailViewModel, currentSourceName: String?, revis
                         onClick = {},
                         label = { Text(currentSourceName) },
                         shape = RoundedCornerShape(20.dp),
+                        colors = MaterialTheme.colorScheme.filterChipColors(),
                     )
                 }
             }
@@ -604,7 +607,7 @@ private fun SourceSection(vm: DetailViewModel, currentSourceName: String?, revis
                     onClick = { vm.candidateForKey(chip.key)?.let { vm.switchSource(it) } },
                     label = { Text(chip.name) },
                     shape = RoundedCornerShape(20.dp),
-                    colors = FilterChipDefaults.filterChipColors(
+                    colors = MaterialTheme.colorScheme.filterChipColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainer,
                     ),
                 )
@@ -748,6 +751,7 @@ private fun EpisodeSheet(vm: DetailViewModel, revision: Int, slideFromEnd: Boole
                             onClick = { vm.onFlagClick(flag.name ?: "") },
                             label = { Text(flag.name ?: "") },
                             shape = RoundedCornerShape(20.dp),
+                            colors = MaterialTheme.colorScheme.filterChipColors(),
                         )
                     }
                 }
@@ -767,6 +771,7 @@ private fun EpisodeSheet(vm: DetailViewModel, revision: Int, slideFromEnd: Boole
                             },
                             label = { Text(label) },
                             shape = RoundedCornerShape(20.dp),
+                            colors = MaterialTheme.colorScheme.filterChipColors(),
                         )
                     }
                 }
@@ -828,6 +833,7 @@ private fun EpisodeSheet(vm: DetailViewModel, revision: Int, slideFromEnd: Boole
                         },
                         contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(12.dp),
+                        colors = MaterialTheme.colorScheme.filterChipColors(),
                     )
                 }
             }

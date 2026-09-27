@@ -66,6 +66,7 @@ import com.github.tvbox.osc.ui.theme.PaletteStyles
 import com.github.tvbox.osc.ui.theme.PresetSeeds
 import com.github.tvbox.osc.ui.theme.ThemeMode
 import com.github.tvbox.osc.ui.theme.ThemeSource
+import com.github.tvbox.osc.ui.theme.filterChipColors
 import com.materialkolor.PaletteStyle
 import kotlin.math.roundToInt
 
@@ -423,6 +424,7 @@ private fun VariantSelectorRow(
                     onClick = { onStyleSelected(style) },
                     enabled = enabled,
                     label = { Text(stringResource(labelRes)) },
+                    colors = MaterialTheme.colorScheme.filterChipColors(),
                 )
             }
         }

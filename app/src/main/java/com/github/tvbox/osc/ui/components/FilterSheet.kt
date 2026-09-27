@@ -22,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.bean.MovieSort
+import com.github.tvbox.osc.ui.theme.filterChipColors
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -62,6 +63,7 @@ fun FilterSheet(
                             },
                             label = { Text(valueName) },
                             shape = RoundedCornerShape(18.dp),
+                            colors = MaterialTheme.colorScheme.filterChipColors(),
                         )
                     }
                 }

@@ -201,7 +201,7 @@ private fun importLocalConfig(context: Context, uri: Uri): LocalConfigImport? {
     val source = readablePath(path)
     LOG.i(
         "echo-local-src path granted=" + PermissionHelper.isStorageGranted(context) +
-            " src=" + source + " uri=" + uri,
+            " parsed=" + path + " src=" + source + " uri=" + uri,
     )
     if (source != null) {
         toClanApi(source, storageRoot)?.let { return LocalConfigImport(it, true, null, emptyList(), null) }
@@ -365,6 +365,9 @@ private fun unknownDocIdPath(context: Context, uri: Uri, docId: String): String?
 internal fun externalStoragePath(docId: String, primaryRoot: String): String? {
     val split = docId.split(":", limit = 2)
     if (split.size < 2 || split[1].isEmpty()) return null
+    // 小米文件管理器(com.android.fileexplorer)给的是「冒号后已是绝对路径」形态
+    // (`primary:/storage/emulated/0/xx`),再按相对路径拼根会拼出 `/storage/emulated/0//storage/...`,必然读不到
+    if (split[1].startsWith("/")) return split[1]
     if ("primary".equals(split[0], ignoreCase = true)) return "$primaryRoot/${split[1]}"
     return "/storage/${docId.replace(':', '/')}"
 }

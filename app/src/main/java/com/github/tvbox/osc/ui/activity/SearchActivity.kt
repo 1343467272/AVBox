@@ -86,6 +86,7 @@ import com.github.tvbox.osc.ui.components.rememberVodCardMenuState
 import com.github.tvbox.osc.ui.components.SettingsIconBadge
 import com.github.tvbox.osc.ui.theme.AVBoxTheme
 import com.github.tvbox.osc.ui.theme.cardContainer
+import com.github.tvbox.osc.ui.theme.filterChipColors
 import com.github.tvbox.osc.ui.activity.PartitionListActivity
 import com.github.tvbox.osc.ui.page.ManageActionIcon
 import com.github.tvbox.osc.ui.page.openVodCardOrDetail
@@ -861,6 +862,7 @@ private fun SearchListResults(
                                     onClick = { onSelectSource(null) },
                                     label = { Text(stringResource(R.string.common_all)) },
                                     shape = RoundedCornerShape(20.dp),
+                                    colors = MaterialTheme.colorScheme.filterChipColors(),
                                 )
                             }
                             items(done, key = { "filter_${it.sourceKey}" }) { result ->
@@ -873,6 +875,7 @@ private fun SearchListResults(
                                     },
                                     label = { Text(result.sourceName) },
                                     shape = RoundedCornerShape(20.dp),
+                                    colors = MaterialTheme.colorScheme.filterChipColors(),
                                 )
                             }
                         }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -75,7 +76,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
             Spacer(Modifier.height(topPad + 8.dp))
 
             SettingsGroup(title = stringResource(R.string.settings_language)) {
-                SettingsCard(SettingsCardPosition.SINGLE) {
+                SettingsCard(SettingsCardPosition.SINGLE, shape = RoundedCornerShape(22.dp)) {
                     LanguageRow()
                 }
             }

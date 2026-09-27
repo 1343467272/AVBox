@@ -3217,3 +3217,25 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **验证**:`assembleDebug` + `testDebugUnitTest` BUILD SUCCESSFUL,已装机。**待真机走查**:①两页进入编辑 → 勾选 → 删除选中,列表与库数据正确;②长按直接进入并选中;③「完成」与系统返回键都能退出;④无痕态历史页无「编辑」;⑤切换四语后新文案显示正常;⑥收藏卡勾选圈与"源不可用"标记不重叠。
 
 **装机后修正(2026-09-28,用户"能不能保留长按删除单个")**:长按语义按要求改回"单条删除(二次确认)"——非编辑态长按 = 删除该条(恢复原对话框),编辑态内长按 = 切换勾选;单条删除复用 `deleteSelected(listOf(item))`(VM 不恢复 `deleteOne`,保持单一入口);随交互恢复回填 4 个 i18n key(`common_unnamed` / `history_delete_title` / `history_delete_message` / `collect_uncollect_message`,HK 层两条同回)。spec §4.2 该条已同步为"长按 = 单条删除"。
+
+## 本地源导入:小米文件管理器的绝对路径 docId(2026-09-28,小米云真机复测发现并修复;用户"我想用来测试一下本地包导入功能"→"修复")
+
+**背景**:用户找到小米云真机(`remote-dev.n.xiaomi.com:7370`,型号 2608BPX34C,HyperOS / Android 17 / API 37,无 root),用 `/sdcard/摸鱼本地/`(`config.json` + `./ext/19.json` + `./ext/2.json` + `./jar/1.jar`,4 个引用中 `./img/20.gif` 本就缺失)复测本地源导入。
+
+**修复前(完整复现)**:无权限第一轮 = 复制保底 + `missing=4` + 弹缺文件提示 + 跳「所有文件访问」;授权后自动重试 = `granted=true` 但 `src` 仍 null、`missing=4` ⇒ 只能目录授权补齐(`tree missing=1 of=4`)—— 即"卡在要目录授权"的完整复现。
+
+**根因**:小米文件管理器 provider(`com.android.fileexplorer.documents`)给的 docId 是 `primary:/storage/emulated/0/摸鱼本地/config.json`(**冒号后已是完整绝对路径**),而 `externalStoragePath` 只按标准「`primary:<相对路径>`」拼根 ⇒ 拼出 `/storage/emulated/0//storage/emulated/0/摸鱼本地/config.json`(实测 No such file)⇒ ①`readablePath` 恒 null,直引永不可能(**与权限无关**,有权限也一样);②复制路线 `sourceDir` 同源于垃圾路径 ⇒ `copyRefs` 全失败。**顺带排除**:"开关不落地 appop"的推测在同类机型上未复现 —— 授权后 `appops: allow` 且 File API 真可读(修复后 `src` 非空、`direct=true` 实测)。
+
+**修复**:①`externalStoragePath` 对「冒号后以 `/` 开头」的值直接采用(primary / 副卷通用,一处改动惠及三入口:externalstorage provider、未知 provider 前缀兜底、SAF tree `treeDocPath`);②`echo-local-src path` 埋点加 `parsed=` 字段(路径解析结果与"此刻是否读得到"分开看);③`LocalConfigPathTest` +2 断言(primary / 副卷的绝对路径形态)。
+
+**复测(同一云真机,全新安装)**:无权限第一轮仍复制 + 权限引导(设计如此);授权后自动重试 ⇒ `parsed=/storage/emulated/0/摸鱼本地/config.json`、`src` = 同路径、`direct=true`、`missing=0` ⇒ **直引零打扰导入**(不弹缺文件、不要目录授权);订阅加载正常(jar 内 `mainhuaisang` / `mainzhiqiu` / `mainfishhxq` / `mainKan360` 全 `getSpider success`;`KanJu` 的 `runtime material is unavailable` 两轮一致,属源自身逻辑,与导入无关)。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` BUILD SUCCESSFUL(364 用例 / 0 失败),云真机复测通过。
+
+**已知残留**:无权限第一轮的复制副本(`files/config/<md5(uri)>/`)在后续直引成功后会成孤儿 —— 删订阅的 `removeLocalCopy` 只认副本地址,不清它(45KB 级,未处理)。
+
+## 偏好设置页「语言」行卡片单独 22dp(2026-09-28,用户"偏好设置页里「语言」那一行的卡片单独改为22dp")
+
+- `SettingsCard` 新增可选 `shape: Shape? = null` 覆盖参数(默认 null 时仍走 `shapeFor(position)`,其余所有调用点零影响);仅偏好设置页语言行传 `RoundedCornerShape(22.dp)`(该行原随 `SettingsCardPosition.SINGLE` = 32dp)。改动 2 文件:`ui/components/SettingsGroup.kt`、`ui/page/PreferenceSettingsPage.kt`(+1 import;全部调用点均为"position 位置参数 + 其余命名参数",新增尾参不破坏任何既有调用)。
+
+**验证**:`assembleDebug` BUILD SUCCESSFUL。小改动按 2026-09-28 约定不跑单测(只构建)。

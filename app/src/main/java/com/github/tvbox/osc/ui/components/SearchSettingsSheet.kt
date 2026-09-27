@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.sp
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.api.ApiConfig
 import com.github.tvbox.osc.bean.SourceBean
-import com.github.tvbox.osc.ui.activity.SearchViewModel
 import com.github.tvbox.osc.util.HomeSettings
 import com.github.tvbox.osc.util.SearchSettings
 
@@ -54,7 +53,8 @@ private val SourceCardShapeRight = RoundedCornerShape(
 )
 
 @Composable
-fun SearchSettingsSheet(onDismiss: () -> Unit) {
+/** @param onSelectionChanged 勾选落盘后的通知(调用方自己去刷新搜索结果用的选择缓存) */
+fun SearchSettingsSheet(onDismiss: () -> Unit, onSelectionChanged: () -> Unit) {
     val sources = remember { ApiConfig.get().getSourceBeanList().filter(SourceBean::isSearchable) }
     val allKeys = remember(sources) { sources.map { it.key }.toSet() }
     val homeLayout by HomeSettings.layoutFlow.collectAsState()
@@ -73,7 +73,7 @@ fun SearchSettingsSheet(onDismiss: () -> Unit) {
     fun applySelection(next: Set<String>) {
         selected = next
         SearchSettings.putSourcesForSearch(next)
-        SearchViewModel.loadCheckedSources()
+        onSelectionChanged()
     }
 
     AVBoxBottomSheet(

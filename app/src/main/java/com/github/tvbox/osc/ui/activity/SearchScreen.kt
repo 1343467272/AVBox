@@ -51,6 +51,7 @@ import com.github.tvbox.osc.util.HistoryHelper
 import com.github.tvbox.osc.util.KV
 import com.github.tvbox.osc.util.SearchSettings
 import kotlinx.coroutines.delay
+import com.github.tvbox.osc.ui.page.jumpToSearch
 
 @Composable
 fun SearchScreen(vm: SearchViewModel = viewModel()) {
@@ -186,7 +187,8 @@ fun SearchScreen(vm: SearchViewModel = viewModel()) {
         }
     }
 
-    VodCardMenu(vodMenu)
+    val menuContext = LocalContext.current
+    VodCardMenu(vodMenu) { menuContext.jumpToSearch(it) }
 }
 
 @Composable

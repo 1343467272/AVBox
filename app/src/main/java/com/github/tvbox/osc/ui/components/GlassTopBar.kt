@@ -40,7 +40,6 @@ internal val LocalTopBarGlassBackdrop = compositionLocalOf<LayerBackdrop?> { nul
 
 internal val LocalGlassPauseRecording = compositionLocalOf { { false } }
 
-internal const val GLASS_BACKDROP_BAND_MARGIN_DP = 64
 
 /** 方向性高光(亮上缘 / 暗下缘):库的 Ambient 样式配正上方光源,是立体感的主来源 */
 internal val GlassHighlight: Highlight = Highlight.Ambient.copy(

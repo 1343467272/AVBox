@@ -1,7 +1,7 @@
 package com.github.tvbox.osc.ui.navbar
 
 import com.github.tvbox.osc.ui.WindowWidthClass
-import com.github.tvbox.osc.ui.components.GLASS_BACKDROP_BAND_MARGIN_DP
+import com.github.tvbox.osc.ui.theme.GLASS_BACKDROP_BAND_MARGIN_DP
 
 /**
  * 导航壳的几何常量与判据(纯函数,见 spec §4.11)。

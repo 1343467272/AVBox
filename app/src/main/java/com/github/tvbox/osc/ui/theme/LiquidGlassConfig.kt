@@ -1,5 +1,8 @@
 package com.github.tvbox.osc.ui.theme
 
+// 顶栏玻璃背景带的高出量(dp):顶栏与"玻璃带"之间的额外边距,导航栏度量也要用同一值
+const val GLASS_BACKDROP_BAND_MARGIN_DP = 64
+
 // 折射衰减深度/位移量:1.0 = 铺满整个控件(只剩"整体糊"),越小越集中在边缘窄带 ⇒ 透镜环越清晰
 const val REFRACTION_DEPTH_RATIO = 0.4f
 

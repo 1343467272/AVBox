@@ -100,6 +100,8 @@ import com.github.tvbox.osc.ui.theme.cardContainer
 import com.github.tvbox.osc.util.HomeSettings
 import com.github.tvbox.osc.util.SiteSearch
 import com.kyant.capsule.ContinuousCapsule
+import com.github.tvbox.osc.ui.page.jumpToSearch
+import com.github.tvbox.osc.ui.activity.SearchViewModel
 
 private val HomeSourceCapsuleMaxWidth = 240.dp
 
@@ -457,10 +459,14 @@ fun HomePage(vm: HomeViewModel, contentPadding: PaddingValues = PaddingValues(0.
     }
 
     if (showSearchSettings) {
-        SearchSettingsSheet(onDismiss = { showSearchSettings = false })
+        SearchSettingsSheet(
+            onDismiss = { showSearchSettings = false },
+            onSelectionChanged = { SearchViewModel.loadCheckedSources() },
+        )
     }
 
-    VodCardMenu(vodMenu)
+    val menuContext = LocalContext.current
+    VodCardMenu(vodMenu) { menuContext.jumpToSearch(it) }
 }
 
 @Composable

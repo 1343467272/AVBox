@@ -1,5 +1,7 @@
 package com.github.tvbox.osc.ui.components
 
+import com.github.tvbox.osc.ui.theme.GLASS_BACKDROP_BAND_MARGIN_DP
+
 import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background

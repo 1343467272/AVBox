@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -43,10 +44,12 @@ import com.github.tvbox.osc.ui.components.LoadStateBox
 import com.github.tvbox.osc.ui.components.VodCardMenu
 import com.github.tvbox.osc.ui.components.rememberVodCardMenuState
 import kotlinx.coroutines.delay
+import com.github.tvbox.osc.ui.page.jumpToSearch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailScreen(activity: DetailActivity, vm: DetailViewModel) {
+    val menuContext = LocalContext.current
     val pageState by vm.pageState.collectAsState()
     val full by vm.fullScreen.collectAsState()
     val rotating by vm.rotating.collectAsState()
@@ -189,5 +192,5 @@ fun DetailScreen(activity: DetailActivity, vm: DetailViewModel) {
     // 侧滑只在"横屏全屏"这一种形态:大屏设备点全屏时系统可能不旋转(忽略应用的方向限制),
     // 那时窗口仍是竖屏,面板必须保持贴底
     EpisodeSheet(vm, revision, slideFromEnd = fullBox && isLandscapeNow)
-    VodCardMenu(vodMenu)
+    VodCardMenu(vodMenu) { menuContext.jumpToSearch(it) }
 }

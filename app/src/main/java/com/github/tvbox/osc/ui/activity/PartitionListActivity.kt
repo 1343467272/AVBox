@@ -65,6 +65,7 @@ import com.github.tvbox.osc.ui.theme.AVBoxTheme
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.first
+import com.github.tvbox.osc.ui.page.jumpToSearch
 
 class PartitionListActivity : BaseActivity() {
 
@@ -226,7 +227,8 @@ private fun PartitionListScreen(mode: String, title: String, sortJson: String?, 
         }
     }
 
-    VodCardMenu(vodMenu)
+    val menuContext = LocalContext.current
+    VodCardMenu(vodMenu) { menuContext.jumpToSearch(it) }
 
     if (filterOpen) {
         vm.sort?.let { sort ->

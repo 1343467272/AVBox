@@ -14,7 +14,6 @@ import com.github.tvbox.osc.bean.Movie
 import com.github.tvbox.osc.bean.VodInfo
 import com.github.tvbox.osc.data.RoomDataManger
 import com.github.tvbox.osc.event.RefreshEvent
-import com.github.tvbox.osc.ui.page.jumpToSearch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -43,7 +42,7 @@ fun rememberVodCardMenuState(): VodCardMenuState {
 }
 
 @Composable
-fun VodCardMenu(state: VodCardMenuState) {
+fun VodCardMenu(state: VodCardMenuState, onSearchSimilar: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     state.menu?.let { (video, collected) ->
@@ -70,7 +69,7 @@ fun VodCardMenu(state: VodCardMenuState) {
                         RoomDataManger.deleteVodCollect(video.sourceKey, toVodInfo(video))
                         EventBus.getDefault().post(RefreshEvent(RefreshEvent.TYPE_COLLECT_REFRESH))
                     }
-                    searchSimilarLabel -> context.jumpToSearch(video.name ?: "")
+                    searchSimilarLabel -> onSearchSimilar(video.name ?: "")
                 }
             },
         )

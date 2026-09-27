@@ -3420,3 +3420,24 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **踩坑(两处,都会静默出错)**:① 用脚本按「区域」搬迁时,必须先切片、后改可见性 —— 我曾把**改过的切片**再拿去 `str.replace` 删原文,替换静默失败(Python `replace` 不报错),结果门面里同时留下定义与 `owner.` 前缀调用;② 切片结束标记必须在全库查重 —— `checkThunder` 的委托恰好横跨两个切片边界,被带进 `SourceResultParser` 变成死代码,靠额外的「成员清点」才发现。结论:行替换必须带 `count` 断言,替换后必须做「编译 + public 行集 + 方法存在性」三重核对。
 
 **未做/待真机走查**:计划 §8 的阶段 5 判据 —— t4 源首页/详情/起播不卡;换源后 `sortCache` 清理仍生效(加锁改动只有互斥语义,无行为变化);推送链接与磁力(迅雷)两条特殊详情路径不回归。
+
+## 包级解环:阶段 6「依赖方向专项」(2026-09-28,按 `skill/review/refactor-plan-20260928.md`)
+
+**结果**:包级双向依赖 **25 组 → 17 组**(edges 226 → 215),5 个子步落地、1 个子步经实测驳回;5 个本地 commit(未推远程)。
+
+| 子步 | commit | 做法 | 环数 |
+| --- | --- | --- | --- |
+| 6.1 | `e624522` | `ui.player.PreloadCoordinator` 整体搬进 `player` —— 它不是页面资源(由引擎创建、随引擎存活、除所在包外零 UI 依赖),比新造接口更少绕路;`PlaybackController` 的 `PlayerTipBridge.setTip("",true,false)` 改用视图桥 `view.showTip(...)`(页面/音乐页初始化本来就先 `hide()`,旧态不会漏给下一页);`PlaybackEngine` 里 `PlayContainer` 只作 javadoc 引用,`@link` 降 `@code` | 25 → 24 |
+| 6.2 | `457ce63` | `SubtitleFilePicker`、`RemoteTVBox` 移出 `player` 家族 → `util`;连带 `EpisodeMatcher` 一起下沉并转 public(`SubtitleFilePicker` 依赖它,而它是包级私有 —— 与其为一次跨包调用扩大 `player` 的公开面,不如把纯算法放进 util,与既有的 `EpisodeTotals` 同族) | 24 → 23 |
+| 6.3 | — | **驳回**(见下) | — |
+| 6.4 | `b79faea` | 实体 + DAO + `AppDataBase` 归包:`cache` 整包并入 `data`。只挪实体不够 —— `CacheManager`/`RoomDataManger` 与 `AppDataManager` 互相引用,拆开放在两个包环仍在 | 23 → 22 |
+| 6.5 | `ccfa18b` | 新增 `util.AppContextHolder`(零依赖,`App.onCreate` 最早处注入),util/data/server/catvod 的**纯 Context 用法**统一改走它(16 文件 43 处);`SpiderApi` 需要"当前 Activity"时改走既有的 `util.AppManager` | 22 → 20 |
+| 6.6 | `4aa5120` | 落实「`ui.components` 不得引用 activity/page/navbar」:搜索设置面板 → `onSelectionChanged` 回调、卡片菜单 → `onSearchSimilar` 回调、`GLASS_BACKDROP_BAND_MARGIN_DP` 下沉到 `ui.theme`(components 与 navbar 都要用,放哪一侧都成环) | 20 → 17 |
+
+**6.3「util 拆 core/integration」驳回依据(实测而非推测)**:先写模拟器直接重算 —— 按「有无向上依赖」把 util 根下 55 个文件拆成 `util.core`(30)/`util.integration`(25,且 core 对 integration 零出边)后,**环数 23 → 23 不降**,edges 222 → 247,需改写 **361 行 import**。原因结构性:搬包只是让节点改名(`X ⇄ util` → `X ⇄ util.integration`),不切断任何双向边;真消环必须让那 25 个胶水文件不再向上 import(`DefaultConfig`→`ApiConfig`、`PlayerHelper`→`player.*`、`HistoryWriter`→`RoomDataManger`…),那是构造器注入/接口化的活。另外计划里「`util.core`(零反向依赖:LOG/MD5/文本)」的前提在本库不成立 —— **`LOG` 自身就 import `base.App`,`MD5` 同**;真正零出边的 30 个文件多为冷门工具。故按「不为达标硬拆」跳过,把力气放到 6.5 的 `AppContextHolder`(util→base 的 10 条边降到 2 条)。
+
+**剩余 17 组环逐条可解释**:util 枢纽 9 组(已证包移动无解,需逐类反转向上 import)、父子里程/同族 4 组(`crawler ⇄ crawler.js`、`subtitle.format ⇄ model`、`util ⇄ util.kv`、`util ⇄ util.parser`,按附录 B 保留)、`crawler ⇄ util` 1 组(唯一来源 `util/Proxy` 走爬虫调试通道 `SpiderDebug`,而它是爬虫 jar 公开面不能挪)、`base ⇄ server`+`base ⇄ util` 2 组(`App.vodInfo`/`getDashData()` 这条隐式通道,已注明归 `avbox-playback-service-spec.md` 收口)、`api ⇄ server` 1 组(各 1 处互引,需按能力拆分)。**计划设的「≤6」不可达**:那需要 9 组 util 枢纽全部反转,属 §6 替代方案(构造注入 + 接口化)的独立工程。
+
+**验证**:每笔落地跑 `assembleDebug` + `testDebugUnitTest`(**45 类 / 367 用例 / 0 失败**);环数用自写脚本在每笔前后各测一次,并用 `git worktree add` 取上一个 commit 的全量快照做「消失/新增环」集合差(6.1 的差集 = 仅 `osc.player ⇄ osc.ui.player` 消失、0 新增)。**改包前按硬约束做了全库类名检索**:`RemoteTVBox`/`SubtitleFilePicker`/`EpisodeMatcher`/`PreloadCoordinator`/Room 实体在 xml/manifest/proguard/字符串字面量里均无引用(命中的只有 `app/build/` 产物),故无反射与 jar 契约破坏;`SpiderDebug` 因属爬虫 jar 公开面而**未**移动。
+
+**踩坑**:① `git mv` 的目标目录必须先存在,否则报的是"源文件不存在"(误导);② Kotlin 的 `LocalContext.current` 不能在非 composable 的 lambda 里读,回调化时必须在 composable 体内先捕获(`DetailScreen` 一度出现同作用域重复声明);③ 编辑脚本按"区域"切 Kt/Java 时,断言 `count` 是唯一可靠的护栏 —— 本轮脚本三次因断言失败而中止,每次都保住了工作区不被写坏(但也意味着**中止前的写入已生效**,需要按幂等方式重跑)。

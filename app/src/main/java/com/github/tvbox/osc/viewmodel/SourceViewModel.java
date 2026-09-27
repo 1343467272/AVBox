@@ -288,7 +288,7 @@ public class SourceViewModel extends ViewModel {
 //                            LOG.i("echo--getSort :" + json);
                             return json;
                         }
-                    }, 30_000L, "echo--getSort--" + sourceBean.getKey());
+                    }, sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getSort--" + sourceBean.getKey());
                     if (sortJson != null) {
                         final AbsSortXml sortXml = sortJson(sortResult, sortJson);
                         attachSortSource(sourceKey, sortXml);
@@ -373,7 +373,7 @@ public class SourceViewModel extends ViewModel {
                     });
         }else if (type == 4) {
             String extend=sourceBean.getExt();
-            extend=getFixUrl(extend);
+            extend=getFixUrl(extend, sourceBean.getPlayTimeoutSeconds());
             if(URLEncoder.encode(extend).length()<1000){
                 GetRequest<String> request = siteGet(sourceBean)
                         .tag(sourceBean.getKey() + "_sort")
@@ -546,7 +546,7 @@ public class SourceViewModel extends ViewModel {
         }else if (type == 4) {
             String ext= "";
             String extend=homeSourceBean.getExt();
-            extend=getFixUrl(extend);
+            extend=getFixUrl(extend, homeSourceBean.getPlayTimeoutSeconds());
             if (sortData.filterSelect != null && sortData.filterSelect.size() > 0) {
                 try {
                     String selectExt = new JSONObject(sortData.filterSelect).toString();
@@ -621,7 +621,7 @@ public class SourceViewModel extends ViewModel {
 //                            LOG.i("echo--getHomeRecList :" + json);
                             return json;
                         }
-                    }, 20_000L, "echo--getHomeRecList--" + sourceBean.getKey());
+                    }, sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getHomeRecList--" + sourceBean.getKey());
                     if (sortJson != null) {
                         AbsXml absXml = json(null, sortJson, sourceBean.getKey());
                         if (absXml != null && absXml.movie != null && absXml.movie.videoList != null) {
@@ -746,14 +746,14 @@ public class SourceViewModel extends ViewModel {
                                 return "";
                             }
                         }
-                    }, fallback ? 6_000L : 30_000L, "echo--getDetail--" + sourceBean.getKey());
+                    }, fallback ? 6_000L : sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getDetail--" + sourceBean.getKey());
 //                    LOG.i("echo--getDetail--result:" + json);
                     json(detailResult, json, sourceBean.getKey());
                 }
             });
         } else if (type == 0 || type == 1|| type == 4) {
             String extend=sourceBean.getExt();
-            extend=fallback ? getFixUrl(extend, 6) : getFixUrl(extend);
+            extend=fallback ? getFixUrl(extend, 6) : getFixUrl(extend, sourceBean.getPlayTimeoutSeconds());
 
             GetRequest<String> request = siteGet(sourceBean)
                     .tag("detail")
@@ -1057,7 +1057,7 @@ public class SourceViewModel extends ViewModel {
             }
         } else if (type == 4) {
             String extend=sourceBean.getExt();
-            extend=getFixUrl(extend);
+            extend=getFixUrl(extend, sourceBean.getPlayTimeoutSeconds());
 
             GetRequest<String> request = siteGet(sourceBean)
                     .tag(requestTag)
@@ -1345,10 +1345,6 @@ public class SourceViewModel extends ViewModel {
     }
 
     private static final ConcurrentHashMap<String, String> extendCache = new ConcurrentHashMap<>();
-
-    private String getFixUrl(final String extend) {
-        return getFixUrl(extend, 20);
-    }
 
     private String getFixUrl(final String extend, final long timeoutSeconds) {
         if (TextUtils.isEmpty(extend)) return "";

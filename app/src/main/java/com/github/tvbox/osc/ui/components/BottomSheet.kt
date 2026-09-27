@@ -54,6 +54,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -296,14 +297,11 @@ private fun SheetOverlay(
 ) {
     val scope = rememberCoroutineScope()
     val collapse = remember { Animatable(1f) }
-    var panelHeightPx by remember { mutableIntStateOf(0) }
-    var panelWidthPx by remember { mutableIntStateOf(0) }
     var entered by remember { mutableStateOf(false) }
     var dismissing by remember { mutableStateOf(false) }
     // 走"点遮罩/返回键"这条路径时:退场动画跑完才会调 onDismissRequest。记一个标志,好在组合中途被销毁时补调用。
     var plainDismissPending by remember { mutableStateOf(false) }
     val centered = variant == SheetVariant.CENTER
-    val fromEnd = variant == SheetVariant.END
     val durationMs = if (centered) DIALOG_FADE_DURATION_MS else SHEET_SLIDE_DURATION_MS
 
     val keyboard = LocalSoftwareKeyboardController.current
@@ -364,6 +362,46 @@ private fun SheetOverlay(
         BottomSheetDefaults.ScrimColor
     }
 
+    SheetSurface(
+        collapse = collapse,
+        scrimColor = scrimColor,
+        entered = entered,
+        variant = variant,
+        durationMs = durationMs,
+        scope = scope,
+        dismiss = { dismissWithAnimation() },
+        dismissThen = { action -> dismissWithAnimation(action) },
+        modifier = modifier,
+        title = title,
+        containerColor = containerColor,
+        isScrollable = isScrollable,
+        headerContent = headerContent,
+        content = content,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SheetSurface(
+    collapse: Animatable<Float, AnimationVector1D>,
+    scrimColor: Color,
+    entered: Boolean,
+    variant: SheetVariant,
+    durationMs: Int,
+    scope: CoroutineScope,
+    dismiss: () -> Unit,
+    dismissThen: (action: () -> Unit) -> Unit,
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    containerColor: Color? = null,
+    isScrollable: Boolean = true,
+    headerContent: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val centered = variant == SheetVariant.CENTER
+    val fromEnd = variant == SheetVariant.END
+    var panelHeightPx by remember { mutableIntStateOf(0) }
+    var panelWidthPx by remember { mutableIntStateOf(0) }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val panelMaxHeight = maxHeight * SheetMaxHeightFraction
         val panelMaxWidth = minOf(SheetMaxWidth, maxWidth * SHEET_END_WIDTH_FRACTION)
@@ -390,7 +428,7 @@ private fun SheetOverlay(
                     enabled = entered,
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = { dismissWithAnimation() },
+                    onClick = { dismiss() },
                 ),
         )
         // 遮罩恒满屏;键盘让位改挂在面板内容上(见下方 Column)⇒ 面板底边恒贴屏底,收起时不会露出下方页面
@@ -451,8 +489,8 @@ private fun SheetOverlay(
                 color = containerColor ?: BottomSheetDefaults.ContainerColor,
             ) {
                 CompositionLocalProvider(
-                    LocalSheetDismiss provides { dismissWithAnimation() },
-                    LocalSheetDismissThen provides { action -> dismissWithAnimation(action) },
+                    LocalSheetDismiss provides { dismiss() },
+                    LocalSheetDismissThen provides { action -> dismissThen(action) },
                 ) {
                     // 贴底弹层:键盘高度留在面板内部,面板底边不动 ⇒ 收起键盘时不会在底部漏出下方页面
                     // (侧滑面板高度贴满屏幕且无输入场景,不吃键盘 inset)
@@ -474,7 +512,7 @@ private fun SheetOverlay(
                                         val dismiss = collapse.value > SHEET_DRAG_DISMISS_FRACTION ||
                                                 velocity > SHEET_DRAG_DISMISS_VELOCITY
                                         if (dismiss) {
-                                            dismissWithAnimation()
+                                            dismiss()
                                         } else {
                                             scope.launch { collapse.animateTo(0f, tween(durationMs)) }
                                         }
@@ -519,6 +557,7 @@ private fun SheetOverlay(
         }
     }
 }
+
 
 @Composable
 private fun sheetDragState(

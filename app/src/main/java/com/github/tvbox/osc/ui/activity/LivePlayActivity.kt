@@ -4,7 +4,6 @@ package com.github.tvbox.osc.ui.activity
 
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
@@ -37,7 +36,6 @@ import com.github.tvbox.osc.ui.theme.AppThemeState
 import com.github.tvbox.osc.util.DefaultConfig
 import com.github.tvbox.osc.util.HawkConfig
 import com.github.tvbox.osc.util.LOG
-import com.github.tvbox.osc.util.PlayerHelper
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.github.tvbox.osc.util.KV
@@ -46,10 +44,8 @@ import xyz.doikki.videoplayer.player.VideoView
 import xyz.doikki.videoplayer.util.PlayerUtils
 import java.text.SimpleDateFormat
 import java.util.ArrayList
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import java.util.TimeZone
 import java.util.regex.Pattern
 import kotlin.properties.ReadOnlyProperty
 import kotlin.properties.ReadWriteProperty
@@ -69,10 +65,6 @@ class LivePlayActivity : BaseActivity() {
     companion object {
         private const val TAG = "LivePlayActivity"
         private const val SYSBAR_APPEARANCE_REASSERT_DELAY_MS = 400L
-        private const val RESOLUTION_INFO_MAX_RETRY = 10
-        private const val RESOLUTION_INFO_RETRY_DELAY = 300L
-        private const val RESOLUTION_INFO_HIDE_DELAY = 3000L
-        private const val OVERLAY_HIDE_DELAY = 6000L
         private const val CONNECT_TIMEOUT_SWITCH_DELAY = 3500L
         private val FORMAT_DATE1 = SimpleDateFormat("MM-dd", Locale.getDefault())
     }
@@ -140,19 +132,17 @@ class LivePlayActivity : BaseActivity() {
     internal var epgdata = ArrayList<Epginfo>()
     private var catchup: JsonObject? = null
     private var logoUrl: String? = null
-    private var isSHIYI = false
+    internal var isSHIYI = false
     private var playUrl: String? = null
     private var shiyiTimeC = 0
     private var selectedChannelGroupIndex = 0
-    private var resolutionInfoRetryCount = 0
-    private var resolutionInfoPending = false
     private var exitingLivePlay = false
     private var loadingLiveConfigOnEnter = false
     private var liveSettingGroupList: List<LiveSettingGroup> = ArrayList()
     private var nowday = Date()
 
     /** EPG 取数与缓存;列表状态仍由本 Activity 持有,控制器只回调通知 */
-    private val epgController = LiveEpgController(object : LiveEpgController.Host {
+    internal val epgController = LiveEpgController(object : LiveEpgController.Host {
         override fun currentChannel(): LiveChannelItem? = channelName
 
         override fun currentChannelHasLogo(): Boolean = !logoUrl.isNullOrEmpty()
@@ -163,9 +153,11 @@ class LivePlayActivity : BaseActivity() {
         }
 
         override fun onEpgSettled() {
-            updateChannelInfoUi()
+            overlay.updateChannelInfoUi()
         }
     })
+
+    private val overlay = LiveOverlayController(this, mHandler)
 
     /** 代理直播源加载 */
     private val proxyLoader = LiveProxyLoader(object : LiveProxyLoader.Host {
@@ -246,7 +238,7 @@ class LivePlayActivity : BaseActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        hideSwitchChannelSnapshot()
+        overlay.hideSwitchChannelSnapshot()
         PlaybackService.peek()?.exitLive()
         mVideoView = null
         mHandler.removeCallbacksAndMessages(null)
@@ -281,13 +273,13 @@ class LivePlayActivity : BaseActivity() {
         isSHIYI = false
         isBackState = false
         overlayVisible = false
-        stopTimeshiftTicker()
-        hideSwitchChannelSnapshot()
+        overlay.stopTimeshiftTicker()
+        overlay.hideSwitchChannelSnapshot()
         // 与 playChannel 同款对齐(2026-09-17):接管路径可能紧跟在点播会话之后,别让 rtmp 频道用残留值
         videoView.setEffectiveIjkCodec(livePlayerManager.effectiveIjkCodecName())
         videoView.setUrl(item.url, liveChannelHeader())
         videoView.start()
-        showResolutionAfterChannelSwitch()
+        overlay.showResolutionAfterChannelSwitch()
         loadEpgAfterChannelStarted()
         epgVersion++
     }
@@ -302,7 +294,7 @@ class LivePlayActivity : BaseActivity() {
         override fun onSingleTap(): Boolean {
             if (fullScreen) {
                 overlayVisible = !overlayVisible
-                if (overlayVisible) scheduleOverlayHide()
+                if (overlayVisible) overlay.scheduleOverlayHide()
             } else {
                 applyFullscreen(true)
             }
@@ -312,7 +304,7 @@ class LivePlayActivity : BaseActivity() {
         override fun onLongPress() {
             if (isBackState) {
                 overlayVisible = true
-                scheduleOverlayHide()
+                overlay.scheduleOverlayHide()
             } else {
                 openSettingsSheet()
             }
@@ -328,10 +320,7 @@ class LivePlayActivity : BaseActivity() {
         }
 
         override fun onGesturePercent(isBrightness: Boolean, percent: Int) {
-            val label = getString(if (isBrightness) R.string.live_brightness else R.string.live_volume)
-            gestureHintText = getString(R.string.live_gesture_hint, label, percent)
-            mHandler.removeCallbacks(mHideGestureHintRun)
-            mHandler.postDelayed(mHideGestureHintRun, 1000)
+            overlay.showGestureHint(isBrightness, percent)
         }
     }
 
@@ -340,17 +329,12 @@ class LivePlayActivity : BaseActivity() {
         when (state) {
             VideoView.STATE_IDLE, VideoView.STATE_PAUSED -> {}
             VideoView.STATE_PREPARED, VideoView.STATE_BUFFERED, VideoView.STATE_PLAYING -> {
-                hideSwitchChannelSnapshot()
-                if (resolutionInfoPending) {
-                    resolutionInfoRetryCount = 0
-                    mHandler.removeCallbacks(mUpdateResolutionInfoRun)
-                    mHandler.post(mUpdateResolutionInfoRun)
-                }
+                overlay.onPlaybackStarted()
                 currentLiveChangeSourceTimes = 0
                 allowLiveSwitchPlayer = true
             }
             VideoView.STATE_ERROR, VideoView.STATE_PLAYBACK_COMPLETED -> {
-                hideSwitchChannelSnapshot()
+                overlay.hideSwitchChannelSnapshot()
                 mHandler.postDelayed(mConnectTimeoutChangeSourceRun, CONNECT_TIMEOUT_SWITCH_DELAY)
             }
             VideoView.STATE_PREPARING, VideoView.STATE_BUFFERING -> {
@@ -375,7 +359,7 @@ class LivePlayActivity : BaseActivity() {
         }
         if (full) {
             overlayVisible = true
-            scheduleOverlayHide()
+            overlay.scheduleOverlayHide()
             super.hideSysBar()
         } else {
             overlayVisible = false
@@ -433,10 +417,10 @@ class LivePlayActivity : BaseActivity() {
         isSHIYI = false
         isBackState = false
         overlayVisible = false
-        stopTimeshiftTicker()
+        overlay.stopTimeshiftTicker()
         val item = currentLiveChannelItem ?: return false
         item.include_back = canCurrentChannelCatchup()
-        updateChannelInfoUi()
+        overlay.updateChannelInfoUi()
         val videoView = mVideoView
         if (videoView != null) {
             // 有效 IJK 解码值对齐(2026-09-17):点播由 PlayerHelper.updateCfg 在每次起播前下发,直播切台不走它 ——
@@ -448,9 +432,9 @@ class LivePlayActivity : BaseActivity() {
             val reusePlayer = !rebuildKernel && canReusePlayer(previousLivePlayerType)
             val keepExoFrame = reusePlayer && previousLivePlayerType == 2
             if (showPreviousFrame && !keepExoFrame) {
-                showSwitchChannelSnapshot()
+                overlay.showSwitchChannelSnapshot()
             } else {
-                hideSwitchChannelSnapshot()
+                overlay.hideSwitchChannelSnapshot()
             }
             val liveUrl = item.url
             if (reusePlayer) {
@@ -461,7 +445,7 @@ class LivePlayActivity : BaseActivity() {
                 videoView.setUrl(liveUrl, liveChannelHeader())
                 videoView.start()
             }
-            showResolutionAfterChannelSwitch()
+            overlay.showResolutionAfterChannelSwitch()
         }
         loadEpgAfterChannelStarted()
         epgVersion++
@@ -726,8 +710,8 @@ class LivePlayActivity : BaseActivity() {
         }
 
         mVideoView?.let { livePlayerManager.init(it) }
-        showTime()
-        showNetSpeed()
+        overlay.showTime()
+        overlay.showNetSpeed()
         currentLiveChannelIndex = -1
         expandedGroups.clear()
         channelVersion++
@@ -744,7 +728,7 @@ class LivePlayActivity : BaseActivity() {
         channelGroupPasswordConfirmed.clear()
         mHandler.removeCallbacks(mConnectTimeoutChangeSourceRun)
         epgController.cancelPending()
-        hideSwitchChannelSnapshot()
+        overlay.hideSwitchChannelSnapshot()
         expandedGroups.clear()
         isBackState = false
         overlayVisible = false
@@ -766,7 +750,7 @@ class LivePlayActivity : BaseActivity() {
         ApiConfig.get().channelGroupList.clear()
         mHandler.removeCallbacks(mConnectTimeoutChangeSourceRun)
         epgController.cancelPending()
-        hideSwitchChannelSnapshot()
+        overlay.hideSwitchChannelSnapshot()
         if (releasePlayer) releasePlayerKernel()
         expandedGroups.clear()
         selectedChannelGroupIndex = 0
@@ -891,11 +875,11 @@ class LivePlayActivity : BaseActivity() {
         }
 
         override fun refreshTimeOverlay() {
-            showTime()
+            overlay.showTime()
         }
 
         override fun refreshNetSpeedOverlay() {
-            showNetSpeed()
+            overlay.showNetSpeed()
         }
 
         override fun refreshChannelListAndPlay(channelName: String?, sourceIndex: Int) {
@@ -1003,17 +987,17 @@ class LivePlayActivity : BaseActivity() {
         shiyiTimeC = LiveEpgParser.getCatchupDurationSeconds(epg)
         tsDuration = PlayerUtils.safeTimeMs(shiyiTimeC.toLong() * 1000)
         tsPosition = PlayerUtils.safeTimeMs(videoView.currentPosition)
-        startTimeshiftTicker()
+        overlay.startTimeshiftTicker()
         isBackState = true
         overlayVisible = true
-        scheduleOverlayHide()
+        overlay.scheduleOverlayHide()
         epgVersion++
     }
 
     private fun backToLiveFromEpg() {
         val item = currentLiveChannelItem ?: return
         val videoView = mVideoView ?: return
-        stopTimeshiftTicker()
+        overlay.stopTimeshiftTicker()
         releasePlayerKernel()
         isSHIYI = false
         isBackState = false
@@ -1023,202 +1007,12 @@ class LivePlayActivity : BaseActivity() {
         epgVersion++
     }
 
-    private val mHideOverlayRun = Runnable { overlayVisible = false }
-
-    private fun scheduleOverlayHide() {
-        mHandler.removeCallbacks(mHideOverlayRun)
-        mHandler.postDelayed(mHideOverlayRun, OVERLAY_HIDE_DELAY)
-    }
-
-    private val mUpdateTimeshiftRun = object : Runnable {
-        override fun run() {
-            val videoView = mVideoView ?: return
-            if (!isSHIYI) return
-            tsPosition = PlayerUtils.safeTimeMs(videoView.currentPosition)
-            mHandler.postDelayed(this, 1000)
-        }
-    }
-
-    private fun startTimeshiftTicker() {
-        mHandler.removeCallbacks(mUpdateTimeshiftRun)
-        mHandler.postDelayed(mUpdateTimeshiftRun, 1000)
-    }
-
-    private fun stopTimeshiftTicker() {
-        mHandler.removeCallbacks(mUpdateTimeshiftRun)
-    }
-
     fun onTimeshiftSeek(progress: Float) {
-        val videoView = mVideoView ?: return
-        val target = progress.toInt().coerceIn(0, tsDuration.coerceAtLeast(1))
-        videoView.seekTo(target.toLong())
-        tsPosition = target
-        scheduleOverlayHide()
+        overlay.onTimeshiftSeek(progress)
     }
 
     fun onTimeshiftTogglePlay() {
-        val videoView = mVideoView ?: return
-        if (videoView.isPlaying) videoView.pause() else videoView.start()
-        scheduleOverlayHide()
-    }
-
-    private fun showSwitchChannelSnapshot() {
-        var bitmap: Bitmap? = null
-        try {
-            bitmap = mVideoView?.doScreenShot()
-        } catch (ignored: Throwable) {
-            LOG.d("LivePlayActivity", "doScreenShot failed, switch-channel snapshot skipped")
-        }
-        snapshotBitmap = bitmap
-        snapshotVisible = true
-    }
-
-    private fun hideSwitchChannelSnapshot() {
-        snapshotVisible = false
-        snapshotBitmap = null
-    }
-
-    private fun showResolutionAfterChannelSwitch() {
-        resolutionInfoPending = true
-        resolutionInfoRetryCount = 0
-        resolutionText = ""
-        resolutionVisible = false
-        mHandler.removeCallbacks(mHideResolutionInfoRun)
-        mHandler.removeCallbacks(mUpdateResolutionInfoRun)
-        mHandler.postDelayed(mUpdateResolutionInfoRun, RESOLUTION_INFO_RETRY_DELAY)
-    }
-
-    private val mHideResolutionInfoRun = Runnable {
-        resolutionVisible = false
-    }
-
-    private val mUpdateResolutionInfoRun = Runnable {
-        val videoView = mVideoView ?: return@Runnable
-        if (videoView.currentPlayState != VideoView.STATE_PREPARED &&
-            videoView.currentPlayState != VideoView.STATE_BUFFERED &&
-            videoView.currentPlayState != VideoView.STATE_PLAYING
-        ) {
-            retryOrHideResolutionInfo()
-            return@Runnable
-        }
-        val videoSize = videoView.videoSize
-        if (videoSize != null && videoSize.size >= 2 && videoSize[0] > 0 && videoSize[1] > 0) {
-            resolutionInfoPending = false
-            resolutionText = videoSize[0].toString() + " x " + videoSize[1]
-            resolutionVisible = true
-            mHandler.removeCallbacks(mHideResolutionInfoRun)
-            mHandler.postDelayed(mHideResolutionInfoRun, RESOLUTION_INFO_HIDE_DELAY)
-            return@Runnable
-        }
-        retryOrHideResolutionInfo()
-    }
-
-    private fun retryOrHideResolutionInfo() {
-        if (resolutionInfoPending && resolutionInfoRetryCount++ < RESOLUTION_INFO_MAX_RETRY) {
-            mHandler.postDelayed(mUpdateResolutionInfoRun, RESOLUTION_INFO_RETRY_DELAY)
-        } else {
-            resolutionVisible = false
-        }
-    }
-
-    private fun showTime() {
-        showTimeOn = KV.get(HawkConfig.LIVE_SHOW_TIME, false)
-        mHandler.removeCallbacks(mUpdateTimeRun)
-        if (showTimeOn) mHandler.post(mUpdateTimeRun)
-    }
-
-    private val mUpdateTimeRun = object : Runnable {
-        override fun run() {
-            timeText = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-            mHandler.postDelayed(this, 1000)
-        }
-    }
-
-    private fun showNetSpeed() {
-        showNetSpeedOn = KV.get(HawkConfig.LIVE_SHOW_NET_SPEED, false)
-        mHandler.removeCallbacks(mUpdateNetSpeedRun)
-        if (showNetSpeedOn) mHandler.post(mUpdateNetSpeedRun)
-    }
-
-    private val mUpdateNetSpeedRun = object : Runnable {
-        override fun run() {
-            val videoView = mVideoView ?: return
-            netSpeedText = PlayerHelper.getDisplaySpeed(videoView.tcpSpeed, true)
-            mHandler.postDelayed(this, 1000)
-        }
-    }
-
-    private val mHideGestureHintRun = Runnable { gestureHintText = null }
-
-    private fun updateChannelInfoUi() {
-        if (isSHIYI) return
-        val channel = channelName ?: return
-        val name = channel.channelName ?: return
-        var ui = ChannelInfoUi(name = name, num = channel.channelNum)
-        ui = if (channel.sourceNum <= 0) {
-            ui.copy(sourceText = "1/1")
-        } else {
-            ui.copy(sourceText = getString(R.string.live_line_index, channel.sourceIndex + 1, channel.sourceNum))
-        }
-        var current = ""
-        var currentTitle = ""
-        var next = ""
-        var nextTitle = ""
-        val arrayList = epgController.cachedEpg(name)
-        if (arrayList != null && arrayList.isNotEmpty()) {
-            epgdata = arrayList
-        } else {
-            epgdata = ArrayList()
-        }
-        val timeZone = TimeZone.getTimeZone("GMT+8:00")
-        val currentStart = Calendar.getInstance(timeZone)
-        currentStart.set(Calendar.MINUTE, 0)
-        currentStart.set(Calendar.SECOND, 0)
-        currentStart.set(Calendar.MILLISECOND, 0)
-        val currentEnd = (currentStart.clone() as Calendar).apply { add(Calendar.MINUTE, 59) }
-        val nextStart = (currentEnd.clone() as Calendar).apply { add(Calendar.MINUTE, 1) }
-        val nextEnd = (nextStart.clone() as Calendar).apply { add(Calendar.MINUTE, 59) }
-        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-        timeFormat.timeZone = timeZone
-        var hasInfo = false
-        val list = epgdata
-        if (list.isNotEmpty()) {
-            val date = Date()
-            var size = list.size - 1
-            while (size >= 0) {
-                val info = list[size]
-                if (info.startdateTime != null && info.enddateTime != null &&
-                    date.after(info.startdateTime) && date.before(info.enddateTime)
-                ) {
-                    current = info.start + "-" + info.end
-                    currentTitle = info.title
-                    if (size != list.size - 1) {
-                        next = list[size + 1].start + "-" + list[size + 1].end
-                        nextTitle = list[size + 1].title
-                    } else {
-                        next = info.end + "-23:59"
-                        nextTitle = getString(R.string.live_epg_hot_no_info)
-                    }
-                    hasInfo = true
-                    break
-                } else {
-                    size--
-                }
-            }
-        }
-        if (!hasInfo) {
-            current = timeFormat.format(currentStart.time) + "-" + timeFormat.format(currentEnd.time)
-            currentTitle = getString(R.string.live_epg_hot)
-            next = timeFormat.format(nextStart.time) + "-" + timeFormat.format(nextEnd.time)
-            nextTitle = getString(R.string.live_epg_no_info)
-        }
-        channelInfoUi = ui.copy(
-            currentEpgTime = current,
-            currentEpgTitle = currentTitle,
-            nextEpgTime = next,
-            nextEpgTitle = nextTitle,
-        )
-        epgVersion++
+        overlay.onTimeshiftTogglePlay()
     }
 
     private fun currentChannelHasCatchup(): Boolean {

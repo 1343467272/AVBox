@@ -236,6 +236,16 @@ public class SourceViewModel extends ViewModel {
 
     /** withRec=false 跳过首页推荐那一次额外请求(豆瓣类 videolist / spider homeVideoContent),sorts 不必等它 */
     public void getSort(final String sourceKey, final boolean withRec) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            // t4 源要联网拉 extend 才能发 sort 请求,不能占着主线程等它
+            httpPrepareThreadPool.execute(new Runnable() {
+                @Override
+                public void run() {
+                    getSort(sourceKey, withRec);
+                }
+            });
+            return;
+        }
         if (sourceKey == null) {
             sortResult.postValue(new AbsSortXml());
             return;
@@ -477,6 +487,16 @@ public class SourceViewModel extends ViewModel {
     }
     // categoryContent
     public void getList(MovieSort.SortData sortData, int page) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            // 同 getSort:t4 源的 extend 拉取是阻塞动作
+            httpPrepareThreadPool.execute(new Runnable() {
+                @Override
+                public void run() {
+                    getList(sortData, page);
+                }
+            });
+            return;
+        }
         if (sortData == null) {
             LOG.i("echo-getList-sortData-null");
             listResult.postValue(null);
@@ -708,6 +728,18 @@ public class SourceViewModel extends ViewModel {
     }
 
     public void getDetail(String sourceKey, String urlid, boolean fallback) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            // 同 getSort:t0/1/4 的 extend 拉取会阻塞
+            final String key = sourceKey;
+            final String id = urlid;
+            httpPrepareThreadPool.execute(new Runnable() {
+                @Override
+                public void run() {
+                    getDetail(key, id, fallback);
+                }
+            });
+            return;
+        }
         if (urlid.startsWith("push://") && ApiConfig.get().getSource(PUSH_AGENT) != null) {
             String pushUrl = urlid.substring(7);
             if (pushUrl.startsWith("b64:")) {
@@ -982,6 +1014,22 @@ public class SourceViewModel extends ViewModel {
     private void getPlayInternal(AtomicInteger seqHolder, MutableLiveData<JSONObject> resultChannel, String requestTag,
                                  String sourceKey, String playFlag, String progressKey, String url, String subtitleKey) {
         final int requestSeq = seqHolder.incrementAndGet();
+        // 取流准备(t4 拉 extend、爬虫调度)可能长时间阻塞:序号先在调用线程占住,
+        // 保证随后到来的取消/切集能作废这次请求,实际准备挪到后台
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            httpPrepareThreadPool.execute(new Runnable() {
+                @Override
+                public void run() {
+                    getPlayPrepared(seqHolder, resultChannel, requestSeq, requestTag, sourceKey, playFlag, progressKey, url, subtitleKey);
+                }
+            });
+            return;
+        }
+        getPlayPrepared(seqHolder, resultChannel, requestSeq, requestTag, sourceKey, playFlag, progressKey, url, subtitleKey);
+    }
+
+    private void getPlayPrepared(AtomicInteger seqHolder, MutableLiveData<JSONObject> resultChannel, int requestSeq, String requestTag,
+                                 String sourceKey, String playFlag, String progressKey, String url, String subtitleKey) {
         SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
         boolean pushFallback = isPushFallback(sourceKey, sourceBean);
         PushUrl pushUrl = pushFallback ? parsePushUrl(url) : createPushUrl(url);

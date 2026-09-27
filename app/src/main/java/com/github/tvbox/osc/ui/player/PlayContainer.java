@@ -20,9 +20,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 
 import com.github.tvbox.osc.R;
-import com.github.tvbox.osc.api.ApiConfig;
 import android.widget.FrameLayout;
-import com.github.tvbox.osc.bean.ParseBean;
 import com.github.tvbox.osc.bean.VodInfo;
 import com.github.tvbox.osc.cache.CacheManager;
 import com.github.tvbox.osc.dlna.CastVideo;
@@ -42,11 +40,9 @@ import com.github.tvbox.osc.player.TrackInfo;
 import com.github.tvbox.osc.player.TrackInfoBean;
 import com.github.tvbox.osc.player.controller.ComposeVideoController;
 import com.github.tvbox.osc.player.controller.PlayerControlApi;
-import com.github.tvbox.osc.player.controller.VodControlListener;
 import com.github.tvbox.osc.player.danmu.DanmuLoadController;
 import com.github.tvbox.osc.player.state.CastSheetState;
 import com.github.tvbox.osc.player.state.DanmuSearchSheetState;
-import com.github.tvbox.osc.player.state.DanmuSettingSheetState;
 import com.github.tvbox.osc.player.state.PlayerUiState;
 import com.github.tvbox.osc.player.state.SelectDialogState;
 import com.github.tvbox.osc.player.state.SubtitleSearchSheetState;
@@ -54,14 +50,11 @@ import com.github.tvbox.osc.player.state.SubtitleSheetState;
 import me.jessyan.autosize.internal.CustomAdapt;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;
-import com.github.tvbox.osc.util.PermissionHelper;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.MD5;
-import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.SubtitleHelper;
 import com.github.tvbox.osc.util.TrackMemory;
 import com.github.tvbox.osc.util.KV;
-import com.github.tvbox.osc.util.WatchProgressStore;
 import com.github.tvbox.osc.viewmodel.SubtitleViewModel;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.lifecycle.ViewModelStoreOwner;
@@ -71,7 +64,6 @@ import androidx.media3.ui.CaptionStyleCompat;
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
-import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.io.File;
@@ -86,16 +78,15 @@ import tv.danmaku.ijk.media.player.IjkTimedText;
 import xyz.doikki.videoplayer.controller.BaseVideoController;
 import xyz.doikki.videoplayer.player.AbstractPlayer;
 import xyz.doikki.videoplayer.player.VideoView;
-import xyz.doikki.videoplayer.render.TextureRenderViewFactory;
 
 public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackHostApi, PlaybackPage {
 
     private final AtomicInteger trackSwitchSeq = new AtomicInteger(0);
-    private PlaybackController scheduler;
+    PlaybackController scheduler;
     private FrameLayout surfaceSlot;
     private PlaybackEngine engine;
-    private PageHost pageHost;
-    private Activity mActivity;
+    PageHost pageHost;
+    Activity mActivity;
     private final Context mContext;
 
     /** 存入字段而不是每次写 lambda:hostDestroy 要按"是不是自己"摘监听 */
@@ -148,7 +139,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         }
     }
 
-    private boolean isAttached() {
+    boolean isAttached() {
         if (pageHost != null) return pageHost.isPageAlive();
         return mActivity != null && !mActivity.isFinishing();
     }
@@ -162,285 +153,8 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         if (mController != null) mController.getUiState().setEpisodeSheetOpen(open);
     }
 
-    private final PlaybackViewBridge viewBridge = new ViewBridge();
+    private final PlaybackViewBridge viewBridge = new PlayContainerViewBridge(this);
 
-    private final class ViewBridge implements PlaybackViewBridge {
-        @Override
-        public boolean isPageAlive() {
-            return isAttached();
-        }
-
-        @Override
-        public void runOnUi(Runnable action) {
-            if (isAttached() && mActivity != null) mActivity.runOnUiThread(action);
-        }
-
-        @Override
-        public void toast(CharSequence text) {
-            Toast.makeText(mContext, text, Toast.LENGTH_SHORT).show();
-        }
-
-        @Override
-        public void showTip(String msg, boolean loading, boolean error) {
-            setTip(msg, loading, error);
-        }
-
-        @Override
-        public void hideTipOnUiThread() {
-            PlayContainer.this.hideTipOnUiThread();
-        }
-
-        @Override
-        public int currentPlayState() {
-            return mVideoView == null ? -1 : mVideoView.getCurrentPlayState();
-        }
-
-        @Override
-        public long currentPosition() {
-            return mVideoView == null ? 0 : mVideoView.getCurrentPosition();
-        }
-
-        @Override
-        public boolean isPlaying() {
-            return mVideoView != null && mVideoView.isPlaying();
-        }
-
-        @Override
-        public long duration() {
-            return mVideoView == null ? 0 : mVideoView.getDuration();
-        }
-
-        @Override
-        public AbstractPlayer mediaPlayer() {
-            return mVideoView == null ? null : mVideoView.getMediaPlayer();
-        }
-
-        @Override
-        public Context context() {
-            return mContext;
-        }
-
-        @Override
-        public PlaybackHostApi playbackHost() {
-            return PlayContainer.this;
-        }
-
-        @Override
-        public void requestNotificationPermission() {
-            if (pageHost != null) {
-                pageHost.requestNotificationPermission();
-            } else if (mActivity != null) {
-                PermissionHelper.requestNotificationIfNeeded(mActivity);
-            }
-        }
-
-        @Override
-        public void switchRenderToTexture() {
-            if (mVideoView != null && mVideoView.isSurfaceRenderActive()) {
-                mVideoView.switchRenderToTexture();
-            }
-        }
-
-        @Override
-        public void ensureRenderViewMatchesConfig() {
-            if (mVideoView != null) mVideoView.ensureRenderViewMatchesConfig();
-        }
-
-        @Override
-        public void releasePlayer() {
-            releasePlayerKernel();
-        }
-
-        @Override
-        public void setTitle(String title) {
-            if (mController != null) mController.setTitle(title);
-        }
-
-        @Override
-        public void stopOtherPlayers() {
-            if (mController != null) mController.stopOther();
-        }
-
-        @Override
-        public void resetDanmu() {
-            resetDanmuState();
-        }
-
-        @Override
-        public void startDanmuIfReady() {
-            PlayContainer.this.startDanmuIfReady();
-        }
-
-        @Override
-        public void clearLyric() {
-            clearLyricView();
-        }
-
-        @Override
-        public void clearArtwork() {
-            if (mVideoView != null) mVideoView.clearArtwork();
-        }
-
-        @Override
-        public void clearVideoFrame() {
-            if (mVideoView != null) mVideoView.clearVideoFrame();
-        }
-
-        @Override
-        public void setSubtitleViewVisible(boolean visible) {
-            if (mController == null) return;
-            mController.getSubtitleView().setVisibility(visible ? View.VISIBLE : View.GONE);
-        }
-
-        @Override
-        public void onNewPlayStarted() {
-            exitingPreview = false;
-        }
-
-        @Override
-        public void applyPlayerConfigToView(int forceKernel) {
-            if (mVideoView == null) return;
-            if (forceKernel > 0) {
-                PlayerHelper.updateCfg(mVideoView, scheduler.playerCfg(), forceKernel);
-            } else {
-                PlayerHelper.updateCfg(mVideoView, scheduler.playerCfg());
-            }
-        }
-
-        @Override
-        public void useTextureRenderForAudio() {
-            if (mVideoView != null) mVideoView.setRenderViewFactory(TextureRenderViewFactory.create());
-        }
-
-        @Override
-        public boolean playExternalPlayer(int playerType, String url, String title, String subtitle,
-                                         HashMap<String, String> headers, long progress) {
-            if (mActivity == null) return false;
-            return PlayerHelper.runExternalPlayer(playerType, mActivity, url, title, subtitle, headers, progress);
-        }
-
-        @Override
-        public void playM3u8(String url, HashMap<String, String> headers) {
-            if (mController != null) mController.playM3u8(url, headers);
-        }
-
-        @Override
-        public void playM3u8(String url, HashMap<String, String> headers, int gen) {
-            if (!scheduler.isParseResultCurrent(gen)) {
-                LOG.i("echo-ignore stale m3u8 result");
-                return;
-            }
-            playM3u8(url, headers);
-        }
-
-        @Override
-        public void startVideoPlayback(String url, HashMap<String, String> headers, boolean forceExoPlayer) {
-            if (mVideoView == null) return;
-            mController.hidePauseRoot();
-            // EXO 解码方式变更标记(2026-09-17,见 MyVideoView.requireKernelRebuild):复用内核不会重选解码器,
-            // 必须走非复用路径先释放再新建;无条件消费一次,避免标记残留到下一次无关起播
-            boolean rebuildKernel = mVideoView.consumeKernelRebuildRequired();
-            boolean reusePlayer = !forceExoPlayer && mVideoView.getMediaPlayer() != null && !rebuildKernel;
-            if (!reusePlayer) hideTip();
-            if (!reusePlayer && mVideoView.getMediaPlayer() != null) {
-                releasePlayerKernel();
-            }
-            mVideoView.setProgressKey(scheduler.progressKey());
-            // 记忆键与进度键同处下发:内核重建后是新实例,起播前必须推给它
-            mVideoView.setTrackMemoryKey(trackMemoryKey());
-            scheduler.markContentStarted();
-            if (headers != null) {
-                mVideoView.setUrl(url, headers);
-            } else {
-                mVideoView.setUrl(url);
-            }
-            scheduler.startSwitchLinePlayTimeout();
-            if (reusePlayer) {
-                mVideoView.skipPositionWhenPlay((int) scheduler.playTimeoutBasePosition());
-                mVideoView.replay(false);
-            } else {
-                mVideoView.start();
-            }
-            mController.resetSpeed();
-        }
-
-        @Override
-        public PreloadCoordinator.Snapshot buildPreloadSnapshot() {
-            return PlayContainer.this.buildPreloadSnapshot();
-        }
-
-        @Override
-        public void showPreloadReadyTip() {
-            PlayContainer.this.showPreloadReady();
-        }
-
-        @Override
-        public void hidePreloadReadyTip() {
-            PlayContainer.this.hidePreloadReady();
-        }
-
-        @Override
-        public String firstUrlByArray(String url) {
-            return mController == null ? url : mController.firstUrlByArray(url);
-        }
-
-        @Override
-        public void setArtwork(String url) {
-            if (mVideoView != null) mVideoView.setArtwork(url);
-        }
-
-        @Override
-        public void showParse(boolean show) {
-            if (mController != null) mController.showParse(show);
-        }
-
-        @Override
-        public void checkDanmu(String danmaku, Runnable onFailed) {
-            PlayContainer.this.checkDanmu(danmaku, onFailed == null ? null : onFailed::run);
-        }
-
-        @Override
-        public String encodeUrl(String url) {
-            return mController == null ? url : mController.encodeUrl(url);
-        }
-
-        @Override
-        public void evaluateScript(String url, WebView webView) {
-            if (mController != null) mController.evaluateScript(scheduler.sourceBean(), url, webView);
-        }
-
-        @Override
-        public WebView newSniffWebView() {
-            return new MyWebView(mContext);
-        }
-
-        @Override
-        public void attachSniffWebView(WebView webView) {
-            if (isAttached() && mActivity != null) {
-                mActivity.addContentView(webView, new ViewGroup.LayoutParams(1, 1));
-            }
-        }
-
-        @Override
-        public void showErrorWithRetry(String err, boolean finish) {
-            PlayContainer.this.errorWithRetry(err, finish);
-        }
-
-        @Override
-        public boolean switchPlayerKernel() {
-            return mController != null && mController.switchPlayer();
-        }
-
-        @Override
-        public void applyPlayerConfig(JSONObject cfg) {
-            if (mController != null) mController.setPlayerConfig(cfg);
-        }
-
-        @Override
-        public boolean onLinesExhausted() {
-            return pageHost != null && pageHost.onPlaybackLinesExhausted();
-        }
-    }
 
     private boolean lifecyclePaused;
     private String ownedPlaybackKey;
@@ -536,14 +250,14 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
 
     private static final int MSG_PARSE_TIMEOUT = 100;
     private static final long PRELOAD_TOAST_REFRESH_DELAY_MS = 1000L;
-    private MyVideoView mVideoView;
-    private PlayerControlApi mController;
+    MyVideoView mVideoView;
+    PlayerControlApi mController;
     private Toast preloadReadyToast;
         private Handler mHandler;
-    private boolean exitingPreview = false;
+    boolean exitingPreview = false;
     private boolean previewMode;
     private DanmakuView mDanmuView;
-    private DanmuLoadController danmuLoadController;
+    DanmuLoadController danmuLoadController;
     private final List<Cue> exoCues = new ArrayList<>();
     private boolean exoInternalSubtitle;
 
@@ -582,7 +296,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         checkDanmu(danmu, null);
     }
 
-    private void checkDanmu(String danmu, DanmuLoadController.LoadCallback callback) {
+    void checkDanmu(String danmu, DanmuLoadController.LoadCallback callback) {
         scheduler.setPlayDanmu(danmu);
         if (danmuLoadController != null) {
             VodInfo.VodSeries series = scheduler.vod() == null ? null : scheduler.currentSeries(scheduler.vod().playFlag, scheduler.vod().playIndex);
@@ -590,15 +304,15 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         }
     }
 
-    private void startDanmuIfReady() {
+    void startDanmuIfReady() {
         if (danmuLoadController != null) danmuLoadController.startIfReady();
     }
 
-    private void resetDanmuState() {
+    void resetDanmuState() {
         if (danmuLoadController != null) danmuLoadController.reset();
     }
 
-    private void reloadDanmuForPlayback() {
+    void reloadDanmuForPlayback() {
         if (danmuLoadController != null) danmuLoadController.reloadForPlayback();
     }
 
@@ -624,149 +338,16 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         mController.setEnableInNormal(true);
         mController.setGestureEnabled(true);
         mVideoView = engine == null ? null : engine.player();
-        mController.setListener(new ControlListener());
+        mController.setListener(new PlayContainerControlListener(this));
         if (mVideoView != null) mVideoView.setVideoController((BaseVideoController) mController);
     }
 
-    private final class ControlListener implements VodControlListener {
-        @Override
-        public void showDanmuSetting() {
-            if (!isAttached()) return;
-            mController.getUiState().setDanmuSettingSheet(new DanmuSettingSheetState(() -> {
-                openDanmuSearchSheet();
-                return kotlin.Unit.INSTANCE;
-            }));
-        }
-
-        @Override
-        public boolean toggleDanmu() {
-            return danmuLoadController != null && danmuLoadController.toggle();
-        }
-
-        @Override
-        public void showEpisodes() {
-            if (pageHost != null) pageHost.showEpisodeSheet();
-        }
-
-        @Override
-        public void searchDanmuUi(boolean longClick) {
-            VodInfo.VodSeries series = scheduler.vod() == null ? null : scheduler.currentSeries(scheduler.vod().playFlag, scheduler.vod().playIndex);
-            ApiConfig.get().searchDanmuUi(scheduler.vod() == null ? "" : scheduler.vod().name, series == null ? "" : series.name, longClick);
-        }
-
-        @Override
-        public void playNext(boolean rmProgress) {
-            String preProgressKey = scheduler.progressKey();
-            String preOwner = scheduler.progressOwner();
-            PlayContainer.this.playNext(rmProgress);
-            if (rmProgress && preProgressKey != null)
-                WatchProgressStore.clear(preOwner, preProgressKey);
-        }
-
-        @Override
-        public void playPre() {
-            PlayContainer.this.playPrevious();
-        }
-
-        @Override
-        public void changeParse(ParseBean pb) {
-            scheduler.resetAutoRetryState();
-            scheduler.clearTriedLines();
-            scheduler.doParse(pb);
-        }
-
-        @Override
-        public void updatePlayerCfg() {
-            JSONObject persistCfg = scheduler.playerCfgForPersist();
-            if (persistCfg == null) return;
-            scheduler.vod().playerCfg = persistCfg.toString();
-            EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_REFRESH, persistCfg));
-        }
-
-        @Override
-        public void replay(boolean replay) {
-            reviveEngineIfReleased();
-            scheduler.resetAutoRetryState();
-            scheduler.clearTriedLines();
-            scheduler.setPlaybackStarted(false);
-            if(replay){
-                playViaScheduler(true);
-            }else {
-                reloadDanmuForPlayback();
-                if(scheduler.webPlayUrl()!=null && !scheduler.webPlayUrl().isEmpty()) {
-                    scheduler.stopParse();
-                    scheduler.initParseLoadFound();
-                    releasePlayerKernel();
-                    scheduler.goPlayUrl(scheduler.webPlayUrl(),scheduler.webHeaderMap());
-                }else {
-                    playViaScheduler(false);
-                }
-            }
-        }
-
-        @Override
-        public void errReplay() {
-            errorWithRetry(mContext.getString(R.string.player_error_play), false);
-        }
-
-        @Override
-        public void closeSubtitles() {
-            PlayContainer.this.closeSubtitles();
-        }
-
-        @Override
-        public void selectSubtitle() {
-            try {
-                selectMySubtitle();
-            } catch (Exception e) {
-                LOG.e("PlayContainer", e);
-            }
-        }
-
-        @Override
-        public void selectAudioTrack() {
-            selectMyAudioTrack();
-        }
-
-        @Override
-        public void selectVideoTrack() {
-            selectMyVideoTrack();
-        }
-
-        @Override
-        public void prepared() {
-            initSubtitleView();
-            if (mVideoView != null) mVideoView.prepared();
-            startDanmuIfReady();
-        }
-        @Override
-        public void startPlayUrl(String url, HashMap<String, String> headers) {
-            if (!TextUtils.isEmpty(scheduler.m3u8SourceUrl()) && !scheduler.isM3u8ProxyUrl(url)) scheduler.clearM3u8ProxyUrl();
-            scheduler.goPlayUrl(url, headers);
-        }
-
-        @Override
-        public void onM3u8ProxyUrl(String proxyUrl, String sourceUrl) {
-            scheduler.setM3u8Urls(proxyUrl, sourceUrl);
-        }
-
-        @Override
-        public void clickCast() {
-            showCastDialog();
-        }
-
-        @Override
-        public void setAllowSwitchPlayer(boolean isAllow){scheduler.setAllowSwitchPlayer(isAllow);}
-
-        @Override
-        public void setAllowDecodeFallback(boolean isAllow){scheduler.setAllowDecodeFallback(isAllow);}
-    }
 
     public void showCast() {
         showCastDialog();
     }
 
-    private void showCastDialog() {
+    void showCastDialog() {
         if (TextUtils.isEmpty(scheduler.webPlayUrl())) {
             Toast.makeText(mContext, mContext.getString(R.string.toast_no_cast_url), Toast.LENGTH_SHORT).show();
             return;
@@ -781,7 +362,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         }));
     }
 
-    private void openDanmuSearchSheet() {
+    void openDanmuSearchSheet() {
         if (!isAttached()) return;
         VodInfo.VodSeries series = scheduler.vod() == null ? null : scheduler.currentSeries(scheduler.vod().playFlag, scheduler.vod().playIndex);
         PlayerUiState uiState = mController.getUiState();
@@ -1217,7 +798,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         PlayerTipBridge.hide();
     }
 
-    private void showPreloadReady() {
+    void showPreloadReady() {
         final Activity activity = mActivity;
         if (activity == null || !isAttached() || mHandler == null) return;
         if (preloadReadyToast != null) preloadReadyToast.cancel();
@@ -1234,7 +815,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         }
     };
 
-    private void hidePreloadReady() {
+    void hidePreloadReady() {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             cancelPreloadToast();
         } else if (mActivity != null) {
@@ -1290,7 +871,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         }
     }
 
-                    private void initSubtitleView() {
+                    void initSubtitleView() {
         if (mVideoView == null) return;
         TrackInfo trackInfo = null;
         AbstractPlayer mediaPlayer = mVideoView.getMediaPlayer();
@@ -1519,7 +1100,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
     }
 
     /** 本片记忆键;直播/无剧集信息时为空串 ⇒ 记忆读写全部跳过 */
-    private String trackMemoryKey() {
+    String trackMemoryKey() {
         VodInfo vod = scheduler == null ? null : scheduler.vod();
         if (vod == null) return "";
         return TrackMemory.contentKey(vod.sourceKey, vod.id);
@@ -1544,14 +1125,14 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         return new File(path).exists() ? path : "";
     }
 
-            private void clearLyricView() {
+            void clearLyricView() {
         if (mController == null || mController.getLyricView() == null) return;
         mController.getLyricView().setVisibility(View.GONE);
         mController.getLyricView().destroy();
         mController.getLyricView().setText("");
     }
 
-    private void releasePlayerKernel() {
+    void releasePlayerKernel() {
         if (engine != null) {
             engine.releasePlayer();
         } else if (mVideoView != null) {
@@ -1559,7 +1140,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         }
     }
 
-    private boolean reviveEngineIfReleased() {
+    boolean reviveEngineIfReleased() {
         if (engine != null && !engine.isReleased()) return false;
         if (mActivity == null || surfaceSlot == null) return false;
         if (scheduler != null) scheduler.stopPlaybackForPageExit();
@@ -1617,7 +1198,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         playViaScheduler(false);
     }
 
-    private void playViaScheduler(boolean reset) {
+    void playViaScheduler(boolean reset) {
         reviveEngineIfReleased();
         scheduler.play(reset);
     }
@@ -1738,7 +1319,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         mController.setTitle(vod == null ? "" : (vs == null ? vod.name : vod.name + " " + vs.name));
     }
 
-        private PreloadCoordinator.Snapshot buildPreloadSnapshot() {
+        PreloadCoordinator.Snapshot buildPreloadSnapshot() {
         try {
             if (scheduler.vod() == null || scheduler.vod().seriesMap == null) return null;
             List<VodInfo.VodSeries> episodes = scheduler.vod().seriesMap.get(scheduler.vod().playFlag);

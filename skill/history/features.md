@@ -3270,3 +3270,30 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **验证**:`assembleDebug` + `testDebugUnitTest`(44 类 / 364 用例 / 0 失败)BUILD SUCCESSFUL,已装机。**待真机走查**:①直播页全屏切换/返回/回看/切台/频道密码;②详情页全屏与选集面板/返回;③历史页编辑多选删除 + 长按单条删除;④搜索页两种布局切换 + 历史/热词。
 
 **边界与更正**:`ui/activity/SearchScreens.kt`(423,结果列表与共享小组件)与 `ui/page/HistoryPage.kt`(291)本次未动;计划 §2 ⑩「SearchActivity 里的 `search()` 编排」已过时 —— `search()` 早在 `SearchViewModel` 内(67 行),文件拆分即解决该文件的结构问题。文档同步:`avbox-mobile-ui-spec.md` §2 的文件布局与单测基线(21 类 / 213 例 → 44 类 / 364 例)已更新;`avbox-i18n-spec.md` §A.1 的 2026-09-22 快照仍按当时文件名统计,属**按期归档,不回填**。
+## 文件级重构:阶段 2「匿名块具名化」(2026-09-28,按 `skill/review/refactor-plan-20260928.md`)
+
+**目标口径修正**:计划把 `PlaybackEngine.HeadlessView`(235) 与 `ProtectedInitJar.Dex`(180) 也列为「匿名类」,核对后两者**本就是具名类**(`PlaybackEngine` 内 `private final class HeadlessView implements PlaybackViewBridge`;`ProtectedInitJar` 内 `private static class Dex`),无需处理。按「Java `new X() {` + Kotlin `object : X {` 花括号配对」全库扫描(>60 行,共 8 处)后的真实清单是 >80 行 4 处,其中 3 处落在本阶段:
+
+| 位置 | 原状 | 处理 |
+| --- | --- | --- |
+| `ui/player/PlayContainer.java` | 277 行匿名 `PlaybackViewBridge`(**字段初始化器**) | → 同文件 `private final class ViewBridge implements PlaybackViewBridge`(3 行包装差) |
+| 同上 `initView()` 内 | 133 行匿名 `VodControlListener`(**方法体内**) | → 同文件 `private final class ControlListener implements VodControlListener` |
+| `util/thunder/Thunder.java` `parse()` 内 | 109 行匿名 `Runnable` | → 同文件 `private static final class ParseTask implements Runnable`;`parse()` 117 → 9 行 |
+| `ui/components/BottomSheet.kt:367` | 154 行内联布局块(`BoxWithConstraints` 整个覆盖层) | → 具名 Composable `SheetSurface(...)`;`SheetOverlay` 226 → 约 90 行 |
+
+**为什么两处 PlayContainer 适配器没有外提到独立文件**(与计划 §3「PlayContainer 1839 → ~1200」的差异):两块的依赖面分别是宿主 **14 个 private 成员**,去重后 **约 20 个** —— 字段 `scheduler/pageHost/mActivity/mContext/mVideoView/mController/exitingPreview/danmuLoadController`,方法 `isAttached/releasePlayerKernel/resetDanmuState/showPreloadReady/hidePreloadReady/trackMemoryKey/clearLyricView/reviveEngineIfReleased/playViaScheduler/reloadDanmuForPlayback/showCastDialog/openDanmuSearchSheet/initSubtitleView`。这是计划 §3 硬地板「每多拆一个文件新增暴露 2–4 个包级成员」的一个数量级,故本阶段只做**同文件具名化**(与兄弟宿主 `PlaybackEngine.HeadlessView` 同款形状),文件边界外提留给「先拆 PlayContainer 自身职责」的后续步骤。
+
+**规模**(只具名、不挪文件,故条数变化很小):`PlayContainer` 1839 → 1843(±类头/类尾)、`Thunder` 496 → 510(类头 + 3 个捕获字段/构造)、`BottomSheet.kt` 539 → 578(新函数签名 + 参数板)。
+
+**做法与坑**:
+
+- Java 匿名类 → 同文件内部类是**零行为**改动:方法体逐行不动(缩进常常也不用改),只换包装(字段/调用点改 `new ViewBridge()`、尾部 `};` → `}`、加类头与类尾)。⚠️ 字段初始化器语义靠「实例初始化器先于构造体执行」,换成 `new ViewBridge()` 后与 `scheduler.setViewBridge(viewBridge)` 的先后**不变**。
+- 方法体内的匿名类**不能原地变类声明**,必须移到类级(本次放在该方法之后),整块 dedent 4 空格对齐新层级;判空/防御一行没漏抄。
+- `BottomSheet`:`panelHeightPx`/`panelWidthPx`(`remember` 状态)与拖拽主轴判定**只在那一块里用**,随块一起搬进 `SheetSurface`(父层少两个状态);`dismissWithAnimation()` → 传参 `dismiss`/`dismissThen` 两个闭包。⚠️ **带动作的关闭必须同样走 `dismissThen(action)`** —— 它是语言切换对话框「取消=回滚」这类收尾的唯一通道,漏了就会把用户刚确认的动作反过来。
+- **等价性校验脚本**(每步都跑):旧文件(HEAD 版)逐行去空白后与新版做多重集比对,卡口 = 旧行 0 丢失 + 新文件 0 凭空新增。结果:PlayContainer 只有 2 行包装行变化(其余 1574 行逐字一致);Thunder 只有 `}});` 一行消失(其余 423 行逐字一致);BottomSheet 只有 4 处 `dismissWithAnimation(...)` 调用点与 15 行签名/调用行变化。
+
+**验证**:`assembleDebug` + `testDebugUnitTest`(44 类 / 364 用例 / 0 失败)BUILD SUCCESSFUL;两个 proguard `.pro` 均无 `PlayContainer` 引用(匿名类改具名类不触碰混淆白名单)。**装机未完成**:`adb install` 在设备侧被拒(`INSTALL_FAILED_ABORTED: User rejected permissions`),待用户确认安装。
+
+**待走查**:①播放器容器全链(起播/切源/换线/内核切换/预载提示/弹幕/字幕/投屏);②各弹层(贴底面板、右侧滑出、居中对话框、拖拽下滑关闭、返回键、带动作关闭);③迅雷/磁力/种子解析入口。
+
+**本阶段未动**:`player/PlaybackController.java:1075` 的 107 行匿名 `Observer`(按计划归阶段 7/播放服务化 spec);`SpiderLoader`/`SourceViewModel`/`SubtitleViewModel`/`PlayUrlResolver` 四处 65–69 行匿名块(未达 >80 门槛,不在本阶段口径内)。

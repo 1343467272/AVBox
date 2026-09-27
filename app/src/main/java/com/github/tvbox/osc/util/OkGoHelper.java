@@ -4,7 +4,6 @@ import com.github.tvbox.osc.util.LOG;
 import androidx.annotation.NonNull;
 
 import com.github.tvbox.osc.api.ApiConfig;
-import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.bean.ProxyRule;
 import com.github.tvbox.osc.player.danmu.Parser;
 import com.github.tvbox.osc.util.net.OkProxySelector;
@@ -106,7 +105,7 @@ public class OkGoHelper {
         builder.dns(new CustomDns());
         ItvClient=builder.build();
 
-        ExoMediaSourceHelper.getInstance(App.getInstance()).setOkClient(ItvClient);
+        ExoMediaSourceHelper.getInstance(AppContextHolder.context()).setOkClient(ItvClient);
     }
 
     // DNS 解析在 OkHttp 线程读,init/reloadDns 在主线程写
@@ -264,7 +263,7 @@ public class OkGoHelper {
         } catch (Throwable th) {
             LOG.e("OkGoHelper", th);
         }
-        builder.cache(new Cache(new File(App.getInstance().getCacheDir().getAbsolutePath(), "dohcache"), 100 * 1024 * 1024));
+        builder.cache(new Cache(new File(AppContextHolder.context().getCacheDir().getAbsolutePath(), "dohcache"), 100 * 1024 * 1024));
         OkHttpClient dohClient = builder.build();
         String dohUrl = getDohUrl(KV.get(HawkConfig.DOH_URL, 0));
 //        if (!dohUrl.isEmpty()) is_doh = true;

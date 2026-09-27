@@ -1,6 +1,7 @@
 package com.github.catvod;
 
 import com.github.tvbox.osc.server.RemoteServer;
+import com.github.tvbox.osc.util.AppContextHolder;
 
 public class Proxy {
 
@@ -20,7 +21,7 @@ public class Proxy {
 
     private static String getIp() {
         try {
-            return RemoteServer.getLocalIPAddress(com.github.tvbox.osc.base.App.getInstance());
+            return RemoteServer.getLocalIPAddress(AppContextHolder.context());
         } catch (Throwable th) {
             return "127.0.0.1";
         }

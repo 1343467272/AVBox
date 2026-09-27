@@ -11,6 +11,7 @@ import com.p2p.P2PClass;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import com.github.tvbox.osc.util.AppContextHolder;
 
 
 public class Jianpian {
@@ -31,7 +32,7 @@ public class Jianpian {
                 App.burl = replace;
                 App.getp2p().P2Pdoxstart(replace.getBytes("GBK"));
                 App.getp2p().P2Pdoxadd(replace.getBytes("GBK"));
-                return "http://" + LocalIPAddress.getIP(App.getInstance()) + ":" + P2PClass.port + "/" + URLEncoder.encode(Uri.parse(replace).getLastPathSegment(), "GBK");
+                return "http://" + LocalIPAddress.getIP(AppContextHolder.context()) + ":" + P2PClass.port + "/" + URLEncoder.encode(Uri.parse(replace).getLastPathSegment(), "GBK");
             } catch (Exception e) {
                 return e.getLocalizedMessage();
             }

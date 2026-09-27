@@ -5,7 +5,6 @@ import android.net.Uri;
 import android.text.TextUtils;
 
 import com.github.tvbox.osc.R;
-import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.util.FileUtils;
 import com.github.tvbox.osc.util.HawkConfig;
@@ -27,12 +26,13 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import com.github.tvbox.osc.util.AppContextHolder;
 
 public class Thunder {
 
     /** 资源文案:Application 的 base 只在进程启动时挂一次,切语言后直接用 app.getString 会停在旧语言 */
     private static String str(int resId, Object... args) {
-        App app = App.getInstance();
+        Context app = AppContextHolder.context();
         return app == null ? "" : LanguageManager.INSTANCE.localized(app).getString(resId, args);
     }
 
@@ -322,7 +322,7 @@ public class Thunder {
         }
         if (isEd2k(url) || isFtp(url)) {
             if(threadPool==null){
-                init(App.getInstance());
+                init(AppContextHolder.context());
                 threadPool = Executors.newSingleThreadExecutor();
             }
             if (currentTask > 0) {

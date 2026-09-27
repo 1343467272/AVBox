@@ -6,7 +6,6 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.github.catvod.net.OkHttp;
-import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.server.ControlManager;
 import com.github.tvbox.osc.server.RemoteServer;
 import com.github.tvbox.osc.util.FileUtils;
@@ -27,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import dalvik.system.DexClassLoader;
 import okhttp3.Response;
+import com.github.tvbox.osc.util.AppContextHolder;
 
 public class JarLoader {
 
@@ -88,7 +88,7 @@ public class JarLoader {
         try {
             file.setReadOnly();
             String cachePath = jarDir().getAbsolutePath();
-            DexClassLoader loader = new DexClassLoader(file.getAbsolutePath(), cachePath, cachePath, App.getInstance().getClassLoader());
+            DexClassLoader loader = new DexClassLoader(file.getAbsolutePath(), cachePath, cachePath, AppContextHolder.context().getClassLoader());
             if (!invokeInit(loader, file.getAbsolutePath())) {
                 LOG.i("echo--jar-load error key=" + key + ", init returned false");
                 return false;
@@ -133,7 +133,7 @@ public class JarLoader {
                 // —— 键缺失 = NPE -> catch(Exception) -> return "" -> 分类空白"暂无内容";
                 // 只有"光鸭"分类不读 config.json,所以它是唯一出卡片的分类(用户截图实证)。
                 // 结论:绕过闸门,只补做 saveConfig,永不进入 killProcess 分支。
-                boolean bound = bindInitContext(clz, App.getInstance());
+                boolean bound = bindInitContext(clz, AppContextHolder.context());
                 boolean saved = invokeSaveConfig(clz);
                 ensureInitConfig();
                 LOG.i("echo--jar-skip Init.init(whitelist-gated) contextBound=" + bound
@@ -141,7 +141,7 @@ public class JarLoader {
                 return true;
             }
             Method method = clz.getMethod("init", Context.class);
-            method.invoke(null, App.getInstance());
+            method.invoke(null, AppContextHolder.context());
             return true;
         } catch (Throwable e) {
             LOG.e("JarLoader", e);
@@ -207,7 +207,7 @@ public class JarLoader {
         try {
             // jar 的 merge.m.k.d(name) 实际路径 = filesDir/Pizazz/<name>(字节码反汇编实证),
             // 豆瓣 homeContent 读的就是 filesDir/Pizazz/config.json。
-            java.io.File dir = new java.io.File(App.getInstance().getFilesDir(), "Pizazz");
+            java.io.File dir = new java.io.File(AppContextHolder.context().getFilesDir(), "Pizazz");
             if (!dir.exists()) dir.mkdirs();
             java.io.File f = new java.io.File(dir, "config.json");
             if (!f.exists()) {
@@ -327,7 +327,7 @@ public class JarLoader {
                 Spider spider = (Spider) loader.loadClass("com.github.catvod.spider." + className(api)).newInstance();
                 spider.siteKey = key;
                 spider.initApi(new SpiderApi());
-                spider.init(App.getInstance(), ext);
+                spider.init(AppContextHolder.context(), ext);
                 spiders.put(spKey, spider);
                 Log.i(TAG, "getSpider success key=" + spKey);
                 return spider;
@@ -452,7 +452,7 @@ public class JarLoader {
         FileOutputStream os = null;
         try {
             String path = url.replace("assets://", "").replace("assets/", "");
-            is = App.getInstance().getAssets().open(path);
+            is = AppContextHolder.context().getAssets().open(path);
             os = new FileOutputStream(create(file));
             byte[] buffer = new byte[16384];
             int length;
@@ -480,7 +480,7 @@ public class JarLoader {
     }
 
     private File jarDir() {
-        File dir = new File(App.getInstance().getCacheDir(), "jar");
+        File dir = new File(AppContextHolder.context().getCacheDir(), "jar");
         if (!dir.exists()) dir.mkdirs();
         return dir;
     }

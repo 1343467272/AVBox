@@ -6,7 +6,6 @@ import android.text.TextUtils;
 import android.util.Base64;
 
 import com.github.catvod.net.OkHttp;
-import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.server.ControlManager;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -128,14 +127,14 @@ public class FileUtils {
     }
 
     public static File getCacheDir() {
-        return App.getInstance().getCacheDir();
+        return AppContextHolder.context().getCacheDir();
     }
 
     public static String getCachePath() {
         return getCacheDir().getAbsolutePath();
     }
     public static String getFilePath() {
-        return App.getInstance().getFilesDir().getAbsolutePath();
+        return AppContextHolder.context().getFilesDir().getAbsolutePath();
     }
 
     public static void cleanDirectory(File dir) {
@@ -327,7 +326,7 @@ public class FileUtils {
      */
     public static long getCacheSize() {
         long size = directorySize(getCacheDir(), null);
-        File externalCacheDir = App.getInstance().getExternalCacheDir();
+        File externalCacheDir = AppContextHolder.context().getExternalCacheDir();
         if (externalCacheDir != null && !externalCacheDir.getAbsolutePath().equals(getCachePath())) {
             size += directorySize(externalCacheDir, EXTERNAL_CACHE_KEEP_DIR);
         }
@@ -387,7 +386,7 @@ public class FileUtils {
             }
         }
         // ② 外部缓存:逐项强删,跳过 config(用户订阅源数据)
-        File externalCacheDir = App.getInstance().getExternalCacheDir();
+        File externalCacheDir = AppContextHolder.context().getExternalCacheDir();
         if (externalCacheDir == null) return;
         File[] files = externalCacheDir.listFiles();
         if (files == null) return;
@@ -582,7 +581,7 @@ public class FileUtils {
         if (files == null) {
             LOG.i("echo-读取AssetsList");
             try {
-                String[] list = App.getInstance().getAssets().list(dir);
+                String[] list = AppContextHolder.context().getAssets().list(dir);
                 files = new HashSet<>(Arrays.asList(list));
             } catch (IOException e) {
                 files = Collections.emptySet();
@@ -595,7 +594,7 @@ public class FileUtils {
 
     public static String getAsOpen(String name) {
         try {
-            InputStream is = App.getInstance().getAssets().open(name);
+            InputStream is = AppContextHolder.context().getAssets().open(name);
             byte[] data = new byte[is.available()];
             is.read(data);
             return new String(data, "UTF-8");
@@ -667,7 +666,7 @@ public class FileUtils {
         return new File(getExternalCachePath() + "/qjscache_" + str + ".js");
     }
     public static String getExternalCachePath() {
-        File externalCacheDir = App.getInstance().getExternalCacheDir();
+        File externalCacheDir = AppContextHolder.context().getExternalCacheDir();
         if (externalCacheDir == null){
             return getCachePath();
         }
@@ -679,7 +678,7 @@ public class FileUtils {
      * 系统「清除缓存」删掉后只能静默回落到 filesDir 旧快照);外置不可用时回落内部 files 目录。
      */
     public static String getExternalFilesPath() {
-        File externalFilesDir = App.getInstance().getExternalFilesDir(null);
+        File externalFilesDir = AppContextHolder.context().getExternalFilesDir(null);
         if (externalFilesDir == null) {
             return getFilePath();
         }

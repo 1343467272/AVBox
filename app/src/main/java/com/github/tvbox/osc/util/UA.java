@@ -1,7 +1,6 @@
 package com.github.tvbox.osc.util;
 
 import com.github.tvbox.osc.util.LOG;
-import com.github.tvbox.osc.base.App;
 
 import java.io.DataInputStream;
 import java.io.FileNotFoundException;
@@ -13,7 +12,7 @@ public class UA {
 
     public static String random() {
         try {
-            InputStream fis = App.getInstance().getAssets().open("ua.db");
+            InputStream fis = AppContextHolder.context().getAssets().open("ua.db");
             DataInputStream dis = new DataInputStream(fis);
             int len = dis.readInt();
             int random = new Random().nextInt(len);

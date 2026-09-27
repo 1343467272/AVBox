@@ -9,7 +9,6 @@ import android.view.Surface;
 import android.view.WindowManager;
 
 import com.github.tvbox.osc.server.ControlManager;
-import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.util.LOG;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -29,6 +28,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import com.github.tvbox.osc.util.AppContextHolder;
 
 public class SpiderApi {
 
@@ -60,8 +60,8 @@ public class SpiderApi {
 
     public int getScreenOrientation() {
         try {
-            Activity activity = App.getInstance().getCurrentActivity();
-            Context context = activity == null ? App.getInstance() : activity;
+            Activity activity = com.github.tvbox.osc.util.AppManager.getInstance().currentActivity();
+            Context context = activity == null ? AppContextHolder.context() : activity;
             int orientation = context.getResources().getConfiguration().orientation;
             int rotation = Surface.ROTATION_0;
             WindowManager windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);

@@ -4,11 +4,11 @@ import androidx.room3.Room;
 import androidx.room3.RoomDatabase;
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver;
 
-import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.util.FileUtils;
 
 import java.io.File;
 import java.io.IOException;
+import com.github.tvbox.osc.util.AppContextHolder;
 
 
 /**
@@ -50,7 +50,7 @@ public class AppDataManager {
             throw new RuntimeException("AppDataManager is no init");
         }
         if (dbInstance == null)
-            dbInstance = Room.databaseBuilder(App.getInstance(), AppDataBase.class, dbPath())
+            dbInstance = Room.databaseBuilder(AppContextHolder.context(), AppDataBase.class, dbPath())
                     // Room 3：必须显式指定 SQLiteDriver（不再走 SupportSQLite）
                     .setDriver(new BundledSQLiteDriver())
                     .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
@@ -66,7 +66,7 @@ public class AppDataManager {
         // 关闭后置 null，否则 get() 永远返回已关闭实例，后续 Room 操作全部抛
         // "connection pool has been closed"
         dbInstance = null;
-        File db = App.getInstance().getDatabasePath(dbPath());
+        File db = AppContextHolder.context().getDatabasePath(dbPath());
         if (db.exists()) {
             FileUtils.copyFile(db, path);
             return true;
@@ -80,7 +80,7 @@ public class AppDataManager {
             dbInstance.close();
         }
         dbInstance = null;
-        File db = App.getInstance().getDatabasePath(dbPath());
+        File db = AppContextHolder.context().getDatabasePath(dbPath());
         if (db.exists()) {
             db.delete();
         }

@@ -6,7 +6,6 @@ import android.content.Context;
 
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.api.ApiConfig;
-import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.bean.IJKCode;
 import com.github.tvbox.osc.player.ExoMediaPlayerFactory;
 import com.github.tvbox.osc.player.ExoPlayer;
@@ -450,7 +449,7 @@ public class PlayerHelper {
      * 直接用 app.getString 会停在旧语言。
      */
     private static String str(int resId) {
-        App app = App.getInstance();
+        Context app = AppContextHolder.context();
         return app == null ? "" : LanguageManager.INSTANCE.localized(app).getString(resId);
     }
 

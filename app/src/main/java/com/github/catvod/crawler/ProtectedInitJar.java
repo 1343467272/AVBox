@@ -4,7 +4,6 @@ import android.content.Context;
 import android.text.TextUtils;
 import android.util.Base64;
 
-import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.util.LOG;
 
 import java.io.ByteArrayOutputStream;
@@ -24,6 +23,7 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 import dalvik.system.DexClassLoader;
+import com.github.tvbox.osc.util.AppContextHolder;
 
 class ProtectedInitJar {
 
@@ -41,7 +41,7 @@ class ProtectedInitJar {
     boolean check(String jar) {
         Boolean cached = jars.get(jar);
         if (cached != null) return cached;
-        boolean result = scan(jar, App.getInstance().getPackageName());
+        boolean result = scan(jar, AppContextHolder.context().getPackageName());
         jars.put(jar, result);
         return result;
     }
@@ -66,7 +66,7 @@ class ProtectedInitJar {
         try {
             Field context = clz.getDeclaredField("c");
             context.setAccessible(true);
-            context.set(init, App.getInstance());
+            context.set(init, AppContextHolder.context());
             return;
         } catch (Throwable ignored) {
             LOG.d("ProtectedInitJar", "bind field 'c' failed, try declared fields");
@@ -75,7 +75,7 @@ class ProtectedInitJar {
             try {
                 if (Modifier.isStatic(field.getModifiers()) || !Context.class.isAssignableFrom(field.getType())) continue;
                 field.setAccessible(true);
-                field.set(init, App.getInstance());
+                field.set(init, AppContextHolder.context());
             } catch (Throwable ignored) {
                 LOG.d("ProtectedInitJar", "bind context field '" + field.getName() + "' failed");
             }
@@ -87,7 +87,7 @@ class ProtectedInitJar {
         try {
             Class<?> nativeClass = clz.getClassLoader().loadClass("com.github.catvod.spider.DexNative");
             Method getLoader = nativeClass.getMethod("getLoader", Object.class);
-            Object loader = getLoader.invoke(null, App.getInstance());
+            Object loader = getLoader.invoke(null, AppContextHolder.context());
             if (!(loader instanceof DexClassLoader)) return false;
             boolean bound = false;
             for (Class<?> type = clz; type != null; type = type.getSuperclass()) {
@@ -117,7 +117,7 @@ class ProtectedInitJar {
     private void invokeStartGoProxy(Class<?> clz) {
         try {
             Method method = clz.getMethod("startGoProxy", Context.class);
-            method.invoke(null, App.getInstance());
+            method.invoke(null, AppContextHolder.context());
         } catch (Throwable ignored) {
             LOG.d("ProtectedInitJar", "invoke startGoProxy failed");
         }

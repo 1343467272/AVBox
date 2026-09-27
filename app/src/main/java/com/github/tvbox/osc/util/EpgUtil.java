@@ -3,7 +3,6 @@ package com.github.tvbox.osc.util;
 import com.github.tvbox.osc.util.LOG;
 import android.content.res.AssetManager;
 
-import com.github.tvbox.osc.base.App;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -22,7 +21,7 @@ public class EpgUtil {
         if(epgDoc != null)
             return;
         try {
-            AssetManager assetManager = App.getInstance().getAssets(); //获得assets资源管理器（assets中的文件无法直接访问，可以使用AssetManager访问）
+            AssetManager assetManager = AppContextHolder.context().getAssets(); //获得assets资源管理器（assets中的文件无法直接访问，可以使用AssetManager访问）
             InputStreamReader inputStreamReader = new InputStreamReader(assetManager.open("epg_data.json"),"UTF-8"); //使用IO流读取json文件内容
             BufferedReader br = new BufferedReader(inputStreamReader);//使用字符高效流
             String line;

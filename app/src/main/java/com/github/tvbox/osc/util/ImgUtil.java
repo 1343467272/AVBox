@@ -16,7 +16,6 @@ import coil3.request.Disposable;
 import coil3.request.ImageRequest;
 
 import com.github.tvbox.osc.api.ApiConfig;
-import com.github.tvbox.osc.base.App;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -110,11 +109,11 @@ public class ImgUtil {
             view.setImageDrawable(createTextDrawable("TVBox", 0, 0, 1));
             return null;
         }
-        ImageRequest request = new ImageRequest.Builder(App.getInstance())
+        ImageRequest request = new ImageRequest.Builder(AppContextHolder.context())
                 .data(url)
                 .target(new ArtworkTarget(view))
                 .build();
-        return SingletonImageLoader.get(App.getInstance()).enqueue(request);
+        return SingletonImageLoader.get(AppContextHolder.context()).enqueue(request);
     }
 
     /**
@@ -142,7 +141,7 @@ public class ImgUtil {
     }
 
     public static Drawable createTextDrawable(String text) {
-        return createTextDrawable(text, 0, 0, AutoSizeUtils.mm2px(App.getInstance(), 10));
+        return createTextDrawable(text, 0, 0, AutoSizeUtils.mm2px(AppContextHolder.context(), 10));
     }
 
     private static Drawable createTextDrawable(String text, int width, int height, float cornerRadius) {
@@ -169,7 +168,7 @@ public class ImgUtil {
         float x = width / 2f;
         float y = (height - fontMetrics.bottom - fontMetrics.top) / 2f;
         canvas.drawText(text, x, y, paint);
-        Drawable drawable = new BitmapDrawable(App.getInstance().getResources(), bitmap);
+        Drawable drawable = new BitmapDrawable(AppContextHolder.context().getResources(), bitmap);
         drawableCache.put(key, drawable);
         return drawable;
     }
@@ -181,7 +180,7 @@ public class ImgUtil {
     public static void clearMemoryCache() {
         clearCache();
         try {
-            SingletonImageLoader.get(App.getInstance()).getMemoryCache().clear();
+            SingletonImageLoader.get(AppContextHolder.context()).getMemoryCache().clear();
             LOG.i("echo-img-clear-memory-cache");
         } catch (Throwable th) {
             LOG.i("echo-img-clear-memory-cache-error:" + th.getMessage());

@@ -3,7 +3,6 @@ package com.github.tvbox.osc.util;
 import android.app.Activity;
 import android.text.TextUtils;
 
-import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.server.RemoteServer;
 
 import java.io.IOException;
@@ -63,7 +62,7 @@ public class RemoteTVBox {
     }
 
     public static void searchAvalible(Callback callback) {
-        final String localIp = RemoteServer.getLocalIPAddress(App.getInstance());
+        final String localIp = RemoteServer.getLocalIPAddress(AppContextHolder.context());
         int divisionIp = TextUtils.isEmpty(localIp) ? -1 : localIp.lastIndexOf(".");
         if (divisionIp <= 0) {
             callback.fail(true, true);

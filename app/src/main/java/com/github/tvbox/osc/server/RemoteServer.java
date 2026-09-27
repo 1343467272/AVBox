@@ -49,6 +49,7 @@ import java.util.regex.Pattern;
 
 import fi.iki.elonen.NanoHTTPD;
 import okio.Buffer;
+import com.github.tvbox.osc.util.AppContextHolder;
 
 /**
  * @author pj567
@@ -191,7 +192,7 @@ public class RemoteServer extends NanoHTTPD {
                         }
                         // 本地源目录授权(SAF):应用自己读不到原目录时靠它直引原目录,副本不必搬。
                         // 只服务回环请求 —— 应用读原目录走的就是 127.0.0.1,没必要把"应用都读不到的目录"再开给局域网客户端
-                        InputStream granted = isLocalRequest(session) ? LocalSourceTree.INSTANCE.open(App.getInstance(), f) : null;
+                        InputStream granted = isLocalRequest(session) ? LocalSourceTree.INSTANCE.open(AppContextHolder.context(), f) : null;
                         if (granted != null) {
                             return NanoHTTPD.newChunkedResponse(NanoHTTPD.Response.Status.OK, "application/octet-stream", granted);
                         }

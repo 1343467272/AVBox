@@ -7,6 +7,7 @@ import android.content.Context;
 import com.github.tvbox.osc.bean.VodInfo;
 import com.github.tvbox.osc.data.AppDataManager;
 import com.github.tvbox.osc.server.ControlManager;
+import com.github.tvbox.osc.util.AppContextHolder;
 import com.github.tvbox.osc.util.AppManager;
 import com.github.tvbox.osc.util.EpgUtil;
 import com.github.tvbox.osc.util.FileUtils;
@@ -50,6 +51,8 @@ public class App extends Application {
     public void onCreate() {
         super.onCreate();
         instance = this;
+        // 下层(util/data/server/catvod)读 Context 一律走这里,不再反向依赖 App 类
+        AppContextHolder.install(this);
         // 启动看门狗(2026-09-21):装崩溃记录器。必须最早装 —— 第三方爬虫可能在
         // Application.onCreate 之后的任意时刻于自己的线程上闪退,晚了就记不到。
         com.github.tvbox.osc.util.BootGuard.install();

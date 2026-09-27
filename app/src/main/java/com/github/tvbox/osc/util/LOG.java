@@ -3,7 +3,6 @@ package com.github.tvbox.osc.util;
 import android.util.Log;
 
 import com.github.tvbox.osc.BuildConfig;
-import com.github.tvbox.osc.base.App;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -44,7 +43,7 @@ public class LOG {
         try {
             fileLogExecutor.execute(() -> {
                 // 每行独立开关文件:保证进程被杀时已写入的内容不丢(排查场景量小,开销可接受)
-                try (FileWriter writer = new FileWriter(new File(App.getInstance().getFilesDir(), FILE_LOG_NAME), true)) {
+                try (FileWriter writer = new FileWriter(new File(AppContextHolder.context().getFilesDir(), FILE_LOG_NAME), true)) {
                     writer.write(line + "\n");
                 } catch (Throwable ignored) {
                     // 落盘失败即放弃:fileLog 自身兜底,不能再走 LOG 以免递归

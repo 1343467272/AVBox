@@ -2,7 +2,6 @@ package com.github.tvbox.osc.util;
 
 import android.os.SystemClock;
 
-import com.github.tvbox.osc.base.App;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -151,7 +150,7 @@ public final class BootGuard {
 
     private static File crashMarkerFile() {
         try {
-            return new File(App.getInstance().getFilesDir(), CRASH_MARKER_NAME);
+            return new File(AppContextHolder.context().getFilesDir(), CRASH_MARKER_NAME);
         } catch (Throwable e) {
             return null;
         }

@@ -2,7 +2,7 @@ package com.github.tvbox.osc.util
 
 import com.github.tvbox.osc.base.App
 import com.github.tvbox.osc.bean.VodInfo
-import com.github.tvbox.osc.cache.CacheManager
+import com.github.tvbox.osc.data.CacheManager
 import com.github.tvbox.osc.player.PlaybackService
 import java.util.concurrent.ConcurrentHashMap
 

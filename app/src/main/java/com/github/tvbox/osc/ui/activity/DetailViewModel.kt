@@ -16,7 +16,7 @@ import com.github.tvbox.osc.util.LanguageManager
 import com.github.tvbox.osc.bean.AbsXml
 import com.github.tvbox.osc.bean.Movie
 import com.github.tvbox.osc.bean.VodInfo
-import com.github.tvbox.osc.cache.RoomDataManger
+import com.github.tvbox.osc.data.RoomDataManger
 import com.github.tvbox.osc.event.RefreshEvent
 import com.github.tvbox.osc.player.PlaybackSession
 import com.github.tvbox.osc.ui.player.PlayContainer

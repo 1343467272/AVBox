@@ -1,4 +1,4 @@
-package com.github.tvbox.osc.cache;
+package com.github.tvbox.osc.data;
 
 import com.github.tvbox.osc.util.LOG;
 import android.text.TextUtils;
@@ -6,7 +6,6 @@ import android.text.TextUtils;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.bean.VodInfo;
-import com.github.tvbox.osc.data.AppDataManager;
 import com.google.gson.ExclusionStrategy;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;

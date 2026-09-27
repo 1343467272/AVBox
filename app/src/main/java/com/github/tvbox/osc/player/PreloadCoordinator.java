@@ -7,7 +7,7 @@ import android.os.Looper;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.MutableLiveData;
 
-import com.github.tvbox.osc.cache.CacheManager;
+import com.github.tvbox.osc.data.CacheManager;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;

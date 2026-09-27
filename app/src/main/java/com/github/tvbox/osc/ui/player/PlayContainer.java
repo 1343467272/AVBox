@@ -22,7 +22,7 @@ import androidx.annotation.NonNull;
 import com.github.tvbox.osc.R;
 import android.widget.FrameLayout;
 import com.github.tvbox.osc.bean.VodInfo;
-import com.github.tvbox.osc.cache.CacheManager;
+import com.github.tvbox.osc.data.CacheManager;
 import com.github.tvbox.osc.dlna.CastVideo;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.player.ExoPlayer;

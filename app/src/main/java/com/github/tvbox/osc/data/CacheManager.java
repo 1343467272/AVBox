@@ -1,7 +1,6 @@
-package com.github.tvbox.osc.cache;
+package com.github.tvbox.osc.data;
 
 import com.github.tvbox.osc.util.LOG;
-import com.github.tvbox.osc.data.AppDataManager;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;

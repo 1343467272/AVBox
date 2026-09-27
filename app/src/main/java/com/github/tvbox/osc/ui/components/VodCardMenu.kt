@@ -12,7 +12,7 @@ import androidx.compose.ui.res.stringResource
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.bean.Movie
 import com.github.tvbox.osc.bean.VodInfo
-import com.github.tvbox.osc.cache.RoomDataManger
+import com.github.tvbox.osc.data.RoomDataManger
 import com.github.tvbox.osc.event.RefreshEvent
 import com.github.tvbox.osc.ui.page.jumpToSearch
 import kotlinx.coroutines.CoroutineScope

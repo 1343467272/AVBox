@@ -65,8 +65,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.api.ApiConfig
-import com.github.tvbox.osc.cache.RoomDataManger
-import com.github.tvbox.osc.cache.VodCollect
+import com.github.tvbox.osc.data.RoomDataManger
+import com.github.tvbox.osc.data.VodCollect
 import com.github.tvbox.osc.event.RefreshEvent
 import com.github.tvbox.osc.ui.WindowSize
 import com.github.tvbox.osc.ui.components.AppTopBarScaffold

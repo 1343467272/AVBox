@@ -15,7 +15,7 @@ import com.github.tvbox.osc.api.ApiConfig
 import com.github.tvbox.osc.base.BaseActivity
 import com.github.tvbox.osc.ui.components.SheetHostScaffold
 import com.github.tvbox.osc.bean.VodInfo
-import com.github.tvbox.osc.cache.RoomDataManger
+import com.github.tvbox.osc.data.RoomDataManger
 import com.github.tvbox.osc.dlna.CastVideo
 import com.github.tvbox.osc.event.RefreshEvent
 import com.github.tvbox.osc.player.MyVideoView

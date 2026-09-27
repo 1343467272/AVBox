@@ -1,4 +1,4 @@
-package com.github.tvbox.osc.cache;
+package com.github.tvbox.osc.data;
 
 import androidx.room3.Dao;
 import androidx.room3.Delete;

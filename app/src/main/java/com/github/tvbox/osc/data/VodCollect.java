@@ -1,4 +1,4 @@
-package com.github.tvbox.osc.cache;
+package com.github.tvbox.osc.data;
 
 import androidx.room3.ColumnInfo;
 import androidx.room3.Entity;
@@ -6,13 +6,8 @@ import androidx.room3.PrimaryKey;
 
 import java.io.Serializable;
 
-/**
- * @author pj567
- * @date :2021/1/7
- * @description:
- */
-@Entity(tableName = "vodRecord")
-public class VodRecord implements Serializable {
+@Entity(tableName = "vodCollect")
+public class VodCollect implements Serializable {
     @PrimaryKey(autoGenerate = true)
     private int id;
     @ColumnInfo(name = "vodId")
@@ -21,10 +16,13 @@ public class VodRecord implements Serializable {
     public long updateTime;
     @ColumnInfo(name = "sourceKey")
     public String sourceKey;
-    /** 订阅标识(当前生效的配置地址):历史按它隔离,换订阅后旧订阅的历史不再列出 */
+    @ColumnInfo(name = "name")
+    public String name;
+    @ColumnInfo(name = "pic")
+    public String pic;
+    /** 订阅标识(收藏时的配置地址):列表全局显示,点击时按它路由回原订阅 */
     @ColumnInfo(name = "cid")
     public String cid;
-    public String dataJson;
 
     public int getId() {
         return id;

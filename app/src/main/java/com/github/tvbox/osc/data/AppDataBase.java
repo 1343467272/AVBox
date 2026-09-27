@@ -3,12 +3,6 @@ package com.github.tvbox.osc.data;
 import androidx.room3.Database;
 import androidx.room3.RoomDatabase;
 
-import com.github.tvbox.osc.cache.Cache;
-import com.github.tvbox.osc.cache.CacheDao;
-import com.github.tvbox.osc.cache.VodCollect;
-import com.github.tvbox.osc.cache.VodCollectDao;
-import com.github.tvbox.osc.cache.VodRecord;
-import com.github.tvbox.osc.cache.VodRecordDao;
 
 
 /**

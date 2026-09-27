@@ -42,7 +42,7 @@ import android.util.AttributeSet;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
-import com.github.tvbox.osc.cache.CacheManager;
+import com.github.tvbox.osc.data.CacheManager;
 import com.github.tvbox.osc.subtitle.DefaultSubtitleEngine;
 import com.github.tvbox.osc.subtitle.SubtitleEngine;
 import com.github.tvbox.osc.subtitle.model.Subtitle;

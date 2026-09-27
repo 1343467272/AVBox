@@ -1,7 +1,7 @@
 package com.github.tvbox.osc.util
 
 import com.github.tvbox.osc.bean.VodInfo
-import com.github.tvbox.osc.cache.RoomDataManger
+import com.github.tvbox.osc.data.RoomDataManger
 import com.github.tvbox.osc.event.RefreshEvent
 import org.greenrobot.eventbus.EventBus
 import java.util.concurrent.ExecutorService

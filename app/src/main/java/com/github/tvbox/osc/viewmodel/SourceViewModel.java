@@ -43,6 +43,8 @@ public class SourceViewModel extends ViewModel {
     public static final ExecutorService spThreadPool = SourceHelper.SPIDER_POOL;
 
     //homeContent缓存，最多存储5个sourceKey的AbsSortXml对象
+    // access-order 的 LinkedHashMap:连 get 都会改结构,而读它的有三个池线程 ⇒ 所有访问都在
+    // 这把锁(监视器就是 map 本身)下,持锁期间不做 IO,否则链表会在并发下损坏
     private static final Map<String, AbsSortXml> sortCache = new LinkedHashMap<String, AbsSortXml>(5, 0.75f, true) {
         @Override
         protected boolean removeEldestEntry(Entry<String, AbsSortXml> eldest) {
@@ -82,7 +84,9 @@ public class SourceViewModel extends ViewModel {
 
     /** 换源/换配置后清掉运行期缓存(分类结构与 extend 都与源绑定) */
     public static void clearRuntimeCache() {
-        sortCache.clear();
+        synchronized (sortCache) {
+            sortCache.clear();
+        }
         extendCache.clear();
     }
 

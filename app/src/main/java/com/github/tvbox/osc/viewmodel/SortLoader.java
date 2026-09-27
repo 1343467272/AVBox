@@ -61,7 +61,9 @@ final class SortLoader {
             return;
         }
         if (!shouldBypassSortCache(sourceKey, sourceBean) && !hasActionSort(sortXml)) {
-            sortCache.put(sourceKey, sortXml);
+            synchronized (sortCache) {
+                sortCache.put(sourceKey, sortXml);
+            }
         }
     }
 
@@ -136,7 +138,10 @@ final class SortLoader {
         }
 
         if (!shouldBypassSortCache(sourceKey, sourceBean)) {
-            AbsSortXml cached = sortCache.get(sourceKey);
+            AbsSortXml cached;
+            synchronized (sortCache) {
+                cached = sortCache.get(sourceKey);
+            }
             if (cached != null) {
                 boolean shouldUseCache = cached.videoList != null && !cached.videoList.isEmpty();
                 if (shouldUseCache) {

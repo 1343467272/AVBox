@@ -2,7 +2,6 @@ package com.github.tvbox.osc.viewmodel;
 
 import android.text.TextUtils;
 
-import android.util.Base64;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -13,7 +12,6 @@ import com.github.catvod.crawler.Spider;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.bean.AbsSortXml;
 import com.github.tvbox.osc.bean.AbsXml;
-import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.bean.MovieSort;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.util.BoundedCall;
@@ -33,12 +31,9 @@ import org.json.JSONObject;
 
 
 import java.io.UnsupportedEncodingException;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -67,6 +62,7 @@ public class SourceViewModel extends ViewModel {
     private final SourceResultParser resultParser;
     private final ListLoader listLoader;
     private final SortLoader sortLoader;
+    private final DetailLoader detailLoader;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final AtomicInteger playRequestSeq = new AtomicInteger();
     private final AtomicInteger preloadRequestSeq = new AtomicInteger();
@@ -84,6 +80,7 @@ public class SourceViewModel extends ViewModel {
         resultParser = new SourceResultParser(gson, searchResult, detailResult, pushDetailResolver);
         listLoader = new ListLoader(gson, extendCache, listResult, resultParser);
         sortLoader = new SortLoader(gson, extendCache, sortCache, sortResult, listLoader, resultParser);
+        detailLoader = new DetailLoader(gson, extendCache, detailResult, resultParser);
     }
 
     /** 站点取数线程池(spider 阻塞调用);池本身在 {@link SourceHelper},这里保留门面入口 */
@@ -114,130 +111,12 @@ public class SourceViewModel extends ViewModel {
         listLoader.getList(sortData, page);
     }
 
-    // detailContent
     public void getDetail(String sourceKey, String urlid) {
-        getDetail(sourceKey, urlid, false);
+        detailLoader.getDetail(sourceKey, urlid);
     }
 
     public void getDetail(String sourceKey, String urlid, boolean fallback) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            // 同 getSort:t0/1/4 的 extend 拉取会阻塞
-            final String key = sourceKey;
-            final String id = urlid;
-            SourceHelper.PREPARE_POOL.execute(new Runnable() {
-                @Override
-                public void run() {
-                    getDetail(key, id, fallback);
-                }
-            });
-            return;
-        }
-        if (urlid.startsWith("push://") && ApiConfig.get().getSource(PushUrlParser.PUSH_AGENT) != null) {
-            String pushUrl = urlid.substring(7);
-            if (pushUrl.startsWith("b64:")) {
-                try {
-                    pushUrl = new String(Base64.decode(pushUrl.substring(4), Base64.DEFAULT | Base64.URL_SAFE | Base64.NO_WRAP), "UTF-8");
-                } catch (UnsupportedEncodingException e) {
-                    LOG.e("SourceViewModel", e);
-                }
-            } else {
-                pushUrl = URLDecoder.decode(pushUrl);
-            }
-            sourceKey = PushUrlParser.isCastPushUrl(pushUrl) ? PushUrlParser.PUSH_FALLBACK : PushUrlParser.PUSH_AGENT;
-            urlid = pushUrl;
-        } else if (PushUrlParser.PUSH_AGENT.equals(sourceKey) && PushUrlParser.isCastPushUrl(urlid)) {
-            sourceKey = PushUrlParser.PUSH_FALLBACK;
-        }
-        String id = urlid;
-    
-        SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
-        if (PushUrlParser.isPushFallback(sourceKey, sourceBean)) {
-            detailResult.postValue(createPushDetail(urlid, sourceKey));
-            return;
-        }
-        if (sourceBean == null) {
-            // 源已不存在(2026-09-13):典型场景 = 切到新源后加载完成前,从历史记录点进
-            // 一条属于旧源(已失效 key)的条目;或订阅源被删。此处返回空 AbsXml(与末尾
-            // 未知 type 分支同形状),详情页走空态,而不是在下面 sourceBean.getType() 处 NPE
-            LOG.i("echo--getDetail--source-null--" + sourceKey);
-            detailResult.postValue(createEmptyDetail(sourceKey));
-            return;
-        }
-        int type = sourceBean.getType();
-        if (type == 3) {
-            spThreadPool.execute(new Runnable() {
-                @Override
-                public void run() {
-                    String json = BoundedCall.call(new Callable<String>() {
-                        @Override
-                        public String call() {
-                            Spider sp = ApiConfig.get().getCSP(sourceBean);
-                            List<String> ids = new ArrayList<>();
-                            ids.add(id);
-                            try {
-//                                LOG.i("echo--getDetail--id: " + id);
-                                return sp.detailContent(ids);
-                            } catch (Exception e) {
-                                LOG.i("echo--getDetail--error: " + e.getMessage());
-                                return "";
-                            }
-                        }
-                    }, fallback ? 6_000L : sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getDetail--" + sourceBean.getKey());
-//                    LOG.i("echo--getDetail--result:" + json);
-                    resultParser.json(detailResult, json, sourceBean.getKey());
-                }
-            });
-        } else if (type == 0 || type == 1|| type == 4) {
-            String extend=sourceBean.getExt();
-            extend=fallback ? SourceHelper.getFixUrl(extendCache, gson, extend, 6) : SourceHelper.getFixUrl(extendCache, gson, extend, sourceBean.getPlayTimeoutSeconds());
-
-            GetRequest<String> request = SourceHelper.siteGet(sourceBean)
-                    .tag("detail")
-                    .params("ac", type == 0 ? "videolist" : "detail")
-                    .params("ids", id);
-            // 当 extend 不为空且非空字符串时添加参数
-            if (extend != null && !extend.isEmpty()) {
-                request.params("extend", extend);
-            }
-            request.execute(new AbsCallback<String>() {
-
-                        @Override
-                        public String convertResponse(okhttp3.Response response) throws Throwable {
-                            if (response.body() != null) {
-                                return response.body().string();
-                            } else {
-                                throw new IllegalStateException(SourceHelper.ERR_NETWORK);
-                            }
-                        }
-
-                        @Override
-                        public void onSuccess(Response<String> response) {
-                            if (type == 0) {
-                                String xml = response.body();
-                                resultParser.xml(detailResult, xml, sourceBean.getKey());
-                            } else {
-                                String json = response.body();
-                                LOG.i(json);
-                                resultParser.json(detailResult, json, sourceBean.getKey());
-                            }
-                        }
-
-                        @Override
-                        public void onError(Response<String> response) {
-                            super.onError(response);
-                            resultParser.json(detailResult, "", sourceBean.getKey());
-                        }
-                    });
-        } else {
-            detailResult.postValue(createEmptyDetail(sourceKey));
-        }
-    }
-
-    /** 空详情(源不存在 / 未知 type):详情页按空态渲染,不带任何影片数据 */
-    private static AbsXml createEmptyDetail(String sourceKey) {
-        AbsXml data = new AbsXml();
-        data.sourceKey = sourceKey;
-        return data;
+        detailLoader.getDetail(sourceKey, urlid, fallback);
     }
 
     public void action(String sourceKey, String action) {
@@ -619,34 +498,6 @@ public class SourceViewModel extends ViewModel {
         return result;
     }
 
-    private AbsXml createPushDetail(String url, String sourceKey) {
-        AbsXml data = new AbsXml();
-        data.sourceKey = sourceKey;
-        Movie movie = new Movie();
-        movie.videoList = new ArrayList<>();
-        Movie.Video video = new Movie.Video();
-        video.id = url;
-        video.name = url;
-        // i18n: keep —— 以下是合成 Movie 的结构化数据(type/flag/`线路名$地址` 格式),会被持久化与比较,不能翻
-        video.type = "推送";
-        video.sourceKey = sourceKey;
-        video.urlBean = new Movie.Video.UrlBean();
-        video.urlBean.infoList = new ArrayList<>();
-        Movie.Video.UrlBean.UrlInfo urlInfo = new Movie.Video.UrlBean.UrlInfo();
-        urlInfo.flag = "推送"; // i18n: keep
-        urlInfo.urls = "播放$" + url; // i18n: keep
-        urlInfo.beanList = new ArrayList<>();
-        urlInfo.beanList.add(new Movie.Video.UrlBean.UrlInfo.InfoBean("播放", url)); // i18n: keep
-        video.urlBean.infoList.add(urlInfo);
-        movie.videoList.add(video);
-        data.movie = movie;
-        return data;
-    }
-
-    /**
-     * 站点级 header 作为播放请求的兜底头(fongmi 同语义):只补结果里没有的键,结果自带的头优先。
-     * 没配 header 的源这里是空操作。
-     */
     private void mergeSiteHeaders(JSONObject result, SourceBean sourceBean) {
         if (result == null || sourceBean == null) return;
         Map<String, String> siteHeader = sourceBean.getHeader();

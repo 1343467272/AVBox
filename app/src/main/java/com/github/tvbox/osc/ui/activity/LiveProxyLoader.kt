@@ -90,15 +90,15 @@ internal class LiveProxyLoader(private val host: Host) {
                 try {
                     sortJson = future.get(ApiConfig.get().liveConnectTimeoutSeconds.toLong(), TimeUnit.SECONDS)
                 } catch (e: TimeoutException) {
-                    e.printStackTrace()
+                    LOG.e("LiveProxyLoader", e)
                     future.cancel(true)
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    LOG.e("LiveProxyLoader", e)
                 } finally {
                     try {
                         executor.shutdown()
                     } catch (th: Throwable) {
-                        th.printStackTrace()
+                        LOG.e("LiveProxyLoader", th)
                     }
                     if (sortJson.isNullOrEmpty()) {
                         mHandler.post { host.onEmpty() }

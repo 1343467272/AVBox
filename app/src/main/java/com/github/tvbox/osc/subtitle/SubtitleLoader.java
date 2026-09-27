@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.subtitle;
 
+import com.github.tvbox.osc.util.LOG;
 import android.net.Uri;
 import android.text.TextUtils;
 import android.util.Base64;
@@ -70,7 +71,7 @@ public class SubtitleLoader {
                         });
                     }
                 } catch (final Exception e) {
-                    e.printStackTrace();
+                    LOG.e("SubtitleLoader", e);
                     if (callback != null) {
                         AppTaskExecutor.mainThread().execute(new Runnable() {
                             @Override
@@ -101,7 +102,7 @@ public class SubtitleLoader {
                     }
 
                 } catch (final Exception e) {
-                    e.printStackTrace();
+                    LOG.e("SubtitleLoader", e);
                     if (callback != null) {
                         AppTaskExecutor.mainThread().execute(new Runnable() {
                             @Override
@@ -133,7 +134,7 @@ public class SubtitleLoader {
                     }
 
                 } catch (final Exception e) {
-                    e.printStackTrace();
+                    LOG.e("SubtitleLoader", e);
                     if (callback != null) {
                         AppTaskExecutor.mainThread().execute(new Runnable() {
                             @Override
@@ -162,7 +163,7 @@ public class SubtitleLoader {
                 return loadFromLocal(path);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("SubtitleLoader", e);
         }
         return null;
     }

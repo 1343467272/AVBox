@@ -27,6 +27,7 @@
 
 package com.github.tvbox.osc.subtitle.format;
 
+import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.subtitle.exception.FatalParsingException;
 import com.github.tvbox.osc.subtitle.model.Style;
 import com.github.tvbox.osc.subtitle.model.Subtitle;
@@ -189,7 +190,7 @@ public class FormatSTL implements TimedTextFileFormat {
 
 		} catch (Exception e){
 			//format error
-			e.printStackTrace();
+			LOG.e("FormatSTL", e);
 			throw new FatalParsingException("Format error in the file, migth be due to corrupt data.\n"+e.getMessage());
 		}
 

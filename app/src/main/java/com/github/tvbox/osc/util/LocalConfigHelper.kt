@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.util
 
+import com.github.tvbox.osc.util.LOG
 import android.app.Activity
 import android.content.ContentUris
 import android.content.Context
@@ -80,7 +81,7 @@ fun handleLocalConfigResult(activity: Activity, uri: Uri, onFinish: (Boolean) ->
         val result = try {
             importLocalConfig(context, uri)
         } catch (th: Throwable) {
-            th.printStackTrace()
+            LOG.e("LocalConfigHelper", th)
             null
         }
         onMain {
@@ -158,7 +159,7 @@ fun handleLocalSourceTreeResult(activity: Activity, tree: Uri?) {
         val missing = try {
             copyRefsFromTree(context, tree, dir, refs)
         } catch (th: Throwable) {
-            th.printStackTrace()
+            LOG.e("LocalConfigHelper", th)
             refs
         }
         onMain {
@@ -549,7 +550,7 @@ private fun copyDocument(context: Context, source: Uri, target: File, limit: Lon
         done = true
         total
     } catch (th: Throwable) {
-        th.printStackTrace()
+        LOG.e("LocalConfigHelper", th)
         null
     } finally {
         try {
@@ -580,7 +581,7 @@ private fun readBytes(context: Context, uri: Uri, limit: Long): ByteArray? {
         }
         buffer.toByteArray()
     } catch (th: Throwable) {
-        th.printStackTrace()
+        LOG.e("LocalConfigHelper", th)
         null
     } finally {
         try {
@@ -600,7 +601,7 @@ private fun writeBytes(file: File, data: ByteArray): Boolean {
         output.write(data)
         true
     } catch (th: Throwable) {
-        th.printStackTrace()
+        LOG.e("LocalConfigHelper", th)
         false
     } finally {
         try {
@@ -627,7 +628,7 @@ private fun copyFile(source: File, target: File): Boolean {
         }
         true
     } catch (th: Throwable) {
-        th.printStackTrace()
+        LOG.e("LocalConfigHelper", th)
         false
     } finally {
         try {

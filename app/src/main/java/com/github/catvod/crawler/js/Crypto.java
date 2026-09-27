@@ -1,5 +1,6 @@
 package com.github.catvod.crawler.js;
 
+import com.github.tvbox.osc.util.LOG;
 import android.util.Base64;
 
 import java.security.Key;
@@ -30,7 +31,7 @@ public class Crypto {
             byte[] inBuf = inBase64 ? Base64.decode(input.replaceAll("_", "/").replaceAll("-", "+"), Base64.DEFAULT) : input.getBytes("UTF-8");
             return outBase64 ? Base64.encodeToString(cipher.doFinal(inBuf), Base64.NO_WRAP) : new String(cipher.doFinal(inBuf), "UTF-8");
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("Crypto", e);
             return "";
         }
     }
@@ -55,7 +56,7 @@ public class Crypto {
             }
             return outBase64 ? Base64.encodeToString(outBytes, Base64.NO_WRAP) : new String(outBytes, "UTF-8");
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("Crypto", e);
             return "";
         }
     }

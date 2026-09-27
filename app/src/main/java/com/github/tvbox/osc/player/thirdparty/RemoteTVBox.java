@@ -48,7 +48,7 @@ public class RemoteTVBox {
             post(actionUrl, params, new okhttp3.Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
-                    e.printStackTrace();
+                    LOG.e("RemoteTVBox", e);
                 }
 
                 @Override
@@ -60,7 +60,7 @@ public class RemoteTVBox {
                 }
             });
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("RemoteTVBox", e);
         }
 
         return true;

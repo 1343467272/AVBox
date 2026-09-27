@@ -20,6 +20,9 @@ public class VodCollect implements Serializable {
     public String name;
     @ColumnInfo(name = "pic")
     public String pic;
+    /** 订阅标识(收藏时的配置地址):列表全局显示,点击时按它路由回原订阅 */
+    @ColumnInfo(name = "cid")
+    public String cid;
 
     public int getId() {
         return id;

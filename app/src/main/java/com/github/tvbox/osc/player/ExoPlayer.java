@@ -106,6 +106,23 @@ public class ExoPlayer extends ExoMediaPlayer {
                     (preferSoftwareDecode ? MediaCodecSelector.PREFER_SOFTWARE : MediaCodecSelector.DEFAULT)
                             .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
 
+    public static final int ERROR_KIND_UNKNOWN = 0;
+    public static final int ERROR_KIND_NETWORK = 1;
+    public static final int ERROR_KIND_DECODE = 2;
+
+    private volatile int lastErrorKind = ERROR_KIND_UNKNOWN;
+
+    public int lastErrorKind() {
+        return lastErrorKind;
+    }
+
+    private static int classifyError(String codeName) {
+        if (codeName == null) return ERROR_KIND_UNKNOWN;
+        if (codeName.startsWith("ERROR_CODE_IO") || codeName.startsWith("ERROR_CODE_PARSING")) return ERROR_KIND_NETWORK;
+        if (codeName.startsWith("ERROR_CODE_DECOD")) return ERROR_KIND_DECODE;
+        return ERROR_KIND_UNKNOWN;
+    }
+
     public ExoPlayer(Context context) {
         super(context);
         // 缓冲倍数(2026-09-12,照搬 fongmi ExoUtil.buildLoadControl):
@@ -158,9 +175,11 @@ public class ExoPlayer extends ExoMediaPlayer {
 
             @Override
             public void onPlayerError(androidx.media3.common.PlaybackException error) {
+                String codeName = error.getErrorCodeName();
+                lastErrorKind = classifyError(codeName);
                 // 播放错误详情(错误码 + cause 链,排查播放失败用)
                 StringBuilder sb = new StringBuilder("echo-exo-player-error: code=")
-                        .append(error.getErrorCodeName())
+                        .append(codeName)
                         .append(", msg=").append(error.getMessage());
                 Throwable cause = error.getCause();
                 for (int i = 0; cause != null && i < 5; i++) {

@@ -27,8 +27,8 @@ public interface VodCollectDao {
     @Query("delete from vodCollect where `id`=:id")
     void delete(int id);
 
-    @Query("select * from vodCollect where `sourceKey`=:sourceKey and `vodId`=:vodId")
-    VodCollect getVodCollect(String sourceKey, String vodId);
+    @Query("select * from vodCollect where `cid`=:cid and `sourceKey`=:sourceKey and `vodId`=:vodId")
+    VodCollect getVodCollect(String cid, String sourceKey, String vodId);
 
     @Delete
     int delete(VodCollect record);

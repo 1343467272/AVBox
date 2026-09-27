@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.player.controller
 
+import com.github.tvbox.osc.util.LOG
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.ActivityInfo
@@ -663,7 +664,7 @@ class ComposeVideoController @JvmOverloads constructor(
             // 配置一变(含换集/换源)就同步参数面板，否则面板会停在旧值
             refreshParamsSheet()
         } catch (e: JSONException) {
-            e.printStackTrace()
+            LOG.e("ComposeVideoController", e)
         }
     }
 
@@ -766,7 +767,7 @@ class ComposeVideoController @JvmOverloads constructor(
             speedOld = value
             mControlWrapper?.setSpeed(value)
         } catch (e: JSONException) {
-            e.printStackTrace()
+            LOG.e("ComposeVideoController", e)
         }
     }
 
@@ -779,7 +780,7 @@ class ComposeVideoController @JvmOverloads constructor(
             listener?.updatePlayerCfg()
             mControlWrapper?.setScreenScaleType(index)
         } catch (e: JSONException) {
-            e.printStackTrace()
+            LOG.e("ComposeVideoController", e)
         }
     }
 
@@ -795,7 +796,7 @@ class ComposeVideoController @JvmOverloads constructor(
             listener?.updatePlayerCfg()
             listener?.replay(false)
         } catch (e: JSONException) {
-            e.printStackTrace()
+            LOG.e("ComposeVideoController", e)
         }
     }
 
@@ -812,7 +813,7 @@ class ComposeVideoController @JvmOverloads constructor(
             listener?.updatePlayerCfg()
             listener?.replay(false)
         } catch (e: JSONException) {
-            e.printStackTrace()
+            LOG.e("ComposeVideoController", e)
         }
     }
 
@@ -842,7 +843,7 @@ class ComposeVideoController @JvmOverloads constructor(
             state.speedBoostValue = boost
             state.speedBoostVisible = true
         } catch (e: JSONException) {
-            e.printStackTrace()
+            LOG.e("ComposeVideoController", e)
         }
     }
 
@@ -860,7 +861,7 @@ class ComposeVideoController @JvmOverloads constructor(
             try {
                 playerConfig?.let { mControlWrapper?.setSpeed(it.getDouble("sp").toFloat()) }
             } catch (e: JSONException) {
-                e.printStackTrace()
+                LOG.e("ComposeVideoController", e)
             }
         } else if (speedRetryCount < SPEED_RETRY_MAX) {
             // BugReview #32:重试带上限,播放长期不进 playback 态时不再主线程空转;
@@ -1082,7 +1083,7 @@ class ComposeVideoController @JvmOverloads constructor(
                 },
             )
         } catch (e: JSONException) {
-            e.printStackTrace()
+            LOG.e("ComposeVideoController", e)
         }
     }
 
@@ -1132,7 +1133,7 @@ class ComposeVideoController @JvmOverloads constructor(
             updatePlayerCfgState()
             listener?.updatePlayerCfg()
         } catch (e: JSONException) {
-            e.printStackTrace()
+            LOG.e("ComposeVideoController", e)
         }
     }
 
@@ -1162,7 +1163,7 @@ class ComposeVideoController @JvmOverloads constructor(
             updatePlayerCfgState()
             listener?.updatePlayerCfg()
         } catch (e: JSONException) {
-            e.printStackTrace()
+            LOG.e("ComposeVideoController", e)
         }
     }
 
@@ -1403,7 +1404,7 @@ class ComposeVideoController @JvmOverloads constructor(
                 onSelected = { index -> applyScale(index) },
             )
         } catch (e: JSONException) {
-            e.printStackTrace()
+            LOG.e("ComposeVideoController", e)
         }
     }
 
@@ -1419,7 +1420,7 @@ class ComposeVideoController @JvmOverloads constructor(
                 onSelected = { index -> applySpeed(speedOptions[index]) },
             )
         } catch (e: JSONException) {
-            e.printStackTrace()
+            LOG.e("ComposeVideoController", e)
         }
     }
 }

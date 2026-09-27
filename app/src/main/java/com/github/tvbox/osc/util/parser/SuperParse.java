@@ -213,7 +213,7 @@ public class SuperParse {
             result[2] = baos;
             return result;
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("SuperParse", th);
         }
         return null;
     }

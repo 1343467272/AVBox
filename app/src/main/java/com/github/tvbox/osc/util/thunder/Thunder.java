@@ -141,7 +141,7 @@ public class Thunder {
                                             XLTaskHelper.instance().addMagentTask(url, cacheRoot, fileName) :
                                             XLTaskHelper.instance().addThunderTask(url, cacheRoot, fileName);
                                 } catch (Exception exception) {
-                                    exception.printStackTrace();
+                                    LOG.e("Thunder", exception);
                                     currentTask = 0;
                                 }
                                 if (currentTask <= 0) {
@@ -177,7 +177,7 @@ public class Thunder {
                                                         }
                                                     }
                                                 } catch (Throwable throwable) {
-                                                    throwable.printStackTrace();
+                                                    LOG.e("Thunder", throwable);
                                                 }
                                             }
                                             case 3: {
@@ -190,7 +190,7 @@ public class Thunder {
                                     try {
                                         Thread.sleep(100);
                                     } catch (InterruptedException e) {
-                                        e.printStackTrace();
+                                        LOG.e("Thunder", e);
                                     }
                                 }
                             }else {
@@ -265,7 +265,7 @@ public class Thunder {
                         try {
                             Thread.sleep(1000);
                         } catch (InterruptedException e) {
-                            e.printStackTrace();
+                            LOG.e("Thunder", e);
                         }
                     }
                 }
@@ -299,7 +299,7 @@ public class Thunder {
                         try {
                             Thread.sleep(1000);
                         } catch (InterruptedException e) {
-                            e.printStackTrace();
+                            LOG.e("Thunder", e);
                         }
                     }
                 }
@@ -339,7 +339,7 @@ public class Thunder {
                         try {
                             Thread.sleep(1000);
                         } catch (InterruptedException e) {
-                            e.printStackTrace();
+                            LOG.e("Thunder", e);
                         }
                     }
                 }

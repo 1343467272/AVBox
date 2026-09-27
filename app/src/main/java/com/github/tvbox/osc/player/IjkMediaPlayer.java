@@ -174,7 +174,7 @@ public class IjkMediaPlayer extends IjkPlayer {
                     break;
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("IjkMediaPlayer", e);
         }
         setDataSourceHeader(headers);
         mMediaPlayer.setOption(tv.danmaku.ijk.media.player.IjkMediaPlayer.OPT_CATEGORY_FORMAT, "protocol_whitelist", "ijkio,ffio,async,cache,crypto,file,dash,http,https,ijkhttphook,ijkinject,ijklivehook,ijklongurl,ijksegment,ijktcphook,pipe,rtp,tcp,tls,udp,ijkurlhook,data");

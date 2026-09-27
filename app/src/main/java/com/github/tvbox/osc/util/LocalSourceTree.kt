@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.util
 
+import com.github.tvbox.osc.util.LOG
 import android.content.Context
 import android.content.Intent
 import android.database.Cursor
@@ -23,7 +24,7 @@ object LocalSourceTree {
             context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         } catch (th: Throwable) {
             // 少数 ROM 不给持久化授权:本次会话内仍可读,重启后失效(补同目录引用这一次不依赖它)
-            th.printStackTrace()
+            LOG.e("LocalSourceTree", th)
         }
         val trees = ArrayList(remembered(context))
         if (!trees.contains(tree.toString())) {
@@ -54,7 +55,7 @@ object LocalSourceTree {
             try {
                 context.contentResolver.openInputStream(document)?.let { return it }
             } catch (th: Throwable) {
-                th.printStackTrace()
+                LOG.e("LocalSourceTree", th)
             }
         }
         return null

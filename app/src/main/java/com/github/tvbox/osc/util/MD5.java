@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.util;
 
+import com.github.tvbox.osc.util.LOG;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
@@ -101,9 +102,9 @@ public class MD5 {
                 sb.append(Integer.toHexString(d));
             }
         } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
+            LOG.e("MD5", e);
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.e("MD5", e);
         }
         return sb.toString();
     }

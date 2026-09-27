@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.util;
 
+import com.github.tvbox.osc.util.LOG;
 import android.app.Activity;
 import android.content.Context;
 
@@ -52,7 +53,7 @@ public class PlayerHelper {
             ijkCode = playerCfg.getString("ijk");
             scale = playerCfg.getInt("sc");
         } catch (JSONException e) {
-            e.printStackTrace();
+            LOG.e("PlayerHelper", e);
         }
         // exo 键单独用 optString 读(2026-09-17):不塞进上面的 try —— 该 try 遇第一个缺失键即中断,
         // 老播放记录/直播配置没有 exo 键时会把后面的 sc 一起吞掉
@@ -77,12 +78,12 @@ public class PlayerHelper {
                         try {
                             System.loadLibrary(s);
                         } catch (Throwable th) {
-                            th.printStackTrace();
+                            LOG.e("PlayerHelper", th);
                         }
                     }
                 });
             } catch (Throwable th) {
-                th.printStackTrace();
+                LOG.e("PlayerHelper", th);
             }
         } else if (playerType == 2) {
             playerFactory = ExoMediaPlayerFactory.create();
@@ -177,12 +178,12 @@ public class PlayerHelper {
                         try {
                             System.loadLibrary(s);
                         } catch (Throwable th) {
-                            th.printStackTrace();
+                            LOG.e("PlayerHelper", th);
                         }
                     }
                 });
             } catch (Throwable th) {
-                th.printStackTrace();
+                LOG.e("PlayerHelper", th);
             }
         } else if (playType == 2) {
             playerFactory = ExoMediaPlayerFactory.create();
@@ -216,12 +217,12 @@ public class PlayerHelper {
                     try {
                         System.loadLibrary(s);
                     } catch (Throwable th) {
-                        th.printStackTrace();
+                        LOG.e("PlayerHelper", th);
                     }
                 }
             });
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("PlayerHelper", th);
         }
     }
 

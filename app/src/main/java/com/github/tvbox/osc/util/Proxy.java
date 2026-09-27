@@ -1,4 +1,5 @@
 package com.github.tvbox.osc.util;
+import com.github.tvbox.osc.util.LOG;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.tvbox.osc.server.ControlManager;
 import com.github.tvbox.osc.util.parser.SuperParse;
@@ -233,7 +234,7 @@ public class Proxy {
                 return proxyUrl + URLEncoder.encode(resolvedUri.toString(),"UTF-8");
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("Proxy", e);
             // 野站分片常带未编码非法字符(空格/CJK)导致 URI 解析失败:绝不能返回 null —— 字面量 null 会写进播放列表
             return fallbackUrl(url, type, params);
         }

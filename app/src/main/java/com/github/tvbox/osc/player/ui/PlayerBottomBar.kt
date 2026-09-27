@@ -202,6 +202,14 @@ private fun PlayerActionPill(
             modifier = Modifier.weight(1f),
         )
         PlayerPillIconButton(
+            iconRes = R.drawable.player_ic_menu_danmu,
+            label = stringResource(R.string.player_menu_danmu),
+            box = iconBox,
+            onClick = actions::onDanmuSettingClicked,
+            onLongClick = actions::onDanmuSettingLongClicked,
+            modifier = Modifier.weight(1f),
+        )
+        PlayerPillIconButton(
             iconRes = R.drawable.player_ic_menu_audio,
             label = stringResource(R.string.player_menu_audio_track),
             box = iconBox,
@@ -215,14 +223,6 @@ private fun PlayerActionPill(
             onClick = actions::onVideoTrackClicked,
             modifier = Modifier.weight(1f),
         )
-        PlayerPillIconButton(
-            iconRes = R.drawable.player_ic_menu_danmu,
-            label = stringResource(R.string.player_menu_danmu),
-            box = iconBox,
-            onClick = actions::onDanmuSettingClicked,
-            onLongClick = actions::onDanmuSettingLongClicked,
-            modifier = Modifier.weight(1f),
-        )
         PlayerPillDivider(iconBox)
         PlayerPillIconButton(
             iconRes = R.drawable.player_ic_menu_episodes,
@@ -233,7 +233,7 @@ private fun PlayerActionPill(
         )
         PlayerPillIconButton(
             iconRes = R.drawable.player_ic_params,
-            label = stringResource(R.string.player_menu_params),
+            label = stringResource(R.string.player_menu_more),
             box = iconBox,
             onClick = actions::onParamsClicked,
             modifier = Modifier.weight(1f),

@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.util;
 
+import com.github.tvbox.osc.util.LOG;
 import androidx.annotation.NonNull;
 
 import com.github.tvbox.osc.api.ApiConfig;
@@ -98,7 +99,7 @@ public class OkGoHelper {
         try {
             setOkHttpSsl(builder);
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("OkGoHelper", th);
         }
 
 //        builder.dns(dnsOverHttps);
@@ -133,7 +134,7 @@ public class OkGoHelper {
         try {
             appendDohItems(merged, keys, JsonParser.parseString(dnsConfigJson).getAsJsonArray());
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("OkGoHelper", e);
         }
         appendDohItems(merged, keys, parseDohArray(KV.get(HawkConfig.DOH_JSON, "")));
         return merged;
@@ -145,7 +146,7 @@ public class OkGoHelper {
         try {
             return JsonParser.parseString(json).getAsJsonArray();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("OkGoHelper", e);
             return null;
         }
     }
@@ -222,7 +223,7 @@ public class OkGoHelper {
                     InetAddress inetAddress = InetAddress.getByName(ips.get(j).getAsString());
                     inetAddresses.add(inetAddress);  // 添加到 List 中
                 } catch (Exception e) {
-                    e.printStackTrace();  // 处理无效的 IP 字符串
+                    LOG.e("OkGoHelper", e);  // 处理无效的 IP 字符串
                 }
             }
         }
@@ -248,7 +249,7 @@ public class OkGoHelper {
             }
             dnsHttpsList = list;
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("OkGoHelper", e);
         }
 
         OkHttpClient.Builder builder = new OkHttpClient.Builder();
@@ -261,7 +262,7 @@ public class OkGoHelper {
         try {
             setOkHttpSsl(builder);
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("OkGoHelper", th);
         }
         builder.cache(new Cache(new File(App.getInstance().getCacheDir().getAbsolutePath(), "dohcache"), 100 * 1024 * 1024));
         OkHttpClient dohClient = builder.build();
@@ -395,7 +396,7 @@ public class OkGoHelper {
         try {
             setOkHttpSsl(builder);
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("OkGoHelper", th);
         }
 
         HttpHeaders.setUserAgent("okhttp/" + OkHttp.VERSION);
@@ -435,7 +436,7 @@ public class OkGoHelper {
         try {
             setOkHttpSsl(builder);
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("OkGoHelper", th);
         }
 
         HttpHeaders.setUserAgent("okhttp/" + OkHttp.VERSION);

@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.cache;
 
+import com.github.tvbox.osc.util.LOG;
 import android.text.TextUtils;
 
 import com.github.tvbox.osc.api.ApiConfig;
@@ -46,16 +47,31 @@ public class RoomDataManger {
         return new GsonBuilder().addSerializationExclusionStrategy(vodInfoStrategy).create();
     }
 
+    /**
+     * 当前订阅标识:普通源取生效地址;仓模式下 API_URL 已被改写成仓内子源,而订阅列表里记的是仓地址,
+     * 必须取仓地址 —— 否则收藏/历史与订阅列表对不上(收藏会被判成"源不可用",路由也找不回原订阅)。
+     */
+    public static String currentCid() {
+        String apiUrl = KV.get(HawkConfig.API_URL, "");
+        String lineSource = KV.get(HawkConfig.API_LINE_SOURCE, "");
+        if (lineSource != null && !lineSource.isEmpty() && HistoryHelper.isApiLineUrl(apiUrl)) {
+            return lineSource;
+        }
+        return apiUrl;
+    }
+
     public static void insertVodRecord(String sourceKey, VodInfo vodInfo) {
         // 无痕模式(2026-09-12):不写入观看历史(含播放进度)——
         // 本方法是观看历史的唯一落库点(片头/切集/进度同步都汇聚到这里),在此拦截即可全覆盖;
         // 收藏走 insertVodCollect,不受无痕模式影响
         if (HistoryHelper.isIncognito()) return;
+        String cid = currentCid();
         VodRecordDao dao = AppDataManager.get().getVodRecordDao();
-        VodRecord record = dao.getVodRecord(sourceKey, vodInfo.id);
+        VodRecord record = dao.getVodRecord(cid, sourceKey, vodInfo.id);
         if (record == null) {
             record = new VodRecord();
         }
+        record.cid = cid;
         record.sourceKey = sourceKey;
         record.vodId = vodInfo.id;
         record.updateTime = System.currentTimeMillis();
@@ -64,7 +80,7 @@ public class RoomDataManger {
     }
 
     public static VodInfo getVodInfo(String sourceKey, String vodId) {
-        VodRecord record = AppDataManager.get().getVodRecordDao().getVodRecord(sourceKey, vodId);
+        VodRecord record = AppDataManager.get().getVodRecordDao().getVodRecord(currentCid(), sourceKey, vodId);
         try {
             if (record != null && record.dataJson != null && !TextUtils.isEmpty(record.dataJson)) {
                 VodInfo vodInfo = getVodInfoGson().fromJson(record.dataJson, new TypeToken<VodInfo>() {
@@ -74,13 +90,13 @@ public class RoomDataManger {
                 return vodInfo;
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("RoomDataManger", e);
         }
         return null;
     }
 
     public static void deleteVodRecord(String sourceKey, VodInfo vodInfo) {
-        VodRecord record = AppDataManager.get().getVodRecordDao().getVodRecord(sourceKey, vodInfo.id);
+        VodRecord record = AppDataManager.get().getVodRecordDao().getVodRecord(currentCid(), sourceKey, vodInfo.id);
         if (record != null) {
             AppDataManager.get().getVodRecordDao().delete(record);
         }
@@ -88,12 +104,13 @@ public class RoomDataManger {
 
     public static List<VodInfo> getAllVodRecord(int limit) {
         VodRecordDao dao = AppDataManager.get().getVodRecordDao();
+        String cid = currentCid();
         Integer index = KV.get(HawkConfig.HISTORY_NUM, 0);
         Integer hisNum = HistoryHelper.getHisNum(index);
         int size = Math.min(limit, hisNum);
         // 条数下推 SQL:历史条目再多也只读所需条数(全表读 + 逐条反序列化会随条目数恶化)。
         // 代价:dataJson 读不出的行会占掉一个名额(仍会被下面的 reserver 裁掉)
-        List<VodRecord> recordList = dao.getAll(size);
+        List<VodRecord> recordList = dao.getAll(cid, size);
         List<VodInfo> vodInfoList = new ArrayList<>();
         if (recordList != null) {
             for (VodRecord record : recordList) {
@@ -108,25 +125,27 @@ public class RoomDataManger {
                             info = null;
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LOG.e("RoomDataManger", e);
                 }
                 if (info != null) {
                     vodInfoList.add(info);
                 }
             }
         }
-        if (dao.getCount() > hisNum) {
-            dao.reserver(hisNum);
+        if (dao.getCount(cid) > hisNum) {
+            dao.reserver(cid, hisNum);
         }
         return vodInfoList;
     }
 
     public static void insertVodCollect(String sourceKey, VodInfo vodInfo) {
-        VodCollect record = AppDataManager.get().getVodCollectDao().getVodCollect(sourceKey, vodInfo.id);
+        String cid = currentCid();
+        VodCollect record = AppDataManager.get().getVodCollectDao().getVodCollect(cid, sourceKey, vodInfo.id);
         if (record != null) {
             return;
         }
         record = new VodCollect();
+        record.cid = cid;
         record.sourceKey = sourceKey;
         record.vodId = vodInfo.id;
         record.updateTime = System.currentTimeMillis();
@@ -140,7 +159,7 @@ public class RoomDataManger {
     }
 
     public static void deleteVodCollect(String sourceKey, VodInfo vodInfo) {
-        VodCollect record = AppDataManager.get().getVodCollectDao().getVodCollect(sourceKey, vodInfo.id);
+        VodCollect record = AppDataManager.get().getVodCollectDao().getVodCollect(currentCid(), sourceKey, vodInfo.id);
         if (record != null) {
             AppDataManager.get().getVodCollectDao().delete(record);
         }
@@ -150,12 +169,13 @@ public class RoomDataManger {
         AppDataManager.get().getVodCollectDao().deleteAll();
     }
 
+    /** 清空历史只清当前订阅:别的订阅的记录不属于这次操作,只能靠切回原订阅再清 */
     public static void deleteVodRecordAll() {
-        AppDataManager.get().getVodRecordDao().deleteAll();
+        AppDataManager.get().getVodRecordDao().deleteAll(currentCid());
     }
 
     public static boolean isVodCollect(String sourceKey, String vodId) {
-        VodCollect record = AppDataManager.get().getVodCollectDao().getVodCollect(sourceKey, vodId);
+        VodCollect record = AppDataManager.get().getVodCollectDao().getVodCollect(currentCid(), sourceKey, vodId);
         return record != null;
     }
 

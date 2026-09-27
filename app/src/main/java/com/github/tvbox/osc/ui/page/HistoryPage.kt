@@ -5,6 +5,7 @@
 
 package com.github.tvbox.osc.ui.page
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -15,6 +16,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +61,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -113,6 +116,12 @@ class HistoryViewModel : ViewModel() {
     init {
         EventBus.getDefault().register(this)
         refresh()
+        // 配置就绪后再刷一次:换订阅瞬间按 cid 读库是对的,但站名与可用性要等新配置解析完才算得准
+        viewModelScope.launch {
+            AppBootstrap.state.collect { boot ->
+                if (boot is AppBootstrap.Boot.Ready) refresh()
+            }
+        }
     }
 
     override fun onCleared() {
@@ -158,7 +167,8 @@ class HistoryViewModel : ViewModel() {
     @Subscribe(threadMode = ThreadMode.MAIN)
     fun onRefreshEvent(event: RefreshEvent) {
         if (event.type == RefreshEvent.TYPE_HISTORY_REFRESH) refresh(scrollToTop = true)
-        else if (event.type == RefreshEvent.TYPE_API_URL_CHANGE) resolveSourceNames()
+        // 历史按当前订阅隔离:换了订阅必须重读库,只重解析站名会继续列着上一个订阅的记录
+        else if (event.type == RefreshEvent.TYPE_API_URL_CHANGE) refresh()
     }
 
     private var resolveJob: Job? = null
@@ -168,15 +178,18 @@ class HistoryViewModel : ViewModel() {
         resolveJob = viewModelScope.launch(Dispatchers.IO) {
             val list = items.value
             if (list.isEmpty()) return@launch
+            // 配置未就绪时 getSource 全为空,此刻把站点标成"当前源不可用"是误判,等 Ready 那次刷新再算
+            if (AppBootstrap.state.value !is AppBootstrap.Boot.Ready) return@launch
             val cache = KV.get(HawkConfig.SOURCE_NAME_CACHE, HashMap<String, String>())
             var cacheChanged = false
             var listChanged = false
             list.forEach { info ->
                 val key = info.sourceKey
+                val bean = if (key.isNullOrEmpty()) null else ApiConfig.get().getSource(key)
                 val resolved = if (key.isNullOrEmpty()) {
                     ""
                 } else {
-                    val current = ApiConfig.get().getSource(key)?.name
+                    val current = bean?.name
                     if (!current.isNullOrEmpty()) {
                         if (cache[key] != current) {
                             cache[key] = current
@@ -191,19 +204,28 @@ class HistoryViewModel : ViewModel() {
                     info.sourceName = resolved
                     listChanged = true
                 }
+                // 站名快照会跨订阅残留,是否可用必须按当前订阅现判
+                val unavailable = !key.isNullOrEmpty() && bean == null
+                if (info.sourceUnavailable != unavailable) {
+                    info.sourceUnavailable = unavailable
+                    listChanged = true
+                }
             }
             if (cacheChanged) KV.put(HawkConfig.SOURCE_NAME_CACHE, cache)
             if (listChanged) items.value = list.toList()
         }
     }
 
-    fun deleteOne(item: VodInfo) {
+    fun deleteSelected(list: List<VodInfo>) {
+        if (list.isEmpty()) return
         placementAnim.value = true
         viewModelScope.launch(Dispatchers.IO) {
-            RoomDataManger.deleteVodRecord(item.sourceKey, item)
-            // 记录删了,该片的进度痕迹与轨道/字幕记忆一并清掉,免得留下访问不到的孤儿键
-            WatchProgressStore.clearOwner(WatchProgressStore.ownerOf(item))
-            TrackMemory.delete(TrackMemory.contentKey(item.sourceKey, item.id))
+            list.forEach { item ->
+                RoomDataManger.deleteVodRecord(item.sourceKey, item)
+                // 记录删了,该片的进度痕迹与轨道/字幕记忆一并清掉,免得留下访问不到的孤儿键
+                WatchProgressStore.clearOwner(WatchProgressStore.ownerOf(item))
+                TrackMemory.delete(TrackMemory.contentKey(item.sourceKey, item.id))
+            }
             refresh()
         }
     }
@@ -247,9 +269,26 @@ fun HistoryPage(
     val placementAnim by vm.placementAnim.collectAsState()
     val incognito by vm.incognito.collectAsState()
     var showDeleteAllDialog by remember { mutableStateOf(false) }
+    var showDeleteSelectedDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<VodInfo?>(null) }
+    var editMode by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(emptySet<String>()) }
 
     val listState = rememberLazyListState()
+
+    fun exitEdit() {
+        editMode = false
+        selected = emptySet()
+    }
+
+    BackHandler(enabled = editMode) { exitEdit() }
+
+    LaunchedEffect(items) {
+        val keys = items.map { HistoryViewModel.key(it) }.toSet()
+        val pruned = selected.intersect(keys)
+        if (pruned.size != selected.size) selected = pruned
+        if (items.isEmpty()) editMode = false
+    }
 
     LaunchedEffect(vm) {
         vm.scrollSignal.collect {
@@ -273,12 +312,46 @@ fun HistoryPage(
             )
         },
         actions = {
-            
-            ManageActionIcon(
-                iconRes = R.drawable.ic_delete,
-                contentDescription = stringResource(R.string.history_clear),
-                onClick = { showDeleteAllDialog = true },
-            )
+            AnimatedContent(
+                targetState = editMode && !incognito && items.isNotEmpty(),
+                transitionSpec = {
+                    fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMedium)) togetherWith
+                        fadeOut(animationSpec = spring(stiffness = Spring.StiffnessMedium))
+                },
+                label = "historyTopAction",
+            ) { editing ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (editing) {
+                        ManageActionIcon(
+                            iconRes = R.drawable.ic_check,
+                            contentDescription = stringResource(R.string.common_done),
+                            onClick = { exitEdit() },
+                        )
+                        ManageActionIcon(
+                            iconRes = R.drawable.ic_delete,
+                            contentDescription = stringResource(R.string.common_delete_selected),
+                            enabled = selected.isNotEmpty(),
+                            onClick = { showDeleteSelectedDialog = true },
+                        )
+                    } else {
+                        if (!incognito && items.isNotEmpty()) {
+                            ManageActionIcon(
+                                iconRes = R.drawable.ic_edit,
+                                contentDescription = stringResource(R.string.common_edit),
+                                onClick = { editMode = true },
+                            )
+                        }
+                        ManageActionIcon(
+                            iconRes = R.drawable.ic_delete,
+                            contentDescription = stringResource(R.string.history_clear),
+                            onClick = { showDeleteAllDialog = true },
+                        )
+                    }
+                }
+            }
         },
     ) { topPad, _ ->
         when {
@@ -335,6 +408,10 @@ fun HistoryPage(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(content.items, key = { HistoryViewModel.key(it) }) { item ->
+                            val itemKey = HistoryViewModel.key(item)
+                            val toggle = {
+                                selected = if (itemKey in selected) selected - itemKey else selected + itemKey
+                            }
                             HistoryRow(
                                 item = item,
                                 totalEpisodes = content.episodeTotals[
@@ -343,6 +420,8 @@ fun HistoryPage(
                                 playedPercent = content.playedPercents[
                                     PlaybackProgress.key(item.sourceKey, item.id),
                                 ],
+                                editMode = editMode,
+                                selected = itemKey in selected,
                                 modifier = Modifier.animateItem(
                                     fadeInSpec = spring(stiffness = Spring.StiffnessMediumLow),
                                     placementSpec = if (placementAnim) {
@@ -353,9 +432,19 @@ fun HistoryPage(
                                     fadeOutSpec = spring(stiffness = Spring.StiffnessMediumLow),
                                 ),
                                 onClick = {
-                                    context.jumpToDetail(item.id, item.sourceKey, item.name, item.pic)
+                                    if (editMode) {
+                                        toggle()
+                                    } else {
+                                        context.jumpToDetail(item.id, item.sourceKey, item.name, item.pic)
+                                    }
                                 },
-                                onLongClick = { deleteTarget = item },
+                                onLongClick = {
+                                    if (editMode) {
+                                        toggle()
+                                    } else {
+                                        deleteTarget = item
+                                    }
+                                },
                             )
                         }
                     }
@@ -372,6 +461,18 @@ fun HistoryPage(
             onDismiss = { showDeleteAllDialog = false },
         )
     }
+    if (showDeleteSelectedDialog) {
+        val targets = items.filter { HistoryViewModel.key(it) in selected }
+        ConfirmDeleteDialog(
+            title = stringResource(R.string.common_delete_selected),
+            text = stringResource(R.string.history_delete_selected_message, targets.size),
+            onConfirm = {
+                vm.deleteSelected(targets)
+                exitEdit()
+            },
+            onDismiss = { showDeleteSelectedDialog = false },
+        )
+    }
     deleteTarget?.let { target ->
         ConfirmDeleteDialog(
             title = stringResource(R.string.history_delete_title),
@@ -379,7 +480,7 @@ fun HistoryPage(
                 R.string.history_delete_message,
                 target.name ?: stringResource(R.string.common_unnamed),
             ),
-            onConfirm = { vm.deleteOne(target) },
+            onConfirm = { vm.deleteSelected(listOf(target)) },
             onDismiss = { deleteTarget = null },
         )
     }
@@ -393,6 +494,8 @@ private fun HistoryRow(
     item: VodInfo,
     totalEpisodes: Int?,
     playedPercent: Int?,
+    editMode: Boolean,
+    selected: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -411,16 +514,29 @@ private fun HistoryRow(
                 .height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AsyncImage(
-                model = item.pic,
-                contentDescription = item.name,
-                contentScale = ContentScale.Crop,
+            Box(
                 modifier = Modifier
                     .width(64.dp)
-                    .aspectRatio(2f / 3f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-            )
+                    .aspectRatio(2f / 3f),
+            ) {
+                AsyncImage(
+                    model = item.pic,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                )
+                if (editMode) {
+                    SelectCircle(
+                        selected = selected,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp),
+                    )
+                }
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(
                 modifier = Modifier
@@ -439,13 +555,22 @@ private fun HistoryRow(
                     )
                     if (!item.sourceName.isNullOrEmpty()) {
                         Spacer(modifier = Modifier.width(8.dp))
+                        val unavailable = item.sourceUnavailable
                         Text(
-                            text = item.sourceName,
+                            text = if (unavailable) {
+                                "${item.sourceName} · ${stringResource(R.string.source_unavailable)}"
+                            } else {
+                                item.sourceName
+                            },
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (unavailable) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.widthIn(max = 120.dp),
+                            modifier = Modifier.widthIn(max = 160.dp),
                         )
                     }
                 }
@@ -523,6 +648,30 @@ private val EpisodeTotalRegex = Regex("(\\d+)\\s*[集期]")
 private fun parseEpisodeTotal(note: String?): Int? {
     val total = note?.let { EpisodeTotalRegex.find(it)?.groupValues?.get(1)?.toIntOrNull() } ?: return null
     return total.takeIf { it in 2..1000 }
+}
+
+@Composable
+internal fun SelectCircle(
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(24.dp)
+            .clip(CircleShape)
+            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.35f))
+            .border(2.dp, Color.White, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (selected) {
+            Icon(
+                painter = painterResource(R.drawable.ic_check),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+    }
 }
 
 @Composable

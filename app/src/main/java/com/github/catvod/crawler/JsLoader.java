@@ -79,7 +79,7 @@ public class JsLoader {
                     }
                     Thread.sleep(200);
                 } catch (Throwable th) {
-                    th.printStackTrace();
+                    LOG.e("JsLoader", th);
                 }
                 count++;
             } while (count < 5);
@@ -88,7 +88,7 @@ public class JsLoader {
                 classes.put(key, classInit);
             }
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("JsLoader", th);
         }
         return success;
     }
@@ -134,13 +134,13 @@ public class JsLoader {
                     is.close();
                     os.close();
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LOG.e("JsLoader", e);
                 }
             }
             loadClassLoader(cache.getAbsolutePath(), key);
             return classes.get(key);
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.e("JsLoader", e);
         }
         return null;
     }

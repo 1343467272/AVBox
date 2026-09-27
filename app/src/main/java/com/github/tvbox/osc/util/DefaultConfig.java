@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.util;
 
+import com.github.tvbox.osc.util.LOG;
 import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -73,7 +74,7 @@ public class DefaultConfig {
             PackageInfo packageInfo = pm.getPackageInfo(mContext.getPackageName(), 0);
             return packageInfo.versionCode;
         } catch (PackageManager.NameNotFoundException e) {
-            e.printStackTrace();
+            LOG.e("DefaultConfig", e);
         }
         return -1;
     }
@@ -85,7 +86,7 @@ public class DefaultConfig {
             PackageInfo packageInfo = pm.getPackageInfo(mContext.getPackageName(), 0);
             return packageInfo.versionName;
         } catch (PackageManager.NameNotFoundException e) {
-            e.printStackTrace();
+            LOG.e("DefaultConfig", e);
         }
         return "";
     }

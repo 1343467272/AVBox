@@ -498,7 +498,7 @@ final class SpiderLoader {
                 jarLoader.searchDanmuUi(name, episode, longClick);
             } catch (Throwable th) {
                 LOG.e("ApiConfig searchDanmuUi error: " + th.getMessage());
-                th.printStackTrace();
+                LOG.e("SpiderLoader", th);
             }
         });
     }

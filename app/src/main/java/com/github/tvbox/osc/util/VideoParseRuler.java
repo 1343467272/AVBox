@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.util;
 
+import com.github.tvbox.osc.util.LOG;
 import static com.github.tvbox.osc.util.RegexUtils.getPattern;
 
 import android.net.Uri;
@@ -86,7 +87,7 @@ public class VideoParseRuler {
             }
             return isVideo;
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("VideoParseRuler", e);
         }
         return false;
     }
@@ -133,7 +134,7 @@ public class VideoParseRuler {
             }
             return isFilter;
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("VideoParseRuler", e);
         }
         return false;
     }

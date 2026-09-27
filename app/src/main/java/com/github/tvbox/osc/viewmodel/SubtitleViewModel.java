@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.viewmodel;
 
+import com.github.tvbox.osc.util.LOG;
 import android.text.TextUtils;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
@@ -102,7 +103,7 @@ public class SubtitleViewModel extends ViewModel {
             subtitleData.setIsZip(isZip);
             searchResult.postValue(subtitleData);
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.e("SubtitleViewModel", e);
             searchResult.postValue(null);
         }
     }
@@ -149,7 +150,7 @@ public class SubtitleViewModel extends ViewModel {
                                     }
                                 }
                             } catch (Throwable th) {
-                                th.printStackTrace();
+                                LOG.e("SubtitleViewModel", th);
                             }
                         }
 
@@ -165,7 +166,7 @@ public class SubtitleViewModel extends ViewModel {
                         }
                     });
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("SubtitleViewModel", e);
         }
     }
 
@@ -234,7 +235,7 @@ public class SubtitleViewModel extends ViewModel {
                             }
                         }
                     } catch (Throwable th) {
-                        th.printStackTrace();
+                        LOG.e("SubtitleViewModel", th);
                         callback.onFiles(null, true);
                     }
                 }
@@ -251,7 +252,7 @@ public class SubtitleViewModel extends ViewModel {
                 }
             });
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("SubtitleViewModel", e);
             callback.onFiles(null, true);
         }
     }
@@ -296,7 +297,7 @@ public class SubtitleViewModel extends ViewModel {
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                e.printStackTrace();
+                LOG.e("SubtitleViewModel", e);
                 if (onFailed != null) onFailed.run();
             }
 

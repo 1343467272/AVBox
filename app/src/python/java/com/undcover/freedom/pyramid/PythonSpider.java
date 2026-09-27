@@ -122,7 +122,7 @@ public class PythonSpider extends Spider {
                 }
             }
         } catch (JSONException e) {
-            e.printStackTrace();
+            LOG.e("PythonSpider", e);
         }
         return jo;
     }
@@ -136,7 +136,7 @@ public class PythonSpider extends Spider {
                 }
             }
         } catch (JSONException e) {
-            e.printStackTrace();
+            LOG.e("PythonSpider", e);
         }
         return jo;
     }

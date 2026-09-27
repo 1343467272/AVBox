@@ -642,11 +642,6 @@ public class PlaybackController {
         return st.playTimeoutBasePosition;
     }
 
-    /** 是否首次取流(autoRetryCount==0):只有首次才记录 webPlayUrl 作为重播地址 */
-    public boolean isFirstAttempt() {
-        return st.autoRetryCount == 0;
-    }
-
     public boolean isStartedPlayState(int state) {
         return state == VideoView.STATE_PREPARED || state == VideoView.STATE_BUFFERED || state == VideoView.STATE_PLAYING;
     }
@@ -724,7 +719,7 @@ public class PlaybackController {
             playerCfg().put("pl", st.autoSwitchedPlayerType);
             if (view != null) view.applyPlayerConfig(playerCfg());
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("PlaybackController", th);
         } finally {
             st.autoSwitchedPlayerType = -1;
         }
@@ -749,7 +744,7 @@ public class PlaybackController {
                 if (view != null) view.applyPlayerConfig(playerCfg);
             }
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("PlaybackController", th);
         } finally {
             st.autoSwitchedDecodeOld = null;
         }
@@ -765,6 +760,16 @@ public class PlaybackController {
             LOG.d("PlaybackController", "live kernel probe failed, fallback cfg.pl");
         }
         return playerCfg == null ? 2 : playerCfg.optInt("pl", 2);
+    }
+
+    private int exoLastErrorKind() {
+        try {
+            AbstractPlayer live = (view == null) ? null : view.mediaPlayer();
+            if (live instanceof ExoPlayer) return ((ExoPlayer) live).lastErrorKind();
+        } catch (Throwable ignored) {
+            LOG.d("PlaybackController", "exo error kind probe failed");
+        }
+        return ExoPlayer.ERROR_KIND_UNKNOWN;
     }
 
     /**
@@ -828,6 +833,7 @@ public class PlaybackController {
         if (st.hasRetriedAfterStart) return false;
         if (TextUtils.isEmpty(webPlayUrl)) return false;
         st.hasRetriedAfterStart = true;
+        st.hasRetriedSameUrlOnBoot = true;
         LOG.i("echo-autoRetry retry after started error: " + webPlayUrl);
         if (view != null && view.isPageAlive()) {
             final PlaybackViewBridge aliveView = view;
@@ -844,8 +850,9 @@ public class PlaybackController {
     }
 
     /**
-     * 自动重试(播放出错/超时后):依次尝试 ①嗅探到的新地址 ②硬解→软解重播当前地址(仅 IJK 硬解,每次播放一次)
-     * ③切换播放内核重播当前地址 ④下一条线路。
+     * 自动重试(播放出错/超时后):依次尝试 ①嗅探到的新地址 ②原样重播当前地址(每轮一次,吸收网络/源抖动)
+     * ③硬解→软解重播当前地址(每次播放一次;EXO 明确报网络/容器解析类错误时跳过)
+     * ④切换播放内核重播当前地址 ⑤下一条线路。
      *
      * @return true = 已发起重试;false = 无路可走(调用方负责提示与收尾)
      */
@@ -861,8 +868,19 @@ public class PlaybackController {
             resolver.consumeFoundUrl();
             return true;
         }
-        // ② 硬解→软解:解码类起播失败覆盖面最广的兜底,排在换内核之前(先保住用户选的内核)
-        if (trySoftDecodeFallback()) return true;
+        int exoErrorKind = exoLastErrorKind();
+        if (exoErrorKind != ExoPlayer.ERROR_KIND_DECODE
+                && !st.hasRetriedSameUrlOnBoot && !TextUtils.isEmpty(webPlayUrl)) {
+            st.hasRetriedSameUrlOnBoot = true;
+            LOG.i("echo-autoRetry replay same url before decode fallback: " + webPlayUrl);
+            stopParse();
+            initParseLoadFound();
+            if (view != null) view.releasePlayer();
+            if (view != null) playUrl(webPlayUrl, webHeaderMap);
+            return true;
+        }
+        // ③ 硬解→软解:解码类起播失败覆盖面最广的兜底,排在换内核之前(先保住用户选的内核)
+        if (exoErrorKind != ExoPlayer.ERROR_KIND_NETWORK && trySoftDecodeFallback()) return true;
         if (webPlayUrl != null) {
             if (st.allowSwitchPlayer && !st.hasAutoSwitchedPlayer) {
                 LOG.i("echo-autoRetry switch player and replay current url");
@@ -1420,7 +1438,7 @@ public class PlaybackController {
                 int playerType = playerCfg().getInt("pl");
                 if (view != null) view.setSubtitleViewVisible(playerType == 1);
             } catch (JSONException e) {
-                e.printStackTrace();
+                LOG.e("PlaybackController", e);
             }
         }
 
@@ -1507,7 +1525,7 @@ public class PlaybackController {
         // 净化链是唯一不走 goPlayUrl 的起播路径(净化完成回调 startPlayUrl),起播前由页面桥校验代际
         if (view != null) view.playM3u8(url, headers, playUrlGeneration);
         // 净化期间先记下起点地址,否则净化源上 autoRetry/retryAfterStartedError 找不到可重播地址
-        if (isFirstAttempt()) setWebPlayUrl(url);
+        setWebPlayUrl(url);
     }
 
     /** 真正起播一个可播地址(外部播放器 / dash 强制 EXO / 复用播放器换集都在这里分流) */
@@ -1536,7 +1554,7 @@ public class PlaybackController {
                     return;
                 }
                 // 地址在归属确认之后才记录,否则被丢弃的旧地址会留在 webPlayUrl 上被 autoRetry 拿去重播
-                if (isFirstAttempt()) setWebPlayUrl(finalUrl);
+                setWebPlayUrl(finalUrl);
                 stopParse();
                 if (view == null || finalUrl == null) return;
                 String url = finalUrl;
@@ -1556,7 +1574,7 @@ public class PlaybackController {
                         return;
                     }
                 } catch (JSONException e) {
-                    e.printStackTrace();
+                    LOG.e("PlaybackController", e);
                 }
                 setPlayTimeoutBasePosition(getSavedProgress(progressKey()));
                 boolean forceExoPlayer = url.startsWith("data:application/dash+xml;base64,")

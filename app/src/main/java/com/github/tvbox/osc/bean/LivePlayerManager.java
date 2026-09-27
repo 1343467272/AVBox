@@ -28,7 +28,7 @@ public class LivePlayerManager {
             defaultPlayerConfig.put("pr", KV.get(HawkConfig.PLAY_RENDER, 1));
             defaultPlayerConfig.put("sc", KV.get(HawkConfig.LIVE_PLAY_SCALE, 0));
         } catch (JSONException e) {
-            e.printStackTrace();
+            LOG.e("LivePlayerManager", e);
         }
         getDefaultLiveChannelPlayer(videoView);
     }
@@ -38,7 +38,7 @@ public class LivePlayerManager {
         try {
             currentPlayerConfig = new JSONObject(defaultPlayerConfig.toString());
         } catch (JSONException e) {
-            e.printStackTrace();
+            LOG.e("LivePlayerManager", e);
         }
     }
 
@@ -109,7 +109,7 @@ public class LivePlayerManager {
                     break;
             }
         } catch (JSONException e) {
-            e.printStackTrace();
+            LOG.e("LivePlayerManager", e);
         }
         PlayerHelper.updateCfg(videoView, playerConfig);
 
@@ -123,7 +123,7 @@ public class LivePlayerManager {
                 KV.put(HawkConfig.IJK_CODEC, playerConfig.getString("ijk"));
             }
         } catch (JSONException e) {
-            e.printStackTrace();
+            LOG.e("LivePlayerManager", e);
         }
 
         currentPlayerConfig = playerConfig;
@@ -168,7 +168,7 @@ public class LivePlayerManager {
             playerConfig.put("sc", playerScale);
             defaultPlayerConfig.put("sc", playerScale);
         } catch (JSONException e) {
-            e.printStackTrace();
+            LOG.e("LivePlayerManager", e);
         }
 
         currentPlayerConfig = playerConfig;

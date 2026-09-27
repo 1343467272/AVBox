@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "d1c2780b5424f0e960fe2364f63c86b8",
+    "identityHash": "a401a28ae8365c9c0775f9683a665d4d",
     "entities": [
       {
         "tableName": "cache",
@@ -17,22 +17,19 @@
           {
             "fieldPath": "data",
             "columnName": "data",
-            "affinity": "BLOB",
-            "notNull": false
+            "affinity": "BLOB"
           }
         ],
         "primaryKey": {
+          "autoGenerate": false,
           "columnNames": [
             "key"
-          ],
-          "autoGenerate": false
-        },
-        "indices": [],
-        "foreignKeys": []
+          ]
+        }
       },
       {
         "tableName": "vodRecord",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `vodId` TEXT, `updateTime` INTEGER NOT NULL, `sourceKey` TEXT, `dataJson` TEXT)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `vodId` TEXT, `updateTime` INTEGER NOT NULL, `sourceKey` TEXT, `cid` TEXT, `dataJson` TEXT)",
         "fields": [
           {
             "fieldPath": "id",
@@ -43,8 +40,7 @@
           {
             "fieldPath": "vodId",
             "columnName": "vodId",
-            "affinity": "TEXT",
-            "notNull": false
+            "affinity": "TEXT"
           },
           {
             "fieldPath": "updateTime",
@@ -55,28 +51,29 @@
           {
             "fieldPath": "sourceKey",
             "columnName": "sourceKey",
-            "affinity": "TEXT",
-            "notNull": false
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cid",
+            "columnName": "cid",
+            "affinity": "TEXT"
           },
           {
             "fieldPath": "dataJson",
             "columnName": "dataJson",
-            "affinity": "TEXT",
-            "notNull": false
+            "affinity": "TEXT"
           }
         ],
         "primaryKey": {
+          "autoGenerate": true,
           "columnNames": [
             "id"
-          ],
-          "autoGenerate": true
-        },
-        "indices": [],
-        "foreignKeys": []
+          ]
+        }
       },
       {
         "tableName": "vodCollect",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `vodId` TEXT, `updateTime` INTEGER NOT NULL, `sourceKey` TEXT, `name` TEXT, `pic` TEXT)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `vodId` TEXT, `updateTime` INTEGER NOT NULL, `sourceKey` TEXT, `name` TEXT, `pic` TEXT, `cid` TEXT)",
         "fields": [
           {
             "fieldPath": "id",
@@ -87,8 +84,7 @@
           {
             "fieldPath": "vodId",
             "columnName": "vodId",
-            "affinity": "TEXT",
-            "notNull": false
+            "affinity": "TEXT"
           },
           {
             "fieldPath": "updateTime",
@@ -99,36 +95,35 @@
           {
             "fieldPath": "sourceKey",
             "columnName": "sourceKey",
-            "affinity": "TEXT",
-            "notNull": false
+            "affinity": "TEXT"
           },
           {
             "fieldPath": "name",
             "columnName": "name",
-            "affinity": "TEXT",
-            "notNull": false
+            "affinity": "TEXT"
           },
           {
             "fieldPath": "pic",
             "columnName": "pic",
-            "affinity": "TEXT",
-            "notNull": false
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cid",
+            "columnName": "cid",
+            "affinity": "TEXT"
           }
         ],
         "primaryKey": {
+          "autoGenerate": true,
           "columnNames": [
             "id"
-          ],
-          "autoGenerate": true
-        },
-        "indices": [],
-        "foreignKeys": []
+          ]
+        }
       }
     ],
-    "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd1c2780b5424f0e960fe2364f63c86b8')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a401a28ae8365c9c0775f9683a665d4d')"
     ]
   }
 }

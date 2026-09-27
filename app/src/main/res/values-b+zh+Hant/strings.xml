@@ -131,7 +131,9 @@
     <string name="common_cancel">取消</string>
     <string name="common_save">儲存</string>
     <string name="common_edit">編輯</string>
+    <string name="common_done">完成</string>
     <string name="common_delete">刪除</string>
+    <string name="common_delete_selected">刪除選中</string>
     <string name="common_default">預設</string>
     <string name="common_unnamed">未命名</string>
     <string name="common_all">全部</string>
@@ -151,6 +153,7 @@
     <string name="player_menu_danmu">彈幕</string>
     <string name="player_menu_search_danmu">搜彈幕</string>
     <string name="player_menu_params">播放參數</string>
+    <string name="player_menu_more">更多</string>
     <string name="player_menu_parse">解析</string>
 
     <!-- 播放参数面板 -->
@@ -200,6 +203,7 @@
     <string name="collect_empty">暫無收藏</string>
     <string name="collect_clear_message">將刪除全部收藏，此操作無法復原</string>
     <string name="collect_uncollect_message">取消收藏「%1$s」？</string>
+    <string name="collect_delete_selected_message">確定取消收藏選中的 %1$d 部影片嗎？</string>
 
     <!-- 主題:取色 -->
     <string name="theme_brightness_value">亮度 %1$d%%</string>
@@ -287,7 +291,9 @@
     <string name="history_clear_message">將刪除全部觀看歷史紀錄，此操作無法復原</string>
     <string name="history_delete_title">刪除紀錄</string>
     <string name="history_delete_message">刪除「%1$s」的觀看紀錄？</string>
+    <string name="history_delete_selected_message">確定刪除選中的 %1$d 條觀看紀錄嗎？</string>
     <string name="history_last_watched">上次看到%1$s</string>
+    <string name="source_unavailable">當前源不可用</string>
     <string name="history_episode_progress">第%1$d集/共%2$d集</string>
     <string name="history_watched_percent">已看%1$d%%</string>
 

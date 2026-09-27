@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.util;
 
+import com.github.tvbox.osc.util.LOG;
 import android.content.res.AssetManager;
 
 import com.github.tvbox.osc.base.App;
@@ -45,7 +46,7 @@ public class EpgUtil {
             }
 
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.e("EpgUtil", e);
         }
     }
 
@@ -59,7 +60,7 @@ public class EpgUtil {
                 };
             }
         }catch (Exception ex) {
-            ex.printStackTrace();
+            LOG.e("EpgUtil", ex);
         }
         return null;
     }

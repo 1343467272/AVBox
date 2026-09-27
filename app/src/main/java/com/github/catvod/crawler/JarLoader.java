@@ -101,7 +101,7 @@ public class JarLoader {
             return true;
         } catch (Throwable e) {
             LOG.i("echo--jar-load error key=" + key + ", msg=" + e.getClass().getSimpleName() + ":" + e.getMessage());
-            e.printStackTrace();
+            LOG.e("JarLoader", e);
             return false;
         }
     }
@@ -144,7 +144,7 @@ public class JarLoader {
             method.invoke(null, App.getInstance());
             return true;
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.e("JarLoader", e);
         }
         return !riskyJar;
     }
@@ -227,7 +227,7 @@ public class JarLoader {
             Method method = clz.getMethod("proxy", Map.class);
             proxyMethods.put(key, method);
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.e("JarLoader", e);
         }
     }
 
@@ -290,7 +290,7 @@ public class JarLoader {
             parseJar(key, jar);
             return loaders.get(key);
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.e("JarLoader", e);
             return null;
         }
     }
@@ -333,7 +333,7 @@ public class JarLoader {
                 return spider;
             } catch (Throwable e) {
                 Log.i(TAG, "getSpider error key=" + spKey + ", msg=" + e.getMessage());
-                e.printStackTrace();
+                LOG.e("JarLoader", e);
                 return new SpiderNull();
             }
         }
@@ -347,7 +347,7 @@ public class JarLoader {
             if (method == null) return;
             method.invoke(null, name, episode);
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.e("JarLoader", e);
         }
     }
 
@@ -361,7 +361,7 @@ public class JarLoader {
             Method method = clz.getMethod("parse", LinkedHashMap.class, String.class);
             return (JSONObject) method.invoke(null, jxs, url);
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.e("JarLoader", e);
             return null;
         }
     }
@@ -372,7 +372,7 @@ public class JarLoader {
             Method method = clz.getMethod("parse", LinkedHashMap.class, String.class, String.class, String.class);
             return (JSONObject) method.invoke(null, jxs, name, flag, url);
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.e("JarLoader", e);
             return null;
         }
     }
@@ -397,7 +397,7 @@ public class JarLoader {
         try {
             return method == null ? null : (Object[]) method.invoke(null, params);
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.e("JarLoader", e);
             return null;
         }
     }
@@ -439,7 +439,7 @@ public class JarLoader {
             }
             os.flush();
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.e("JarLoader", e);
         } finally {
             close(is);
             close(os);
@@ -461,7 +461,7 @@ public class JarLoader {
             }
             os.flush();
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.e("JarLoader", e);
         } finally {
             close(is);
             close(os);

@@ -363,8 +363,8 @@ internal fun PlayerPillIconButton(
     }
 }
 
-/** 图标相对触摸盒的比例（照搬原 vs_24 / vs_40）；`PlayerLayers` 的右侧竖排也用它来与胶囊图标同尺寸 */
-internal const val ICON_TO_BOX_RATIO = 0.6f
+/** 图标相对触摸盒的比例；`PlayerLayers` 的右侧竖排也用它来与胶囊图标同尺寸 */
+internal const val ICON_TO_BOX_RATIO = 0.55f
 
 /** 动作胶囊最多同时可见的图标数（图标盒的宽度上限按"全可见"的最坏情况算） */
 private const val PILL_MAX_ICONS = 8

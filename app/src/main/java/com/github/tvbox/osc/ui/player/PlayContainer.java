@@ -441,6 +441,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
     };
 
     private boolean lifecyclePaused;
+    private String ownedPlaybackKey;
 
     public void hostResume() {
         exitingPreview = false;
@@ -448,7 +449,9 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         reattachIfOwnedByOther();
         if (mVideoView != null && lifecyclePaused) {
             lifecyclePaused = false;
-            mVideoView.resume();
+            if (ownsEngineContent()) {
+                mVideoView.resume();
+            }
         }
     }
 
@@ -461,16 +464,24 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         // 重新接管后本页恢复"退出即停播"的职责:交接标记是给"交出去后本页就销毁"准备的,
         // 音乐页返回(影视内容)这条路径本页仍存活,不清掉会让 hostDestroy 漏掉 detach —— 退出后声音不停
         handedOver = false;
+        if (!ownsEngineContent() && mVideoView != null) {
+            // 内核内容已被别的页面换走(或对方尚未销毁):它的进度只有 detach 落盘这一个时点,
+            // 而那次落盘可能晚于本页新起播改写 progressKey —— 接管时先按现键存一次,两边时序就都无害了
+            mVideoView.saveCurrentProgress();
+        }
         if (mVideoView != null && mController != null) {
             mVideoView.setVideoController((BaseVideoController) mController);
             int state = mVideoView.getCurrentPlayState();
             if (mVideoView.getMediaPlayer() != null
-                    && state != VideoView.STATE_IDLE && state != VideoView.STATE_ERROR) {
+                    && state != VideoView.STATE_IDLE && state != VideoView.STATE_ERROR
+                    && ownsEngineContent()) {
                 rebindPlaybackOverlay();
             }
         }
-        // 接管的是引擎里既有的会话(直播回切/音乐页交还),页面自己没走过 setData,数据要在这里补同步
-        syncSessionVod();
+        if (ownsEngineContent()) {
+            // 接管的是引擎里既有的会话(直播回切/音乐页交还),页面自己没走过 setData,数据要在这里补同步
+            syncSessionVod();
+        }
         LOG.i("echo-p4 re-attach after live/other page");
     }
 
@@ -702,7 +713,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
                 try {
                     selectMySubtitle();
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LOG.e("PlayContainer", e);
                 }
             }
 
@@ -850,7 +861,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
                         return kotlin.Unit.INSTANCE;
                     }));
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("PlayContainer", e);
         }
     }
 
@@ -1589,6 +1600,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
             scheduler.clearTriedLines();
             scheduler.setUserPickedLine(session.userPickedLine());
             rebindPlaybackOverlay();
+            ownedPlaybackKey = session.playbackKey();
             if (mVideoView != null && !mVideoView.isPlaying()) mVideoView.start();
             return;
         }
@@ -1597,12 +1609,23 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         mController.setPlayerConfig(scheduler.playerCfg());
         scheduler.clearTriedLines();
         scheduler.setUserPickedLine(session.userPickedLine());
+        ownedPlaybackKey = session.playbackKey();
         playViaScheduler(false);
     }
 
     private void playViaScheduler(boolean reset) {
         reviveEngineIfReleased();
         scheduler.play(reset);
+    }
+
+    public boolean hasClaimedPlayback() {
+        return !TextUtils.isEmpty(ownedPlaybackKey);
+    }
+
+    public boolean ownsEngineContent() {
+        if (!hasClaimedPlayback()) return false;
+        return TextUtils.equals(ownedPlaybackKey,
+                scheduler == null ? null : scheduler.startedPlaybackKey());
     }
 
     private boolean isSamePlaybackOwned(PlaybackSession session) {
@@ -1780,6 +1803,17 @@ mController.toggleControlBar();
     public void clearSourceSwitchTip() {
         if (!scheduler.isSwitchStopPending()) return;
         hideTipOnUiThread();
+    }
+
+    /** 同页换片:停掉当前内容并立即落盘,免得新片加载期间旧片声画残留;不在播本页内容时不动(别误停音乐页/直播) */
+    public void stopForContentSwitch() {
+        if (mVideoView == null || !ownsEngineContent()) return;
+        // 在途的解析/取流/超时属上一部:新片会话边界虽也会清,但新片详情回来之前它们足以把旧片再拉起来
+        scheduler.cancelInFlight();
+        mVideoView.pause();
+        mVideoView.saveCurrentProgress();
+        // pause 对取流中的起播无效(PAUSED 时本调用自会 return):不打断的话这一集会在新片加载期间自己响起来
+        mVideoView.stopPlaybackKeepPlayer();
     }
                 public MyVideoView getPlayer() {
         return mVideoView;

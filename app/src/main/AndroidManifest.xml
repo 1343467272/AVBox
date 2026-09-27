@@ -86,6 +86,7 @@
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize" />
         <activity
             android:name=".ui.activity.DetailActivity"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize" />
         <activity
             android:name=".ui.activity.MusicPlayerActivity"

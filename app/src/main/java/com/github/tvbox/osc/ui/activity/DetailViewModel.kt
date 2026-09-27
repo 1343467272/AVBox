@@ -22,12 +22,14 @@ import com.github.tvbox.osc.player.PlaybackSession
 import com.github.tvbox.osc.ui.player.PlayContainer
 import com.github.tvbox.osc.util.EpisodeTotals
 import com.github.tvbox.osc.util.HistoryHelper
+import com.github.tvbox.osc.util.HistoryWriter
 import com.github.tvbox.osc.util.LOG
 import com.github.tvbox.osc.util.SearchHelper
 import com.github.tvbox.osc.viewmodel.SourceViewModel
 import com.lzy.okgo.OkGo
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -88,9 +90,12 @@ class DetailViewModel : ViewModel() {
     private var vodPicture = ""
     private var fromCollect = false
 
-    private val sourceViewModel = SourceViewModel()
+    private var sourceViewModel = SourceViewModel()
     private val detailObserver = androidx.lifecycle.Observer<AbsXml> { onDetailResult(it) }
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val navStack = DetailNavStack()
+    private var searchJob: Job? = null
+    private var detailBuildToken = 0
 
     private val fallbackCandidates = ArrayList<Movie.Video>()
     private val candidateKeys = HashSet<String>()
@@ -128,13 +133,88 @@ class DetailViewModel : ViewModel() {
 
     fun initFromIntent(intent: Intent?) {
         if (vodId.isNotEmpty()) return
-        val bundle = intent?.extras ?: return
-        vodName = bundle.getString("title", "")
-        vodPicture = bundle.getString("picture", "")
-        fromCollect = bundle.getBoolean("collect", false)
-        loadDetail(bundle.getString("id", ""), bundle.getString("sourceKey", ""))
+        val target = parseTarget(intent) ?: return
+        navStack.push(target)
+        applyTarget(target)
+    }
+
+    /** 复用实例进入新片(详情页推荐卡片):入栈并加载;重复点同一部不重载 */
+    fun pushTargetFromIntent(intent: Intent?) {
+        val target = parseTarget(intent) ?: return
+        if (!navStack.push(target)) return
+        applyTarget(target)
+    }
+
+    /** 返回上一部;栈上限为单部时恒为 false,调用方据此走退出页面 */
+    fun backToPreviousTarget(): Boolean {
+        val previous = navStack.pop() ?: return false
+        applyTarget(previous)
+        return true
+    }
+
+    private fun parseTarget(intent: Intent?): DetailNavStack.Target? {
+        val bundle = intent?.extras ?: return null
+        return DetailNavStack.Target(
+            vodId = bundle.getString("id", "").orEmpty(),
+            sourceKey = bundle.getString("sourceKey", "").orEmpty(),
+            title = bundle.getString("title", "").orEmpty(),
+            picture = bundle.getString("picture", "").orEmpty(),
+            fromCollect = bundle.getBoolean("collect", false),
+        )
+    }
+
+    private fun applyTarget(target: DetailNavStack.Target) {
+        cancelInFlightContent()
+        resetContentState()
+        rebindDetailSource()
+        playContainerRef?.stopForContentSwitch()
+        fromCollect = target.fromCollect
+        vodName = target.title
+        vodPicture = target.picture
+        loadDetail(target.vodId, target.sourceKey)
         LOG.i("echo-detail-open collect=$fromCollect key=$sourceKey id=$vodId")
         if (vodName.isNotEmpty()) startSourceSearch()
+    }
+
+    /** 换片时收掉上一部在途的聚合搜索,并让旧 token 立即失效(搜索回包仍靠 token 失配兜底) */
+    private fun cancelInFlightContent() {
+        searchJob?.cancel()
+        searchJob = null
+        pendingSearchDone.values.forEach { it.complete(Unit) }
+        pendingSearchDone.clear()
+        cancelDetailTimeout()
+        searchToken = SEARCH_SEQ.incrementAndGet()
+    }
+
+    /** 内容级状态随片走:不清会串味(推荐位/换源候选/清晰度/换源快照都属上一部) */
+    private fun resetContentState() {
+        vodInfo = null
+        previewVodInfo = null
+        switchSnapshot = null
+        firstsourceKey = ""
+        searchTitle = ""
+        manualLineSwitchPending = false
+        collected.value = false
+        relatedVideos.value = emptyList()
+        // 旧协程被取消后不会回写,不清会永远停在"搜索中"
+        sourcesSearching.value = false
+        qualityOptions.value = emptyList()
+        qualitySelected.value = 0
+        episodeSheet.value = false
+        toastEvent.value = null
+        finishEvent.value = false
+        pageState.value = PageState.Loading
+        fallbackEpisode = null
+        fallbackEpisodeIndex = -1
+        usedSourceKeys.clear()
+        resetEngineState(keepChips = false)
+    }
+
+    /** 换数据源实例:同源不同片的迟到回包只回到旧实例(无观察者),不会串进当前内容 */
+    private fun rebindDetailSource() {
+        sourceViewModel.detailResult.removeObserver(detailObserver)
+        sourceViewModel = SourceViewModel()
+        sourceViewModel.detailResult.observeForever(detailObserver)
     }
 
     fun setFullScreen(full: Boolean) {
@@ -209,7 +289,11 @@ class DetailViewModel : ViewModel() {
         if (fallbackActive) {
             fallbackLoadingCandidate = false
             loadNextFallbackCandidate()
-        } else if (!startFallbackIfNeeded(auto = true)) {
+            return
+        }
+        // 兜底候选只能来自聚合搜索,而它排在 loadDetail 之后启动:不先补这一下,"无候选即收尾"会把自动接管清掉
+        if (vodName.isNotEmpty() && !sourcesSearching.value) startSourceSearch()
+        if (!startFallbackIfNeeded(auto = true)) {
             if (!rollbackManualSwitch()) enterEmpty()
         }
     }
@@ -218,6 +302,7 @@ class DetailViewModel : ViewModel() {
         if (fallbackActive && !fallbackLoadingCandidate) return
         if (absXml != null && !absXml.sourceKey.isNullOrEmpty() && absXml.sourceKey != sourceKey) return
         val videoList = absXml?.movie?.videoList
+        val detailToken = ++detailBuildToken
         if (videoList != null && videoList.isNotEmpty()) {
             val wasFallback = fallbackLoadingCandidate
             if (fallbackLoadingCandidate) {
@@ -248,43 +333,50 @@ class DetailViewModel : ViewModel() {
             sourceKey = mVideo.sourceKey ?: sourceKey
 
             // 无痕:旧记录连读都不读 —— 它只剩"看到第几集/哪条线路/该片播放配置"这些痕迹,读了等于没隐身
-            val record = if (HistoryHelper.isIncognito()) null else RoomDataManger.getVodInfo(sourceKey, vodId)
-            if (record != null) {
-                info.playIndex = maxOf(record.playIndex, 0)
-                info.playFlag = record.playFlag
-                info.playerCfg = record.playerCfg
-                info.reverseSort = record.reverseSort
-            } else {
-                info.playIndex = 0
-                info.playFlag = null
-                info.playerCfg = ""
-                info.reverseSort = false
-            }
-            if (info.reverseSort) info.reverse()
-            if (info.playFlag == null || info.seriesMap?.containsKey(info.playFlag) != true) {
-                info.playFlag = info.seriesMap?.keys?.firstOrNull()
-            }
-            restoreFallbackEpisode(info)
-            resetEngineState(keepChips = true)
-            val playingList = info.seriesMap?.get(info.playFlag)
-            if (!playingList.isNullOrEmpty()) {
-                info.playIndex = info.playIndex.coerceIn(0, playingList.size - 1)
-                for (flag in info.seriesFlags) {
-                    flag.selected = flag.name == info.playFlag
+            val recordKey = sourceKey
+            val recordId = vodId
+            viewModelScope.launch {
+                val record = withContext(Dispatchers.IO) {
+                    if (HistoryHelper.isIncognito()) null else RoomDataManger.getVodInfo(recordKey, recordId)
                 }
-            }
-            vodInfo = info
-            if (searchTitle.isEmpty() && !info.name.isNullOrEmpty()) {
-                searchTitle = info.name.trim()
-                startSourceSearch()
-            }
-            vodName = mVideo.name ?: vodName
-            if (!playingList.isNullOrEmpty()) switchSnapshot = null
-            pageState.value = PageState.Ready
-            bumpRevision()
-            requestPlay()
-            if (playingList.isNullOrEmpty()) {
-                startFallbackIfNeeded(auto = true)
+                if (detailToken != detailBuildToken || sourceKey != recordKey || vodId != recordId) return@launch
+                if (record != null) {
+                    info.playIndex = maxOf(record.playIndex, 0)
+                    info.playFlag = record.playFlag
+                    info.playerCfg = record.playerCfg
+                    info.reverseSort = record.reverseSort
+                } else {
+                    info.playIndex = 0
+                    info.playFlag = null
+                    info.playerCfg = ""
+                    info.reverseSort = false
+                }
+                if (info.reverseSort) info.reverse()
+                if (info.playFlag == null || info.seriesMap?.containsKey(info.playFlag) != true) {
+                    info.playFlag = info.seriesMap?.keys?.firstOrNull()
+                }
+                restoreFallbackEpisode(info)
+                resetEngineState(keepChips = true)
+                val playingList = info.seriesMap?.get(info.playFlag)
+                if (!playingList.isNullOrEmpty()) {
+                    info.playIndex = info.playIndex.coerceIn(0, playingList.size - 1)
+                    for (flag in info.seriesFlags) {
+                        flag.selected = flag.name == info.playFlag
+                    }
+                }
+                vodInfo = info
+                if (searchTitle.isEmpty() && !info.name.isNullOrEmpty()) {
+                    searchTitle = info.name.trim()
+                    startSourceSearch()
+                }
+                vodName = mVideo.name ?: vodName
+                if (!playingList.isNullOrEmpty()) switchSnapshot = null
+                pageState.value = PageState.Ready
+                bumpRevision()
+                requestPlay()
+                if (playingList.isNullOrEmpty()) {
+                    startFallbackIfNeeded(auto = true)
+                }
             }
         } else {
             if (fallbackLoadingCandidate) {
@@ -302,6 +394,7 @@ class DetailViewModel : ViewModel() {
         // 空详情一律留页(空态带换源列表),只有源侧真的报错才提示并退出 —— 源抖动不该表现为"闪退"
         if (isSourceErrorMsg(msg)) {
             if (rollbackManualSwitch(msg)) return
+            if (fallbackToPreviousTarget(msg)) return
             LOG.i("echo-detail-finish reason=source-msg msg=$msg key=$sourceKey id=$vodId")
             resetEngineState(keepChips = false)
             toastEvent.value = msg
@@ -314,6 +407,14 @@ class DetailViewModel : ViewModel() {
         } else if (!startFallbackIfNeeded(auto = true)) {
             if (!rollbackManualSwitch()) enterEmpty()
         }
+    }
+
+    /** 这一部彻底取不到而栈里还有上一部:退回去并保留报错提示,别把整页关掉 */
+    private fun fallbackToPreviousTarget(reason: String?): Boolean {
+        val previous = navStack.pop() ?: return false
+        applyTarget(previous)
+        if (!reason.isNullOrEmpty()) toastEvent.value = reason
+        return true
     }
 
     private fun startSourceSearch() {
@@ -332,7 +433,7 @@ class DetailViewModel : ViewModel() {
         sourcesSearching.value = sources.isNotEmpty()
         relatedVideos.value = emptyList()
         if (sources.isEmpty()) return
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
             coroutineScope {
                 sources.map { bean ->
                     async {
@@ -457,7 +558,8 @@ class DetailViewModel : ViewModel() {
 
     private fun startFallbackIfNeeded(auto: Boolean, fromLinesExhausted: Boolean = false): Boolean {
         val currentSource = ApiConfig.get().getSource(sourceKey)
-        if (currentSource == null || !currentSource.isChangeable()) return false
+        // 站点不在当前订阅(切源后残留的历史/收藏条目)时没有"当前源"可换,但同名片仍能靠聚合搜索接管
+        if (currentSource != null && !currentSource.isChangeable()) return false
         if (fallbackActive) return true
         val title = (if (vodInfo?.name.isNullOrEmpty()) vodName else vodInfo?.name).orEmpty().trim()
         if (title.isEmpty()) return false
@@ -711,6 +813,8 @@ class DetailViewModel : ViewModel() {
 
     private fun syncPlayingVodInfo(playing: VodInfo) {
         val info = vodInfo ?: return
+        // EventBus 是全局的:换片后旧片内核的迟到广播同样会打进来,内容对不上就丢
+        if (playing.id != info.id || playing.sourceKey != info.sourceKey) return
         val newFlag = playing.playFlag
         if (newFlag.isNullOrEmpty() || info.seriesMap?.containsKey(newFlag) != true) return
         val newList = info.seriesMap?.get(newFlag) ?: return
@@ -733,8 +837,7 @@ class DetailViewModel : ViewModel() {
         refreshPlayNote(info)
         // 集数快照随"真看过"落库:只浏览详情页不再写,历史卡片才不会出现没看过的片
         EpisodeTotals.putFromVod(info)
-        RoomDataManger.insertVodRecord(firstsourceKey, info)
-        EventBus.getDefault().post(RefreshEvent(RefreshEvent.TYPE_HISTORY_REFRESH))
+        HistoryWriter.write(firstsourceKey, info)
     }
 
     /** 集名要随会话进播放器(字幕搜索默认词读它),不能只在落库时才刷 */

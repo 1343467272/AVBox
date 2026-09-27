@@ -230,7 +230,7 @@ internal object LiveEpgParser {
                 epgList.add(createXmlEpgInfo(date, title, startDate, endDate, epgList.size))
             }
         } catch (exception: Exception) {
-            exception.printStackTrace()
+            LOG.e("LiveEpgParser", exception)
         }
         return epgList
     }

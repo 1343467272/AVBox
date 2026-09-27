@@ -241,7 +241,7 @@ public class FormatTTML implements TimedTextFileFormat {
 
 			
 		}catch(Exception e){
-			e.printStackTrace();
+			LOG.e("FormatTTML", e);
 			//this could be a fatal error...
 			throw new FatalParsingException("Error during parsing: "+e.getMessage());
 		}

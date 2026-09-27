@@ -371,7 +371,7 @@ public class RemoteServer extends NanoHTTPD {
                     }
                 }
             } catch (SocketException e) {
-                e.printStackTrace();
+                LOG.e("RemoteServer", e);
             }
         } else {
             return String.format("%d.%d.%d.%d", (ipAddress & 0xff), (ipAddress >> 8 & 0xff), (ipAddress >> 16 & 0xff), (ipAddress >> 24 & 0xff));

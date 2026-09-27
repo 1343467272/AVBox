@@ -35,6 +35,7 @@ import com.github.tvbox.osc.ui.player.PlayerTipBridge
 import com.github.tvbox.osc.ui.theme.AVBoxTheme
 import com.github.tvbox.osc.ui.theme.enableTransparentEdgeToEdge
 import com.github.tvbox.osc.util.EpisodeTotals
+import com.github.tvbox.osc.util.HistoryWriter
 import com.github.tvbox.osc.util.LOG
 import com.github.tvbox.osc.util.MusicSettings
 import com.github.tvbox.osc.util.PermissionHelper
@@ -264,8 +265,7 @@ class MusicPlayerActivity : BaseActivity(), PlaybackPage {
         vod.playNote = queueList().getOrNull(vod.playIndex)?.name.orEmpty()
         // 音乐页是另一条历史落库路径,集数快照必须跟着一起写(否则纯音频片丢"X/Y 集")
         EpisodeTotals.putFromVod(vod)
-        RoomDataManger.insertVodRecord(historySourceKey, vod)
-        EventBus.getDefault().post(RefreshEvent(RefreshEvent.TYPE_HISTORY_REFRESH))
+        HistoryWriter.write(historySourceKey, vod)
     }
 
     private fun onSongCompleted() {

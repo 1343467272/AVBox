@@ -9,6 +9,7 @@ import com.github.tvbox.osc.ui.activity.SearchViewModel
 import com.github.tvbox.osc.util.BootGuard
 import com.github.tvbox.osc.util.FileUtils
 import com.github.tvbox.osc.util.HawkConfig
+import com.github.tvbox.osc.util.HistoryHelper
 import com.github.tvbox.osc.util.KV
 import com.github.tvbox.osc.util.MD5
 import kotlinx.coroutines.CoroutineScope
@@ -69,6 +70,32 @@ object AppBootstrap {
         SearchViewModel.clearCheckedSources()
         EventBus.getDefault().post(RefreshEvent(RefreshEvent.TYPE_API_URL_CHANGE))
         retry()
+    }
+
+    /**
+     * 切到指定订阅:与配置管理页同一套语义(收藏跨订阅打开也走这里,避免两处分叉)。
+     * 跟随态直播不单独记地址;换源后旧的多仓列表只在地址确实变了时作废。
+     *
+     * @return 是否处于"直播跟随点播"模式(调用方 UI 用)
+     */
+    fun switchVodSubscription(url: String): Boolean {
+        val followLive = ApiConfig.isLiveFollowVod()
+        val oldApi = KV.get(HawkConfig.API_URL, "")
+        val oldFollowTarget = KV.get(HawkConfig.LIVE_API_URL, "").ifEmpty { oldApi }
+        HistoryHelper.setApiHistory(url)
+        KV.put(HawkConfig.API_URL, url)
+        if (followLive) {
+            KV.put(HawkConfig.LIVE_API_URL, "")
+            // 只在直播确实被改动时才清:否则"独立直播仓 + 点播换源"会误清用户的直播仓列表
+            if (url != oldFollowTarget) HistoryHelper.clearLiveApiLineList()
+        }
+        if (!HistoryHelper.isApiLineHistory(url)) HistoryHelper.clearApiLineList()
+        if (oldApi == url) {
+            ApiConfig.get().invalidateLiveConfig()
+            return followLive
+        }
+        onApiUrlChanged()
+        return followLive
     }
 
     /** forceFresh = 用户主动重载(换源/改地址/失败重试):必须走网络,否则"重选同一个源"会拿旧快照,看起来像没生效 */

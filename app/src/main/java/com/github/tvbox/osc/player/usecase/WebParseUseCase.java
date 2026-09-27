@@ -27,7 +27,7 @@ public final class WebParseUseCase {
                 LOG.i("echo-BOM-------");
                 return ControlManager.get().getAddress(true) + "proxy?go=bom&url=" + urlEncode;
             } catch (UnsupportedEncodingException e) {
-                e.printStackTrace();
+                LOG.e("WebParseUseCase", e);
             }
         }
         return webPlayUrl;

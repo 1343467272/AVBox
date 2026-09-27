@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.util.thunder;
 
+import com.github.tvbox.osc.util.LOG;
 import android.net.Uri;
 import android.text.TextUtils;
 
@@ -46,7 +47,7 @@ public class Jianpian {
                 App.getp2p().P2Pdoxdel(App.burl.getBytes("GBK"));
                 App.burl = "";
             } catch (UnsupportedEncodingException e) {
-                e.printStackTrace();
+                LOG.e("Jianpian", e);
             }
         }
     }

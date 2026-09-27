@@ -21,6 +21,9 @@ public class VodRecord implements Serializable {
     public long updateTime;
     @ColumnInfo(name = "sourceKey")
     public String sourceKey;
+    /** 订阅标识(当前生效的配置地址):历史按它隔离,换订阅后旧订阅的历史不再列出 */
+    @ColumnInfo(name = "cid")
+    public String cid;
     public String dataJson;
 
     public int getId() {

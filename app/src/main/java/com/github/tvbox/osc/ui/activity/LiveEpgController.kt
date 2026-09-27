@@ -217,7 +217,7 @@ internal class LiveEpgController(private val host: Host) {
                 arrayList = LiveEpgParser.parseJsonEpg(paramString, date)
             }
         } catch (jsonException: JSONException) {
-            jsonException.printStackTrace()
+            LOG.e("LiveEpgController", jsonException)
         }
         if (arrayList.isEmpty() && requestNextEpgQueryName(date, channelNameReal, finalEpgTagName, savedEpgKey, epgQueryNames, timeFormat, queryIndex)) {
             return

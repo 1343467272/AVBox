@@ -1,5 +1,6 @@
 package com.github.catvod.crawler.js.rsa;
 
+import com.github.tvbox.osc.util.LOG;
 import android.util.Log;
 
 import java.io.ByteArrayOutputStream;
@@ -335,7 +336,7 @@ public class RSAEncrypt {
      * 处理异常
      */
     private static void handleException(Exception e) {
-        e.printStackTrace();
+        LOG.e("RSAEncrypt", e);
         Log.e(TAG, TAG + e);
     }
 }

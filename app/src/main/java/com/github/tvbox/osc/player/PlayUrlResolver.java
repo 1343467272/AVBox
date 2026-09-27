@@ -239,7 +239,7 @@ final class PlayUrlResolver {
                 parseThreadPool.shutdown();
                 parseThreadPool = null;
             } catch (Throwable th) {
-                th.printStackTrace();
+                LOG.e("PlayUrlResolver", th);
             }
         }
     }
@@ -298,7 +298,7 @@ final class PlayUrlResolver {
                         if (reqHeaders.size() > 0) host.setWebHeaderMap(reqHeaders);
                     }
                 } catch (Throwable e) {
-                    e.printStackTrace();
+                    LOG.e("PlayUrlResolver", e);
                 }
             }
             loadWebView(pb.getUrl() + webUrl);
@@ -318,7 +318,7 @@ final class PlayUrlResolver {
                     }
                 }
             } catch (Throwable e) {
-                e.printStackTrace();
+                LOG.e("PlayUrlResolver", e);
             }
             OkGo.<String>get(pb.getUrl() + (host.view() == null ? webUrl : host.view().encodeUrl(webUrl)))
                     .tag("json_jx")
@@ -352,7 +352,7 @@ final class PlayUrlResolver {
                                     if (host.view() != null) host.playUrl(gen, rs.getString("url"), headers);
                                 }
                             } catch (Throwable e) {
-                                e.printStackTrace();
+                                LOG.e("PlayUrlResolver", e);
                                 errorWithRetry(str(R.string.player_parse_error), false);
                             }
                         }

@@ -69,7 +69,7 @@ public class pyLoader implements IPyLoader {
             Log.i("PyLoader", "echo-getSpider 加载spider: " + key);
             return sp;
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("pyLoader", th);
         }
         return new SpiderNull();
     }
@@ -91,7 +91,7 @@ public class pyLoader implements IPyLoader {
             return originalSpider.proxyLocal(params);
         } catch (Throwable th) {
             LOG.i("echo-proxyInvoke_Throwable:---" + th.getMessage());
-            th.printStackTrace();
+            LOG.e("pyLoader", th);
         }
         return null;
     }

@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.base;
 
+import com.github.tvbox.osc.util.LOG;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -73,7 +74,7 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
                 updateScreenRatio(dm);
             }
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("BaseActivity", th);
         }
         super.onCreate(savedInstanceState);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -165,7 +166,7 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
             orientationPolicy = desired;
             setRequestedOrientation(desired);
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("BaseActivity", th);
         }
     }
 
@@ -177,7 +178,7 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
                     ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                     : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("BaseActivity", th);
             return ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
         }
     }
@@ -208,7 +209,7 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
             AutoSizeCompat.autoConvertDensityOfCustomAdapt(super.getResources(), this);
             getWindow().getDecorView().requestLayout();
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("BaseActivity", th);
         }
     }
 
@@ -234,7 +235,7 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
         try {
             has = PermissionChecker.checkSelfPermission(this, permission) == PermissionChecker.PERMISSION_GRANTED;
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("BaseActivity", e);
         }
         return has;
     }
@@ -260,7 +261,7 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
             }
             return stringBuilder.toString();
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.e("BaseActivity", e);
         }
         return "";
     }

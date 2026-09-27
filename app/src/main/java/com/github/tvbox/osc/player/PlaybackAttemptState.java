@@ -26,13 +26,13 @@ final class PlaybackAttemptState {
     /** "起播后错误"自动重播是否已用过(每轮一次) */
     boolean hasRetriedAfterStart = false;
 
+    boolean hasRetriedSameUrlOnBoot = false;
+
     boolean playbackStarted = false;
 
     long playTimeoutBasePosition = 0;
 
     final Set<String> triedLineFlags = new HashSet<>();
-
-    int autoRetryCount = 0;
 
     long lastRetryTime = 0;
 
@@ -86,13 +86,14 @@ final class PlaybackAttemptState {
         hasAutoSwitchedPlayer = false;
         hasAutoSwitchedDecode = false;
         hasRetriedAfterStart = false;
+        hasRetriedSameUrlOnBoot = false;
     }
 
     /** 用户自救(重播/切解析/切内核/切解码)后:允许再兜一次底 */
     void userSelfRescue() {
-        autoRetryCount = 0;
         hasAutoSwitchedPlayer = false;
         hasRetriedAfterStart = false;
+        hasRetriedSameUrlOnBoot = false;
     }
 
     /** 换源点击即停:清起播标记与复用意图,置"在途结果作废" */
@@ -103,26 +104,24 @@ final class PlaybackAttemptState {
         switchStopPending = true;
     }
 
-    /** 重试阶梯复位(60s 窗口过期 / 关自动换线):计数 + 切内核额度 + 已试线路 */
+    /** 重试阶梯复位(60s 窗口过期 / 关自动换线):切内核额度 + 已试线路 */
     void resetAutoRetryLadder() {
-        autoRetryCount = 0;
         allowSwitchPlayer = true;
         hasAutoSwitchedPlayer = false;
+        hasRetriedSameUrlOnBoot = false;
         clearTriedLines();
     }
 
     /** 换线成功:阶梯复位 + 置复用意图(不动 release:自动切过内核时须保持) */
     void onLineSwitched() {
-        autoRetryCount = 0;
         allowSwitchPlayer = true;
         hasAutoSwitchedPlayer = false;
         reusePlayerOnSwitch = true;
     }
 
-    /** 无路可走(无剧集数据 / 线路耗尽):清计数与已试线路 */
+    /** 无路可走(无剧集数据 / 线路耗尽):清已试线路 */
     void linesExhausted() {
         clearTriedLines();
-        autoRetryCount = 0;
     }
 
     /** 清空已尝试线路(切集/换线/关自动换线) */

@@ -145,28 +145,8 @@ private fun badgeText(name: String, url: String, emptyText: String): String = wh
     else -> url.substringAfter("://").substringBefore('/').ifEmpty { url }
 }
 
-private fun applyVodSource(item: SubscribeSource): Boolean {
-    val followLive = ApiConfig.isLiveFollowVod()
-    val oldApi = KV.get(HawkConfig.API_URL, "")
-    // 跟随态下"直播当前跟着谁":LIVE_API_URL 为空,实际生效地址就是点播地址
-    val oldFollowTarget = KV.get(HawkConfig.LIVE_API_URL, "").ifEmpty { oldApi }
-    HistoryHelper.setApiHistory(item.url)
-    KV.put(HawkConfig.API_URL, item.url)
-    if (followLive) {
-        KV.put(HawkConfig.LIVE_API_URL, "")
-        // 跟随态下直播源会跟着点播源一起变,旧直播仓列表随之失效(2026-09-21)。
-        // ⚠️ 只在**直播确实被改动**时才清:否则"直播是独立仓源 + 点播换到别的源"会被误清,
-        // 把用户的独立直播仓列表弄丢(直播设置「配置切换」组会退回配置历史)。
-        if (item.url != oldFollowTarget) HistoryHelper.clearLiveApiLineList()
-    }
-    if (!HistoryHelper.isApiLineHistory(item.url)) HistoryHelper.clearApiLineList()
-    if (oldApi == item.url) {
-        ApiConfig.get().invalidateLiveConfig()
-        return followLive
-    }
-    AppBootstrap.onApiUrlChanged()
-    return followLive
-}
+private fun applyVodSource(item: SubscribeSource): Boolean =
+    AppBootstrap.switchVodSubscription(item.url)
 
 private fun applyLiveSource(item: SubscribeSource) {
     HistoryHelper.setLiveApiHistory(item.url)
@@ -226,6 +206,14 @@ fun ConfigManageScreen(onNavigateBack: () -> Unit) {
 
     val apiLineVersion by ApiLineSignal.version.collectAsState()
     LaunchedEffect(apiLineVersion) { refreshActiveSnapshot() }
+
+    // 收藏跨订阅打开也会切订阅(不经过本页):配置就绪后再对一次 KV,
+    // 否则"使用中"标记与 switchToVod 的去重判断会停在旧值(表现为点某条源没反应)
+    LaunchedEffect(Unit) {
+        AppBootstrap.state.collect { boot ->
+            if (boot is AppBootstrap.Boot.Ready) refreshActiveSnapshot()
+        }
+    }
 
     val isVod = mode == ConfigMode.Vod
     val currentItems = if (isVod) vodItems else liveItems

@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.cache;
 
+import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.data.AppDataManager;
 
 import java.io.ByteArrayInputStream;
@@ -25,7 +26,7 @@ public class CacheManager {
             ois = new ObjectInputStream(bais);
             return ois.readObject();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("CacheManager", e);
         } finally {
             try {
                 if (bais != null) {
@@ -35,7 +36,7 @@ public class CacheManager {
                     ois.close();
                 }
             } catch (Exception ignore) {
-                ignore.printStackTrace();
+                LOG.e("CacheManager", ignore);
             }
         }
         return null;
@@ -52,7 +53,7 @@ public class CacheManager {
             oos.flush();
             return baos.toByteArray();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("CacheManager", e);
         } finally {
             try {
                 if (baos != null) {
@@ -62,7 +63,7 @@ public class CacheManager {
                     oos.close();
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                LOG.e("CacheManager", e);
             }
         }
         return new byte[0];

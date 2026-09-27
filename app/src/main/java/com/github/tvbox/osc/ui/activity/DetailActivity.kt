@@ -1,6 +1,7 @@
 package com.github.tvbox.osc.ui.activity
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.net.Uri
@@ -83,6 +84,10 @@ class DetailActivity : BaseActivity(), PageHost {
                     if (container != null && container.onBackPressed()) return
                     vm.setFullScreen(false)
                 } else {
+                    if (vm.backToPreviousTarget()) {
+                        pendingEpisodeSync = false
+                        return
+                    }
                     container?.setPlayTitle(false)
                     container?.setExitingPreview(true)
                     finish()
@@ -98,6 +103,15 @@ class DetailActivity : BaseActivity(), PageHost {
                 }
             }
         }
+    }
+
+    /** 详情页已在栈顶时复用本实例:新片替换当前内容,不叠实例也不留返回链 */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingEpisodeSync = false
+        vm.setFullScreen(false)
+        vm.pushTargetFromIntent(intent)
     }
 
     fun ensurePlayContainer(): PlayContainer {
@@ -263,6 +277,10 @@ class DetailActivity : BaseActivity(), PageHost {
         applyStatusBarAppearance()
         playContainer?.hostResume()
         syncEpisodeAfterMusicPage()
+        val container = playContainer
+        if (container != null && container.hasClaimedPlayback() && !container.ownsEngineContent()) {
+            vm.requestPlay()
+        }
     }
 
     override fun onPause() {

@@ -90,7 +90,7 @@ public class PythonLoader {
                 siteMap.put(key, jo);
             }
         } catch (JSONException e) {
-            e.printStackTrace();
+            LOG.e("PythonLoader", e);
         }
     }
 
@@ -174,7 +174,7 @@ public class PythonLoader {
                 try {
                     spiderRef.init(app, url, ext);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LOG.e("PythonLoader", e);
                 }
             });
 
@@ -227,7 +227,7 @@ public class PythonLoader {
                 map.put(key, value);
             }
         } catch (JSONException e) {
-            e.printStackTrace();
+            LOG.e("PythonLoader", e);
         }
         return map;
     }

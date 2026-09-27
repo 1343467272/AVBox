@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.util;
 
+import com.github.tvbox.osc.util.LOG;
 import android.os.Environment;
 import android.text.TextUtils;
 import android.util.Base64;
@@ -44,7 +45,7 @@ public class FileUtils {
             bos.close();
             return true;
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.e("FileUtils", e);
         }
         return false;
     }
@@ -58,7 +59,7 @@ public class FileUtils {
             bis.close();
             return data;
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.e("FileUtils", e);
         }
         return null;
     }
@@ -104,7 +105,7 @@ public class FileUtils {
             }
             in.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.e("FileUtils", e);
         } finally {
             if (in != null) {
                 try {
@@ -145,7 +146,7 @@ public class FileUtils {
             try {
                 deleteFile(one);
             } catch (Exception e) {
-                e.printStackTrace();
+                LOG.e("FileUtils", e);
             }
         }
     }
@@ -302,12 +303,12 @@ public class FileUtils {
         try {
             if (ijkCacheDir.exists()) cleanDirectory(ijkCacheDir);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("FileUtils", e);
         }
         try {
             if (thunderCacheDir.exists()) cleanDirectory(thunderCacheDir);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("FileUtils", e);
         }
     }
 
@@ -381,7 +382,7 @@ public class FileUtils {
                 try {
                     deleteFileTree(one);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LOG.e("FileUtils", e);
                 }
             }
         }
@@ -395,7 +396,7 @@ public class FileUtils {
             try {
                 deleteFileTree(one);
             } catch (Exception e) {
-                e.printStackTrace();
+                LOG.e("FileUtils", e);
             }
         }
     }
@@ -417,7 +418,7 @@ public class FileUtils {
             // purge-incomplete 逐次递减(10→7→3→done),需多次启动才清干净
             deleteFileTree(exoDir);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("FileUtils", e);
         }
         File[] remaining = exoDir.exists() ? exoDir.listFiles() : null;
         if (remaining == null || remaining.length == 0) {
@@ -518,7 +519,7 @@ public class FileUtils {
             fos.flush();
             fos.close();
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("FileUtils", th);
         }
     }
 
@@ -567,7 +568,7 @@ public class FileUtils {
                 rel=get("http://" + substring.substring(0, indexOf) + "/file/" + substring.substring(indexOf + 1));
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("FileUtils", e);
         }
         return rel;
     }
@@ -599,7 +600,7 @@ public class FileUtils {
             is.read(data);
             return new String(data, "UTF-8");
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("FileUtils", e);
         }
         return "";
     }
@@ -631,7 +632,7 @@ public class FileUtils {
             jSONObject.put("data", data);
             writeSimple(jSONObject.toString().getBytes(), open(name));
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("FileUtils", e);
         }
     }
 
@@ -639,7 +640,7 @@ public class FileUtils {
         try {
             writeSimple(byteMerger("//DRPY".getBytes(), Base64.encode(data, Base64.URL_SAFE)), open("B_" + name));
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("FileUtils", e);
         }
     }
 

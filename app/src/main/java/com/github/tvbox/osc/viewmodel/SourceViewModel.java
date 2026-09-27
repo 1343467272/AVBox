@@ -285,12 +285,10 @@ public class SourceViewModel extends ViewModel {
                         sortJson = future.get(30, TimeUnit.SECONDS);
                     } catch (TimeoutException e) {
                         LOG.i("echo--getSort-timeout--" + sourceBean.getKey());
-                        e.printStackTrace();
                         future.cancel(true);
                     } catch (InterruptedException | ExecutionException e) {
                         Throwable cause = e.getCause();
                         LOG.i("echo--getSort-error--" + sourceBean.getKey() + "--" + e.getClass().getSimpleName() + "--" + (cause != null ? cause.getClass().getSimpleName() + ":" + cause.getMessage() : e.getMessage()));
-                        e.printStackTrace();
                     } finally {
                         if (sortJson != null) {
                             final AbsSortXml sortXml = sortJson(sortResult, sortJson);
@@ -323,8 +321,7 @@ public class SourceViewModel extends ViewModel {
                         }
                         try {
                             executor.shutdown();
-                        } catch (Throwable th) {
-                            th.printStackTrace();
+                        } catch (Throwable ignored) {
                         }
                     }
                 }
@@ -505,12 +502,10 @@ public class SourceViewModel extends ViewModel {
 //                        LOG.i("echo-categoryContent:"+json);
                     } catch (TimeoutException e) {
                         LOG.i("echo--getList-timeout--" + homeSourceBean.getKey());
-                        e.printStackTrace();
                         future.cancel(true);
                     } catch (InterruptedException | ExecutionException e) {
                         Throwable cause = e.getCause();
                         LOG.i("echo--getList-error--" + homeSourceBean.getKey() + "--" + e.getClass().getSimpleName() + "--" + (cause != null ? cause.getClass().getSimpleName() + ":" + cause.getMessage() : e.getMessage()));
-                        e.printStackTrace();
                     } finally {
                         executor.shutdown();
                         if (json != null) {
@@ -566,7 +561,7 @@ public class SourceViewModel extends ViewModel {
                     String selectExt = new JSONObject(sortData.filterSelect).toString();
                     ext = Base64.encodeToString(selectExt.getBytes("UTF-8"), Base64.DEFAULT |  Base64.NO_WRAP);
                 } catch (UnsupportedEncodingException e) {
-                    e.printStackTrace();
+                    LOG.e("SourceViewModel", e);
                 }
             }else {
                 ext = Base64.encodeToString("{}".getBytes(), Base64.DEFAULT |  Base64.NO_WRAP);
@@ -641,10 +636,10 @@ public class SourceViewModel extends ViewModel {
                     try {
                         sortJson = future.get(20, TimeUnit.SECONDS);
                     } catch (TimeoutException e) {
-                        e.printStackTrace();
+                        LOG.e("SourceViewModel", e);
                         future.cancel(true);
                     } catch (InterruptedException | ExecutionException e) {
-                        e.printStackTrace();
+                        LOG.e("SourceViewModel", e);
                     } finally {
                         if (sortJson != null) {
                             AbsXml absXml = json(null, sortJson, sourceBean.getKey());
@@ -658,8 +653,7 @@ public class SourceViewModel extends ViewModel {
                         }
                         try {
                             executor.shutdown();
-                        } catch (Throwable th) {
-                            th.printStackTrace();
+                        } catch (Throwable ignored) {
                         }
                     }
                 }
@@ -720,7 +714,7 @@ public class SourceViewModel extends ViewModel {
                 try {
                     pushUrl = new String(Base64.decode(pushUrl.substring(4), Base64.DEFAULT | Base64.URL_SAFE | Base64.NO_WRAP), "UTF-8");
                 } catch (UnsupportedEncodingException e) {
-                    e.printStackTrace();
+                    LOG.e("SourceViewModel", e);
                 }
             } else {
                 pushUrl = URLDecoder.decode(pushUrl);
@@ -850,7 +844,7 @@ public class SourceViewModel extends ViewModel {
                         String json = sp.action(action);
                         actionResult.postValue(TextUtils.isEmpty(json) ? null : new JSONObject(json));
                     } catch (Throwable th) {
-                        th.printStackTrace();
+                        LOG.e("SourceViewModel", th);
                         actionResult.postValue(null);
                     }
                 }
@@ -886,7 +880,7 @@ public class SourceViewModel extends ViewModel {
                     json(result, "", sourceBean.getKey(), searchToken);
                 }
             } catch (Throwable th) {
-                th.printStackTrace();
+                LOG.e("SourceViewModel", th);
                 json(result, "", sourceBean.getKey(), searchToken);
             }
         } else if (type == 0 || type == 1) {
@@ -932,7 +926,7 @@ public class SourceViewModel extends ViewModel {
             try {
                 queryWd=URLEncoder.encode(queryWd, "UTF-8");
             } catch (UnsupportedEncodingException e) {
-                e.printStackTrace();
+                LOG.e("SourceViewModel", e);
             }
 
             GetRequest<String> request = siteGet(sourceBean)
@@ -1079,7 +1073,7 @@ public class SourceViewModel extends ViewModel {
                 result.put("flag", playFlag);
                 postPlayResult(seqHolder, resultChannel, requestSeq, result);
             } catch (Throwable th) {
-                th.printStackTrace();
+                LOG.e("SourceViewModel", th);
                 postPlayResult(seqHolder, resultChannel, requestSeq, null);
             }
         } else if (type == 4) {
@@ -1119,7 +1113,7 @@ public class SourceViewModel extends ViewModel {
                                 result.put("flag", playFlag);
                             postPlayResult(seqHolder, resultChannel, requestSeq, result);
                         } catch (Throwable th) {
-                            th.printStackTrace();
+                            LOG.e("SourceViewModel", th);
                             postPlayResult(seqHolder, resultChannel, requestSeq, null);
                         }
                     }
@@ -1160,7 +1154,7 @@ public class SourceViewModel extends ViewModel {
             LOG.i("echo--getPlay--direct:" + pushUrl.url);
             return result;
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("SourceViewModel", th);
             return null;
         }
     }
@@ -1205,7 +1199,7 @@ public class SourceViewModel extends ViewModel {
                 result.put("parse", 0);
             }
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("SourceViewModel", th);
         }
         return result;
     }
@@ -1266,7 +1260,7 @@ public class SourceViewModel extends ViewModel {
             mergePushHeaders(result, pushUrl);
             return result;
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("SourceViewModel", th);
             return null;
         }
     }
@@ -1410,11 +1404,11 @@ public class SourceViewModel extends ViewModel {
         try {
             return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (TimeoutException te) {
-            te.printStackTrace();
+            LOG.e("SourceViewModel", te);
             future.cancel(true);
             return extend;
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("SourceViewModel", e);
             return extend;
         }
     }
@@ -1565,7 +1559,7 @@ public class SourceViewModel extends ViewModel {
                                     try {
                                         pushUrl = new String(Base64.decode(pushUrl.substring(4), Base64.DEFAULT | Base64.URL_SAFE | Base64.NO_WRAP), "UTF-8");
                                     } catch (UnsupportedEncodingException e) {
-                                        e.printStackTrace();
+                                        LOG.e("SourceViewModel", e);
                                     }
                                 } else {
                                     pushUrl = URLDecoder.decode(pushUrl);
@@ -1609,7 +1603,7 @@ public class SourceViewModel extends ViewModel {
                                                                     resData[0] = absJson.toAbsXml();
                                                                     absXml(resData[0], sb.getKey());
                                                                 } catch (Exception e) {
-                                                                    e.printStackTrace();
+                                                                    LOG.e("SourceViewModel", e);
                                                                 }
                                                             }
                                                             countDownLatch.countDown();
@@ -1634,11 +1628,11 @@ public class SourceViewModel extends ViewModel {
                                                         resData[0] = absJson.toAbsXml();
                                                         absXml(resData[0], sb.getKey());
                                                     } catch (Exception e) {
-                                                        e.printStackTrace();
+                                                        LOG.e("SourceViewModel", e);
                                                     }
                                                 }
                                             } catch (Throwable th) {
-                                                th.printStackTrace();
+                                                LOG.e("SourceViewModel", th);
                                             }
                                             countDownLatch.countDown();
                                         }
@@ -1647,7 +1641,7 @@ public class SourceViewModel extends ViewModel {
                                 try {
                                     countDownLatch.await(15, TimeUnit.SECONDS);
                                 } catch (InterruptedException e) {
-                                    e.printStackTrace();
+                                    LOG.e("SourceViewModel", e);
                                 } finally {
                                     threadPool.shutdown();
                                 }
@@ -1876,7 +1870,7 @@ public class SourceViewModel extends ViewModel {
                 }
             }
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("SourceViewModel", th);
             return extend;
         }
         return result;

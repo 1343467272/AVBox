@@ -169,7 +169,7 @@ public class ApiConfig {
                 json = content;
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.e("ApiConfig", e);
         }
         return json;
     }
@@ -200,7 +200,7 @@ public class ApiConfig {
                 callback.success();
                 return;
             } catch (Throwable th) {
-                th.printStackTrace();
+                LOG.e("ApiConfig", th);
             }
         }
         ConfigParser.ConfigUrl resolved = ConfigParser.configUrl(apiUrl, ApiConfig::localFileBase);
@@ -222,7 +222,7 @@ public class ApiConfig {
                     FileUtils.saveCache(cache,json);
                     callback.success();
                 } catch (Throwable th) {
-                    th.printStackTrace();
+                    LOG.e("ApiConfig", th);
                     callback.error(str(R.string.toast_config_parse_failed));
                 }
             }
@@ -251,7 +251,7 @@ public class ApiConfig {
                         callback.success();
                         return;
                     } catch (Throwable th) {
-                        th.printStackTrace();
+                        LOG.e("ApiConfig", th);
                     }
                 }
                 callback.error(str(R.string.toast_config_fetch_failed, error));
@@ -311,7 +311,7 @@ public class ApiConfig {
                     return;
                 }
             } catch (Throwable th) {
-                th.printStackTrace();
+                LOG.e("ApiConfig", th);
             }
         }
         fetchConfigAsync(liveApiUrl, liveApiConfigUrl, liveConfigKey, new ConfigFetchCallback() {
@@ -333,7 +333,7 @@ public class ApiConfig {
                     FileUtils.saveCache(live_cache, json);
                     callback.success();
                 } catch (Throwable th) {
-                    th.printStackTrace();
+                    LOG.e("ApiConfig", th);
                     callback.error(str(R.string.toast_live_config_parse_failed));
                 }
             }
@@ -364,7 +364,7 @@ public class ApiConfig {
                             return;
                         }
                     } catch (Throwable th) {
-                        th.printStackTrace();
+                        LOG.e("ApiConfig", th);
                     }
                 }
                 callback.error(str(R.string.toast_live_config_fetch_failed));
@@ -822,7 +822,7 @@ public class ApiConfig {
                     liveSettingGroupList.get(5).setLiveSettingItems(ConfigParser.parseLiveSettingItems(lives_groups));
                 } catch (Exception e) {
                     // 捕获任何可能发生的异常
-                    e.printStackTrace();
+                    LOG.e("ApiConfig", e);
                 }
 
                 JsonObject livesOBJ = lives_groups.get(live_group_index).getAsJsonObject();
@@ -921,7 +921,7 @@ public class ApiConfig {
             try {
                 dohJson = infoJson.getAsJsonArray("doh").toString();
             } catch (Exception e) {
-                e.printStackTrace();
+                LOG.e("ApiConfig", e);
             }
         }
         OkGoHelper.applyDohConfig(dohJson);
@@ -1050,7 +1050,7 @@ public class ApiConfig {
                 liveSettingGroupList.get(5).setLiveSettingItems(ConfigParser.parseLiveSettingItems(lives_groups));
             } catch (Exception e) {
                 // 捕获任何可能发生的异常
-                e.printStackTrace();
+                LOG.e("ApiConfig", e);
             }
 
             JsonObject livesOBJ = lives_groups.get(live_group_index).getAsJsonObject();
@@ -1398,7 +1398,7 @@ public class ApiConfig {
             liveChannelGroupList.clear();
             liveChannelGroupList.add(liveChannelGroup);
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("ApiConfig", th);
         }
     }
 
@@ -1764,7 +1764,7 @@ public class ApiConfig {
         try {
             OkGoHelper.setProxyList(ProxyRule.arrayFrom(infoJson.get("proxy")));
         } catch (Throwable th) {
-            th.printStackTrace();
+            LOG.e("ApiConfig", th);
             OkGoHelper.setProxyList(null);
         }
     }

@@ -131,7 +131,9 @@
     <string name="common_cancel">Cancel</string>
     <string name="common_save">Save</string>
     <string name="common_edit">Edit</string>
+    <string name="common_done">Done</string>
     <string name="common_delete">Delete</string>
+    <string name="common_delete_selected">Delete selected</string>
     <string name="common_default">Default</string>
     <string name="common_unnamed">Untitled</string>
     <string name="common_all">All</string>
@@ -151,6 +153,7 @@
     <string name="player_menu_danmu">Danmaku</string>
     <string name="player_menu_search_danmu">Search Danmaku</string>
     <string name="player_menu_params">Playback settings</string>
+    <string name="player_menu_more">More</string>
     <string name="player_menu_parse">Parse</string>
 
     <!-- 播放参数面板 -->
@@ -200,6 +203,7 @@
     <string name="collect_empty">No favorites</string>
     <string name="collect_clear_message">This will delete all favorites and cannot be undone</string>
     <string name="collect_uncollect_message">Remove “%1$s” from favorites?</string>
+    <string name="collect_delete_selected_message">Remove %1$d selected favorites?</string>
 
     <!-- Theme: color picker -->
     <string name="theme_brightness_value">Brightness %1$d%%</string>
@@ -287,7 +291,9 @@
     <string name="history_clear_message">This will delete all watch history and cannot be undone</string>
     <string name="history_delete_title">Delete record</string>
     <string name="history_delete_message">Delete the watch record for “%1$s”?</string>
+    <string name="history_delete_selected_message">Delete %1$d selected watch records?</string>
     <string name="history_last_watched">Last watched %1$s</string>
+    <string name="source_unavailable">Source unavailable</string>
     <string name="history_episode_progress">Episode %1$d/%2$d</string>
     <string name="history_watched_percent">Watched %1$d%%</string>
 

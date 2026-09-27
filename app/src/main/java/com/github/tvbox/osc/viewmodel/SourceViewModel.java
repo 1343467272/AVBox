@@ -6,7 +6,6 @@ import android.util.Base64;
 import android.os.Handler;
 import android.os.Looper;
 
-import androidx.annotation.NonNull;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
@@ -17,7 +16,6 @@ import com.github.tvbox.osc.bean.AbsXml;
 import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.bean.MovieSort;
 import com.github.tvbox.osc.bean.SourceBean;
-import com.github.tvbox.osc.player.thirdparty.RemoteTVBox;
 import com.github.tvbox.osc.util.BoundedCall;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.HawkConfig;
@@ -33,7 +31,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 
-import java.io.IOException;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
@@ -49,7 +46,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import okhttp3.Call;
 
 /**
  * @author pj567
@@ -70,6 +66,7 @@ public class SourceViewModel extends ViewModel {
     private final PushDetailResolver pushDetailResolver;
     private final SourceResultParser resultParser;
     private final ListLoader listLoader;
+    private final SortLoader sortLoader;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final AtomicInteger playRequestSeq = new AtomicInteger();
     private final AtomicInteger preloadRequestSeq = new AtomicInteger();
@@ -86,6 +83,7 @@ public class SourceViewModel extends ViewModel {
         pushDetailResolver = new PushDetailResolver(gson, detailResult);
         resultParser = new SourceResultParser(gson, searchResult, detailResult, pushDetailResolver);
         listLoader = new ListLoader(gson, extendCache, listResult, resultParser);
+        sortLoader = new SortLoader(gson, extendCache, sortCache, sortResult, listLoader, resultParser);
     }
 
     /** 站点取数线程池(spider 阻塞调用);池本身在 {@link SourceHelper},这里保留门面入口 */
@@ -99,298 +97,19 @@ public class SourceViewModel extends ViewModel {
         }
     };
 
-    private static void cacheSort(String sourceKey, AbsSortXml sortXml) {
-        attachSortSource(sourceKey, sortXml);
-        SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
-        if (!hasHomeRecVideos(sortXml)) {
-            return;
-        }
-        if (!shouldBypassSortCache(sourceKey, sourceBean) && !hasActionSort(sortXml)) {
-            sortCache.put(sourceKey, sortXml);
-        }
-    }
-
     public static void clearRuntimeCache() {
         sortCache.clear();
         extendCache.clear();
     }
 
-    private static AbsSortXml attachSortSource(String sourceKey, AbsSortXml sortXml) {
-        if (sortXml != null) {
-            sortXml.sourceKey = sourceKey;
-        }
-        return sortXml;
-    }
-
-    private void postSortResult(String sourceKey, AbsSortXml sortXml) {
-        if (sortXml == null) {
-            sortXml = new AbsSortXml();
-        }
-        sortResult.postValue(attachSortSource(sourceKey, sortXml));
-    }
-
-    private static boolean hasActionSort(AbsSortXml sortXml) {
-        if (sortXml == null) return false;
-        if (hasActionVideo(sortXml.videoList)) return true;
-        return sortXml.list != null && hasActionVideo(sortXml.list.videoList);
-    }
-
-    private static boolean hasHomeRecVideos(AbsSortXml sortXml) {
-        return sortXml != null && sortXml.videoList != null && !sortXml.videoList.isEmpty();
-    }
-
-    private static boolean hasActionVideo(List<Movie.Video> videos) {
-        if (videos == null) return false;
-        for (Movie.Video video : videos) {
-            if (video != null && video.action != null) return true;
-        }
-        return false;
-    }
-
-    private static boolean shouldBypassSortCache(String sourceKey, SourceBean sourceBean) {
-        return SourceHelper.isHomeSource(sourceKey) && SourceHelper.isDoubanSource(sourceBean);
-    }
-
-    // homeContent
     public void getSort(final String sourceKey) {
-        getSort(sourceKey, true);
+        sortLoader.getSort(sourceKey);
     }
 
-    /** withRec=false 跳过首页推荐那一次额外请求(豆瓣类 videolist / spider homeVideoContent),sorts 不必等它 */
     public void getSort(final String sourceKey, final boolean withRec) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            // t4 源要联网拉 extend 才能发 sort 请求,不能占着主线程等它
-            SourceHelper.PREPARE_POOL.execute(new Runnable() {
-                @Override
-                public void run() {
-                    getSort(sourceKey, withRec);
-                }
-            });
-            return;
-        }
-        if (sourceKey == null) {
-            sortResult.postValue(new AbsSortXml());
-            return;
-        }
-
-        // 优先检查缓存
-        SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
-        if (sourceBean == null) {
-            LOG.i("echo--getSort-source-null--" + sourceKey);
-            postSortResult(sourceKey, null);
-            return;
-        }
-        if(sourceBean.getName().length()<=3 && sourceBean.getName().endsWith("搜")){ // i18n: keep
-            postSortResult(sourceKey, null);
-            return;
-        }
-
-        if (!shouldBypassSortCache(sourceKey, sourceBean)) {
-            AbsSortXml cached = sortCache.get(sourceKey);
-            if (cached != null) {
-                boolean shouldUseCache = cached.videoList != null && !cached.videoList.isEmpty();
-                if (shouldUseCache) {
-                    attachSortSource(sourceKey, cached);
-                    postSortResult(sourceKey, cached);
-                    return;
-                }
-            }
-        }
-
-        final int type = sourceBean.getType();
-        if (type == 3) {
-            Runnable waitResponse = new Runnable() {
-                @Override
-                public void run() {
-                    String sortJson = BoundedCall.call(new Callable<String>() {
-                        @Override
-                        public String call() {
-                            Spider sp = ApiConfig.get().getCSP(sourceBean);
-                            String json = sp.homeContent(true);
-//                            LOG.i("echo--getSort :" + json);
-                            return json;
-                        }
-                    }, sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getSort--" + sourceBean.getKey());
-                    if (sortJson != null) {
-                        final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
-                        attachSortSource(sourceKey, sortXml);
-                        if (sortXml != null) {
-                            AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
-                            if (!withRec) {
-                                postSortResult(sourceKey, sortXml);
-                                cacheSort(sourceKey, sortXml);
-                            } else if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
-                                sortXml.videoList = absXml.movie.videoList;
-                                postSortResult(sourceKey, sortXml);
-                                cacheSort(sourceKey, sortXml);
-                            } else {
-                                listLoader.getHomeRecList(sourceBean, null, new ListLoader.HomeRecCallback() {
-                                    @Override
-                                    public void done(List<Movie.Video> videos) {
-                                        sortXml.videoList = videos;
-                                        postSortResult(sourceKey, sortXml);
-                                        cacheSort(sourceKey, sortXml);
-                                    }
-                                });
-                            }
-                        } else {
-                            postSortResult(sourceKey, sortXml);
-                            cacheSort(sourceKey, sortXml);
-                        }
-                    } else {
-                        postSortResult(sourceKey, null);
-                    }
-                }
-            };
-            SourceHelper.PREPARE_POOL.execute(waitResponse);
-        } else if (type == 0 || type == 1) {
-            SourceHelper.siteGet(sourceBean)
-                    .tag(sourceBean.getKey() + "_sort")
-                    .execute(new AbsCallback<String>() {
-                        @Override
-                        public String convertResponse(okhttp3.Response response) throws Throwable {
-                            if (response.body() != null) {
-                                return response.body().string();
-                            } else {
-                                throw new IllegalStateException(SourceHelper.ERR_NETWORK);
-                            }
-                        }
-
-                        @Override
-                        public void onSuccess(Response<String> response) {
-                            AbsSortXml sortXml = null;
-                            if (type == 0) {
-                                String xml = response.body();
-                                sortXml = resultParser.sortXml(sortResult, xml);
-                            } else if (type == 1) {
-                                String json = response.body();
-                                sortXml = resultParser.sortJson(sortResult, json);
-                            }
-                            attachSortSource(sourceKey, sortXml);
-                            if (withRec && sortXml != null && sortXml.list != null && sortXml.list.videoList != null && sortXml.list.videoList.size() > 0) {
-                                ArrayList<String> ids = new ArrayList<>();
-                                for (Movie.Video vod : sortXml.list.videoList) {
-                                    ids.add(vod.id);
-                                }
-                                final AbsSortXml finalSortXml = sortXml;
-                                listLoader.getHomeRecList(sourceBean, ids, new ListLoader.HomeRecCallback() {
-                                    @Override
-                                    public void done(List<Movie.Video> videos) {
-                                        finalSortXml.videoList = videos;
-                                        postSortResult(sourceKey, finalSortXml);
-                                        cacheSort(sourceKey, finalSortXml);
-                                    }
-                                });
-                            } else {
-                                postSortResult(sourceKey, sortXml);
-                                cacheSort(sourceKey, sortXml);
-                            }
-                        }
-
-                        @Override
-                        public void onError(Response<String> response) {
-                            super.onError(response);
-                            postSortResult(sourceKey, null);
-                        }
-                    });
-        }else if (type == 4) {
-            String extend=sourceBean.getExt();
-            extend=SourceHelper.getFixUrl(extendCache, gson, extend, sourceBean.getPlayTimeoutSeconds());
-            if(URLEncoder.encode(extend).length()<1000){
-                GetRequest<String> request = SourceHelper.siteGet(sourceBean)
-                        .tag(sourceBean.getKey() + "_sort")
-                        .params("filter", "true");
-                // 当 extend 不为空且非空字符串时添加参数
-                if (extend != null && !extend.isEmpty()) {
-                    request.params("extend", extend);
-                }
-                request.execute(new AbsCallback<String>() {
-                            @Override
-                            public String convertResponse(okhttp3.Response response) throws Throwable {
-                                if (response.body() != null) {
-                                    return response.body().string();
-                                } else {
-                                    throw new IllegalStateException(SourceHelper.ERR_NETWORK);
-                                }
-                            }
-
-                            @Override
-                            public void onSuccess(Response<String> response) {
-                                String sortJson  = response.body();
-                                if (sortJson != null) {
-                                    final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
-                                    attachSortSource(sourceKey, sortXml);
-                                    if (sortXml != null) {
-                                        AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
-                                        if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
-                                            sortXml.videoList = absXml.movie.videoList;
-                                            postSortResult(sourceKey, sortXml);
-                                            cacheSort(sourceKey, sortXml);
-                                        } else {
-                                            listLoader.getHomeRecList(sourceBean, null, new ListLoader.HomeRecCallback() {
-                                                @Override
-                                                public void done(List<Movie.Video> videos) {
-                                                    sortXml.videoList = videos;
-                                                    postSortResult(sourceKey, sortXml);
-                                                    cacheSort(sourceKey, sortXml);
-                                                }
-                                            });
-                                        }
-                                    } else {
-                                        postSortResult(sourceKey, sortXml);
-                                        cacheSort(sourceKey, sortXml);
-                                    }
-                                } else {
-                                    postSortResult(sourceKey, null);
-                                }
-                            }
-
-                            @Override
-                            public void onError(Response<String> response) {
-                                super.onError(response);
-                                postSortResult(sourceKey, null);
-                            }
-                        });
-            }else {
-                try {
-                    Map<String, String> params = new HashMap<>();
-                    params.put("filter","true");
-                    if (extend != null && !extend.isEmpty()) {
-                        params.put("extend",extend);
-                    }
-                    RemoteTVBox.post(sourceBean.getApi(), params, sourceBean.getHeader(), new okhttp3.Callback() {
-                        @Override
-                        public void onFailure(@NonNull Call call, IOException e) {
-                            postSortResult(sourceKey, null);
-                        }
-
-                        @Override
-                        public void onResponse(@NonNull Call call, @NonNull okhttp3.Response response) throws IOException {
-                            assert response.body() != null;
-                            String sortJson = response.body().string();
-                            final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
-                            attachSortSource(sourceKey, sortXml);
-                            if (sortXml != null) {
-                                AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
-                                if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
-                                    sortXml.videoList = absXml.movie.videoList;
-                                    postSortResult(sourceKey, sortXml);
-                                    cacheSort(sourceKey, sortXml);
-                                }
-                            } else {
-                                postSortResult(sourceKey, sortXml);
-                                cacheSort(sourceKey, sortXml);
-                            }
-                        }
-                    });
-                } catch (Exception ignored) {
-                    postSortResult(sourceKey, null);
-                }
-            }
-        } else {
-            postSortResult(sourceKey, null);
-        }
+        sortLoader.getSort(sourceKey, withRec);
     }
+
     public void getList(MovieSort.SortData sortData, int page) {
         listLoader.getList(sortData, page);
     }

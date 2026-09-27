@@ -28,7 +28,6 @@ import com.github.tvbox.osc.util.HeaderGuard;
 import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.LanguageManager;
-import com.github.tvbox.osc.util.M3u8;
 import com.github.tvbox.osc.util.OkGoHelper;
 import com.github.tvbox.osc.util.VideoParseRuler;
 import com.github.tvbox.osc.util.live.TxtSubscribe;
@@ -368,19 +367,10 @@ public class ApiConfig {
         vipParseFlags = DefaultConfig.safeJsonStringList(infoJson, "flags");
         // 解析地址
         parseBeanList.clear();
-        if(infoJson.has("parses")){
-            JsonArray parses = infoJson.get("parses").getAsJsonArray();
-            for (JsonElement opt : parses) {
-                JsonObject obj = (JsonObject) opt;
-                ParseBean pb = new ParseBean();
-                pb.setName(obj.get("name").getAsString().trim());
-                pb.setUrl(obj.get("url").getAsString().trim());
-                String ext = obj.has("ext") ? obj.get("ext").getAsJsonObject().toString() : "";
-                pb.setExt(ext);
-                pb.setType(DefaultConfig.safeJsonInt(obj, "type", 0));
-                parseBeanList.add(pb);
-            }
-            if(!parseBeanList.isEmpty())addSuperParse();
+        List<ParseBean> parsedParses = ConfigApplier.parseParseBeans(infoJson);
+        if (!parsedParses.isEmpty()) {
+            parseBeanList.addAll(parsedParses);
+            addSuperParse();
         }
         // 获取默认解析
         if (parseBeanList != null && parseBeanList.size() > 0) {
@@ -423,104 +413,11 @@ public class ApiConfig {
 
         loadProxyRules(infoJson);
 
-        //video parse rule for host
-        if (infoJson.has("rules")) {
-            VideoParseRuler.clearRule();
-            for(JsonElement oneHostRule : infoJson.getAsJsonArray("rules")) {
-                JsonObject obj = (JsonObject) oneHostRule;
-                //嗅探过滤规则
-                if (obj.has("host")) {
-                    String host = obj.get("host").getAsString();
-                    if (obj.has("rule")) {
-                        JsonArray ruleJsonArr = obj.getAsJsonArray("rule");
-                        ArrayList<String> rule = new ArrayList<>();
-                        for (JsonElement one : ruleJsonArr) {
-                            String oneRule = one.getAsString();
-                            rule.add(oneRule);
-                        }
-                        if (rule.size() > 0) {
-                            VideoParseRuler.addHostRule(host, rule);
-                        }
-                    }
-                    if (obj.has("filter")) {
-                        JsonArray filterJsonArr = obj.getAsJsonArray("filter");
-                        ArrayList<String> filter = new ArrayList<>();
-                        for (JsonElement one : filterJsonArr) {
-                            String oneFilter = one.getAsString();
-                            filter.add(oneFilter);
-                        }
-                        if (filter.size() > 0) {
-                            VideoParseRuler.addHostFilter(host, filter);
-                        }
-                    }
-                }
-                //广告过滤规则
-                if (obj.has("hosts") && obj.has("regex")) {
-                    ArrayList<String> rule = new ArrayList<>();
-                    ArrayList<String> ads = new ArrayList<>();
-                    JsonArray regexArray = obj.getAsJsonArray("regex");
-                    for (JsonElement one : regexArray) {
-                        String regex = one.getAsString();
-                        if (M3u8.isAd(regex)) ads.add(regex);
-                        else rule.add(regex);
-                    }
-                    JsonArray array = obj.getAsJsonArray("hosts");
-                    for (JsonElement one : array) {
-                        String host = one.getAsString();
-                        VideoParseRuler.addHostRule(host, rule);
-                        VideoParseRuler.addHostRegex(host, ads);
-                    }
-                }
-                //嗅探脚本规则 如 click
-                if (obj.has("hosts") && obj.has("script")) {
-                    ArrayList<String> scripts = new ArrayList<>();
-                    JsonArray scriptArray = obj.getAsJsonArray("script");
-                    for (JsonElement one : scriptArray) {
-                        String script = one.getAsString();
-                        scripts.add(script);
-                    }
-                    JsonArray array = obj.getAsJsonArray("hosts");
-                    for (JsonElement one : array) {
-                        String host = one.getAsString();
-                        VideoParseRuler.addHostScript(host, scripts);
-                    }
-                }
-                //排除不嗅探的 URL 条件(fongmi 规则的 exclude):命中即否决,优先于内置嗅探正则
-                //字段类型写错时忽略该条,不能让整份配置解析失败(同 doh 的兜底态度)
-                if (obj.has("hosts") && obj.has("exclude")
-                        && obj.get("hosts").isJsonArray() && obj.get("exclude").isJsonArray()) {
-                    ArrayList<String> excludes = new ArrayList<>();
-                    for (JsonElement one : obj.getAsJsonArray("exclude")) {
-                        excludes.add(one.getAsString());
-                    }
-                    if (!excludes.isEmpty()) {
-                        for (JsonElement one : obj.getAsJsonArray("hosts")) {
-                            VideoParseRuler.addHostExclude(one.getAsString(), excludes);
-                        }
-                    }
-                }
-            }
-        }
+        ConfigApplier.applyHostRules(infoJson);
 
-        String dohJson = "";
-        if (infoJson.has("doh")) {
-            // 接口可能把 doh 写成非数组(或格式异常):此时视为未提供,退回内置列表,不让整个配置加载挂掉
-            try {
-                dohJson = infoJson.getAsJsonArray("doh").toString();
-            } catch (Exception e) {
-                LOG.e("ApiConfig", e);
-            }
-        }
-        OkGoHelper.applyDohConfig(dohJson);
+        ConfigApplier.applyDoh(infoJson);
         LOG.i("echo-api-config-----------load");
-        //追加的广告拦截
-        if(infoJson.has("ads")){
-            for (JsonElement host : infoJson.getAsJsonArray("ads")) {
-                if(!AdBlocker.hasHost(host.getAsString())){
-                    AdBlocker.addAdHost(host.getAsString());
-                }
-            }
-        }
+        ConfigApplier.applyAds(infoJson);
     }
 
     private void loadDefaultConfig() {

@@ -97,28 +97,126 @@ final class PlayLoader {
         }
         int type = sourceBean.getType();
         if (type == 3) {
-            SourceHelper.SPIDER_POOL.execute(new Runnable() {
-                @Override
-                public void run() {
-                    String json = BoundedCall.call(new Callable<String>() {
-                        @Override
-                        public String call() {
-                            Spider sp = ApiConfig.get().getCSP(sourceBean);
-                            if (TextUtils.isEmpty(requestUrl)) return "";
-                            try {
-                                LOG.i("echo--getPlay--id: " + requestUrl);
-                                return sp.playerContent(playFlag, requestUrl, ApiConfig.get().getVipParseFlags());
-                            } catch (Exception e) {
-                                LOG.i("echo--getPlay--error: " + e.getMessage());
-                                return "";
-                            }
+            playFromSpider(seqHolder, resultChannel, requestSeq, sourceBean, requestUrl, url, progressKey, subtitleKey, playFlag, pushUrl);
+        } else if (type == 0 || type == 1) {
+            playFromApi(seqHolder, resultChannel, requestSeq, sourceBean, requestUrl, url, progressKey, subtitleKey, playFlag, pushUrl);
+        } else if (type == 4) {
+            playFromExtendedApi(seqHolder, resultChannel, requestSeq, requestTag, sourceBean, requestUrl, url, progressKey, subtitleKey, playFlag, pushUrl);
+        } else {
+            postPlayResult(seqHolder, resultChannel, requestSeq, null);
+        }
+    }
+
+    /** type 3:爬虫 playerContent;返回空或缺 url 时回退成直连(见 shouldDirectPlay) */
+    private void playFromSpider(final AtomicInteger seqHolder, final MutableLiveData<JSONObject> resultChannel, final int requestSeq,
+                                 final SourceBean sourceBean, final String requestUrl, final String url,
+                                 final String progressKey, final String subtitleKey, final String playFlag,
+                                 final PushUrlParser.PushUrl pushUrl) {
+        SourceHelper.SPIDER_POOL.execute(new Runnable() {
+            @Override
+            public void run() {
+                String json = BoundedCall.call(new Callable<String>() {
+                    @Override
+                    public String call() {
+                        Spider sp = ApiConfig.get().getCSP(sourceBean);
+                        if (TextUtils.isEmpty(requestUrl)) return "";
+                        try {
+                            LOG.i("echo--getPlay--id: " + requestUrl);
+                            return sp.playerContent(playFlag, requestUrl, ApiConfig.get().getVipParseFlags());
+                        } catch (Exception e) {
+                            LOG.i("echo--getPlay--error: " + e.getMessage());
+                            return "";
                         }
-                    }, sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getPlay--" + sourceBean.getKey());
-                    LOG.i("echo--getPlay--result:" + json);
-                    if (TextUtils.isEmpty(json)) {
-                        postPlayResult(seqHolder, resultChannel, requestSeq, null);
-                        return;
                     }
+                }, sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getPlay--" + sourceBean.getKey());
+                LOG.i("echo--getPlay--result:" + json);
+                if (TextUtils.isEmpty(json)) {
+                    postPlayResult(seqHolder, resultChannel, requestSeq, null);
+                    return;
+                }
+                try {
+                    JSONObject result = normalizePlayerResult(new JSONObject(json));
+                    result.put("key", url);
+                    PushUrlParser.mergePushHeaders(result, pushUrl);
+                    mergeSiteHeaders(result, sourceBean);
+                    result.put("proKey", progressKey);
+                    result.put("subtKey", subtitleKey);
+                    if (!result.has("flag"))
+                        result.put("flag", playFlag);
+                    if (TextUtils.isEmpty(result.optString("url", "")) && shouldDirectPlay(sourceBean, requestUrl)) {
+                        postPlayResult(seqHolder, resultChannel, requestSeq, createDirectPlayResult(url, pushUrl, progressKey, subtitleKey, playFlag, sourceBean));
+                    } else {
+                        postPlayResult(seqHolder, resultChannel, requestSeq, result);
+                    }
+                } catch (Exception e) {
+                    LOG.i("echo--getPlay--error: " + e.getMessage());
+                    postPlayResult(seqHolder, resultChannel, requestSeq, null);
+                }
+            }
+        });
+    
+    }
+
+    /** type 0/1:直接按地址起播或交给解析链(parse=0/1 由地址形态与站点 playerUrl 决定) */
+    private void playFromApi(final AtomicInteger seqHolder, final MutableLiveData<JSONObject> resultChannel, final int requestSeq,
+                             final SourceBean sourceBean, final String requestUrl, final String url,
+                             final String progressKey, final String subtitleKey, final String playFlag,
+                             final PushUrlParser.PushUrl pushUrl) {
+        JSONObject result = new JSONObject();
+        try {
+            result.put("key", url);
+            String playUrl = sourceBean.getPlayerUrl().trim();
+            if (DefaultConfig.isVideoFormat(requestUrl) && playUrl.isEmpty()) {
+                result.put("parse", 0);
+                result.put("url", requestUrl);
+            } else {
+                result.put("parse", 1);
+                result.put("url", requestUrl);
+            }
+            PushUrlParser.mergePushHeaders(result, pushUrl);
+            mergeSiteHeaders(result, sourceBean);
+            result.put("proKey", progressKey);
+            result.put("subtKey", subtitleKey);
+            result.put("playUrl", playUrl);
+            result.put("flag", playFlag);
+            postPlayResult(seqHolder, resultChannel, requestSeq, result);
+        } catch (Throwable th) {
+            LOG.e("SourceViewModel", th);
+            postPlayResult(seqHolder, resultChannel, requestSeq, null);
+        }
+    
+    }
+
+    /** type 4:带 extend 的取流接口,结果走 normalizePlayerResult 归一 */
+    private void playFromExtendedApi(final AtomicInteger seqHolder, final MutableLiveData<JSONObject> resultChannel, final int requestSeq, final String requestTag,
+                                    final SourceBean sourceBean, final String requestUrl, final String url,
+                                    final String progressKey, final String subtitleKey, final String playFlag,
+                                    final PushUrlParser.PushUrl pushUrl) {
+        String extend=sourceBean.getExt();
+        extend=SourceHelper.getFixUrl(extendCache, gson, extend, sourceBean.getPlayTimeoutSeconds());
+
+        GetRequest<String> request = SourceHelper.siteGet(sourceBean)
+                .tag(requestTag)
+                .params("play", requestUrl)
+                .params("flag" ,playFlag);
+        // 当 extend 不为空且非空字符串时添加参数
+        if (extend != null && !extend.isEmpty()) {
+            request.params("extend", extend);
+        }
+        request.execute(new AbsCallback<String>() {
+                @Override
+                public String convertResponse(okhttp3.Response response) throws Throwable {
+                    if (response.body() != null) {
+                        return response.body().string();
+                    } else {
+                        throw new IllegalStateException(SourceHelper.ERR_NETWORK);
+                    }
+                }
+
+                @Override
+                public void onSuccess(Response<String> response) {
+                    String json = response.body();
+                    LOG.i(json);
                     try {
                         JSONObject result = normalizePlayerResult(new JSONObject(json));
                         result.put("key", url);
@@ -128,91 +226,20 @@ final class PlayLoader {
                         result.put("subtKey", subtitleKey);
                         if (!result.has("flag"))
                             result.put("flag", playFlag);
-                        if (TextUtils.isEmpty(result.optString("url", "")) && shouldDirectPlay(sourceBean, requestUrl)) {
-                            postPlayResult(seqHolder, resultChannel, requestSeq, createDirectPlayResult(url, pushUrl, progressKey, subtitleKey, playFlag, sourceBean));
-                        } else {
-                            postPlayResult(seqHolder, resultChannel, requestSeq, result);
-                        }
-                    } catch (Exception e) {
-                        LOG.i("echo--getPlay--error: " + e.getMessage());
+                        postPlayResult(seqHolder, resultChannel, requestSeq, result);
+                    } catch (Throwable th) {
+                        LOG.e("SourceViewModel", th);
                         postPlayResult(seqHolder, resultChannel, requestSeq, null);
                     }
+                }
+
+                @Override
+                public void onError(Response<String> response) {
+                    super.onError(response);
+                    postPlayResult(seqHolder, resultChannel, requestSeq, null);
                 }
             });
-        } else if (type == 0 || type == 1) {
-            JSONObject result = new JSONObject();
-            try {
-                result.put("key", url);
-                String playUrl = sourceBean.getPlayerUrl().trim();
-                if (DefaultConfig.isVideoFormat(requestUrl) && playUrl.isEmpty()) {
-                    result.put("parse", 0);
-                    result.put("url", requestUrl);
-                } else {
-                    result.put("parse", 1);
-                    result.put("url", requestUrl);
-                }
-                PushUrlParser.mergePushHeaders(result, pushUrl);
-                mergeSiteHeaders(result, sourceBean);
-                result.put("proKey", progressKey);
-                result.put("subtKey", subtitleKey);
-                result.put("playUrl", playUrl);
-                result.put("flag", playFlag);
-                postPlayResult(seqHolder, resultChannel, requestSeq, result);
-            } catch (Throwable th) {
-                LOG.e("SourceViewModel", th);
-                postPlayResult(seqHolder, resultChannel, requestSeq, null);
-            }
-        } else if (type == 4) {
-            String extend=sourceBean.getExt();
-            extend=SourceHelper.getFixUrl(extendCache, gson, extend, sourceBean.getPlayTimeoutSeconds());
-
-            GetRequest<String> request = SourceHelper.siteGet(sourceBean)
-                    .tag(requestTag)
-                    .params("play", requestUrl)
-                    .params("flag" ,playFlag);
-            // 当 extend 不为空且非空字符串时添加参数
-            if (extend != null && !extend.isEmpty()) {
-                request.params("extend", extend);
-            }
-            request.execute(new AbsCallback<String>() {
-                    @Override
-                    public String convertResponse(okhttp3.Response response) throws Throwable {
-                        if (response.body() != null) {
-                            return response.body().string();
-                        } else {
-                            throw new IllegalStateException(SourceHelper.ERR_NETWORK);
-                        }
-                    }
-
-                    @Override
-                    public void onSuccess(Response<String> response) {
-                        String json = response.body();
-                        LOG.i(json);
-                        try {
-                            JSONObject result = normalizePlayerResult(new JSONObject(json));
-                            result.put("key", url);
-                            PushUrlParser.mergePushHeaders(result, pushUrl);
-                            mergeSiteHeaders(result, sourceBean);
-                            result.put("proKey", progressKey);
-                            result.put("subtKey", subtitleKey);
-                            if (!result.has("flag"))
-                                result.put("flag", playFlag);
-                            postPlayResult(seqHolder, resultChannel, requestSeq, result);
-                        } catch (Throwable th) {
-                            LOG.e("SourceViewModel", th);
-                            postPlayResult(seqHolder, resultChannel, requestSeq, null);
-                        }
-                    }
-
-                    @Override
-                    public void onError(Response<String> response) {
-                        super.onError(response);
-                        postPlayResult(seqHolder, resultChannel, requestSeq, null);
-                    }
-                });
-        }else {
-            postPlayResult(seqHolder, resultChannel, requestSeq, null);
-        }
+    
     }
 
     void cancelPlayRequest() {

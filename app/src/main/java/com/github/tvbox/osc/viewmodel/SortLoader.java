@@ -152,56 +152,136 @@ final class SortLoader {
             }
         }
 
-        final int type = sourceBean.getType();
+        int type = sourceBean.getType();
         if (type == 3) {
-            Runnable waitResponse = new Runnable() {
-                @Override
-                public void run() {
-                    String sortJson = BoundedCall.call(new Callable<String>() {
-                        @Override
-                        public String call() {
-                            Spider sp = ApiConfig.get().getCSP(sourceBean);
-                            String json = sp.homeContent(true);
+            getSortFromSpider(sourceKey, sourceBean, withRec);
+        } else if (type == 0 || type == 1) {
+            getSortFromApi(sourceKey, sourceBean, withRec);
+        } else if (type == 4) {
+            getSortFromExtendedApi(sourceKey, sourceBean);
+        } else {
+            postSortResult(sourceKey, null);
+        }
+    }
+
+    /** type 3:爬虫 homeContent,拿到 sorts 后再补一次首页推荐(推荐走 {@link ListLoader}) */
+    private void getSortFromSpider(final String sourceKey, final SourceBean sourceBean, final boolean withRec) {
+        Runnable waitResponse = new Runnable() {
+            @Override
+            public void run() {
+                String sortJson = BoundedCall.call(new Callable<String>() {
+                    @Override
+                    public String call() {
+                        Spider sp = ApiConfig.get().getCSP(sourceBean);
+                        String json = sp.homeContent(true);
 //                            LOG.i("echo--getSort :" + json);
-                            return json;
+                        return json;
+                    }
+                }, sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getSort--" + sourceBean.getKey());
+                if (sortJson != null) {
+                    final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
+                    attachSortSource(sourceKey, sortXml);
+                    if (sortXml != null) {
+                        AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
+                        if (!withRec) {
+                            postSortResult(sourceKey, sortXml);
+                            cacheSort(sourceKey, sortXml);
+                        } else if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
+                            sortXml.videoList = absXml.movie.videoList;
+                            postSortResult(sourceKey, sortXml);
+                            cacheSort(sourceKey, sortXml);
+                        } else {
+                            listLoader.getHomeRecList(sourceBean, null, new ListLoader.HomeRecCallback() {
+                                @Override
+                                public void done(List<Movie.Video> videos) {
+                                    sortXml.videoList = videos;
+                                    postSortResult(sourceKey, sortXml);
+                                    cacheSort(sourceKey, sortXml);
+                                }
+                            });
                         }
-                    }, sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getSort--" + sourceBean.getKey());
-                    if (sortJson != null) {
-                        final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
+                    } else {
+                        postSortResult(sourceKey, sortXml);
+                        cacheSort(sourceKey, sortXml);
+                    }
+                } else {
+                    postSortResult(sourceKey, null);
+                }
+            }
+        };
+        SourceHelper.PREPARE_POOL.execute(waitResponse);
+    
+    }
+
+    /** type 0/1:站点 XML / JSON 接口,带站点级 header */
+    private void getSortFromApi(final String sourceKey, final SourceBean sourceBean, final boolean withRec) {
+        // 回调里要按 type 分流 xml/json,值语义与调用点一致(原为捕获 getSort 的局部量)
+        final int type = sourceBean.getType();
+        SourceHelper.siteGet(sourceBean)
+                .tag(sourceBean.getKey() + "_sort")
+                .execute(new AbsCallback<String>() {
+                    @Override
+                    public String convertResponse(okhttp3.Response response) throws Throwable {
+                        if (response.body() != null) {
+                            return response.body().string();
+                        } else {
+                            throw new IllegalStateException(SourceHelper.ERR_NETWORK);
+                        }
+                    }
+
+                    @Override
+                    public void onSuccess(Response<String> response) {
+                        AbsSortXml sortXml = null;
+                        if (type == 0) {
+                            String xml = response.body();
+                            sortXml = resultParser.sortXml(sortResult, xml);
+                        } else if (type == 1) {
+                            String json = response.body();
+                            sortXml = resultParser.sortJson(sortResult, json);
+                        }
                         attachSortSource(sourceKey, sortXml);
-                        if (sortXml != null) {
-                            AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
-                            if (!withRec) {
-                                postSortResult(sourceKey, sortXml);
-                                cacheSort(sourceKey, sortXml);
-                            } else if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
-                                sortXml.videoList = absXml.movie.videoList;
-                                postSortResult(sourceKey, sortXml);
-                                cacheSort(sourceKey, sortXml);
-                            } else {
-                                listLoader.getHomeRecList(sourceBean, null, new ListLoader.HomeRecCallback() {
-                                    @Override
-                                    public void done(List<Movie.Video> videos) {
-                                        sortXml.videoList = videos;
-                                        postSortResult(sourceKey, sortXml);
-                                        cacheSort(sourceKey, sortXml);
-                                    }
-                                });
+                        if (withRec && sortXml != null && sortXml.list != null && sortXml.list.videoList != null && sortXml.list.videoList.size() > 0) {
+                            ArrayList<String> ids = new ArrayList<>();
+                            for (Movie.Video vod : sortXml.list.videoList) {
+                                ids.add(vod.id);
                             }
+                            final AbsSortXml finalSortXml = sortXml;
+                            listLoader.getHomeRecList(sourceBean, ids, new ListLoader.HomeRecCallback() {
+                                @Override
+                                public void done(List<Movie.Video> videos) {
+                                    finalSortXml.videoList = videos;
+                                    postSortResult(sourceKey, finalSortXml);
+                                    cacheSort(sourceKey, finalSortXml);
+                                }
+                            });
                         } else {
                             postSortResult(sourceKey, sortXml);
                             cacheSort(sourceKey, sortXml);
                         }
-                    } else {
+                    }
+
+                    @Override
+                    public void onError(Response<String> response) {
+                        super.onError(response);
                         postSortResult(sourceKey, null);
                     }
-                }
-            };
-            SourceHelper.PREPARE_POOL.execute(waitResponse);
-        } else if (type == 0 || type == 1) {
-            SourceHelper.siteGet(sourceBean)
+                });
+    
+    }
+
+    /** type 4:带 extend 的接口;extend 过长时改走 RemoteTVBox 的 POST(URL 长度限制) */
+    private void getSortFromExtendedApi(final String sourceKey, final SourceBean sourceBean) {
+        String extend=sourceBean.getExt();
+        extend=SourceHelper.getFixUrl(extendCache, gson, extend, sourceBean.getPlayTimeoutSeconds());
+        if(URLEncoder.encode(extend).length()<1000){
+            GetRequest<String> request = SourceHelper.siteGet(sourceBean)
                     .tag(sourceBean.getKey() + "_sort")
-                    .execute(new AbsCallback<String>() {
+                    .params("filter", "true");
+            // 当 extend 不为空且非空字符串时添加参数
+            if (extend != null && !extend.isEmpty()) {
+                request.params("extend", extend);
+            }
+            request.execute(new AbsCallback<String>() {
                         @Override
                         public String convertResponse(okhttp3.Response response) throws Throwable {
                             if (response.body() != null) {
@@ -213,32 +293,32 @@ final class SortLoader {
 
                         @Override
                         public void onSuccess(Response<String> response) {
-                            AbsSortXml sortXml = null;
-                            if (type == 0) {
-                                String xml = response.body();
-                                sortXml = resultParser.sortXml(sortResult, xml);
-                            } else if (type == 1) {
-                                String json = response.body();
-                                sortXml = resultParser.sortJson(sortResult, json);
-                            }
-                            attachSortSource(sourceKey, sortXml);
-                            if (withRec && sortXml != null && sortXml.list != null && sortXml.list.videoList != null && sortXml.list.videoList.size() > 0) {
-                                ArrayList<String> ids = new ArrayList<>();
-                                for (Movie.Video vod : sortXml.list.videoList) {
-                                    ids.add(vod.id);
-                                }
-                                final AbsSortXml finalSortXml = sortXml;
-                                listLoader.getHomeRecList(sourceBean, ids, new ListLoader.HomeRecCallback() {
-                                    @Override
-                                    public void done(List<Movie.Video> videos) {
-                                        finalSortXml.videoList = videos;
-                                        postSortResult(sourceKey, finalSortXml);
-                                        cacheSort(sourceKey, finalSortXml);
+                            String sortJson  = response.body();
+                            if (sortJson != null) {
+                                final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
+                                attachSortSource(sourceKey, sortXml);
+                                if (sortXml != null) {
+                                    AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
+                                    if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
+                                        sortXml.videoList = absXml.movie.videoList;
+                                        postSortResult(sourceKey, sortXml);
+                                        cacheSort(sourceKey, sortXml);
+                                    } else {
+                                        listLoader.getHomeRecList(sourceBean, null, new ListLoader.HomeRecCallback() {
+                                            @Override
+                                            public void done(List<Movie.Video> videos) {
+                                                sortXml.videoList = videos;
+                                                postSortResult(sourceKey, sortXml);
+                                                cacheSort(sourceKey, sortXml);
+                                            }
+                                        });
                                     }
-                                });
+                                } else {
+                                    postSortResult(sourceKey, sortXml);
+                                    cacheSort(sourceKey, sortXml);
+                                }
                             } else {
-                                postSortResult(sourceKey, sortXml);
-                                cacheSort(sourceKey, sortXml);
+                                postSortResult(sourceKey, null);
                             }
                         }
 
@@ -248,102 +328,42 @@ final class SortLoader {
                             postSortResult(sourceKey, null);
                         }
                     });
-        }else if (type == 4) {
-            String extend=sourceBean.getExt();
-            extend=SourceHelper.getFixUrl(extendCache, gson, extend, sourceBean.getPlayTimeoutSeconds());
-            if(URLEncoder.encode(extend).length()<1000){
-                GetRequest<String> request = SourceHelper.siteGet(sourceBean)
-                        .tag(sourceBean.getKey() + "_sort")
-                        .params("filter", "true");
-                // 当 extend 不为空且非空字符串时添加参数
+        }else {
+            try {
+                Map<String, String> params = new HashMap<>();
+                params.put("filter","true");
                 if (extend != null && !extend.isEmpty()) {
-                    request.params("extend", extend);
+                    params.put("extend",extend);
                 }
-                request.execute(new AbsCallback<String>() {
-                            @Override
-                            public String convertResponse(okhttp3.Response response) throws Throwable {
-                                if (response.body() != null) {
-                                    return response.body().string();
-                                } else {
-                                    throw new IllegalStateException(SourceHelper.ERR_NETWORK);
-                                }
-                            }
-
-                            @Override
-                            public void onSuccess(Response<String> response) {
-                                String sortJson  = response.body();
-                                if (sortJson != null) {
-                                    final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
-                                    attachSortSource(sourceKey, sortXml);
-                                    if (sortXml != null) {
-                                        AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
-                                        if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
-                                            sortXml.videoList = absXml.movie.videoList;
-                                            postSortResult(sourceKey, sortXml);
-                                            cacheSort(sourceKey, sortXml);
-                                        } else {
-                                            listLoader.getHomeRecList(sourceBean, null, new ListLoader.HomeRecCallback() {
-                                                @Override
-                                                public void done(List<Movie.Video> videos) {
-                                                    sortXml.videoList = videos;
-                                                    postSortResult(sourceKey, sortXml);
-                                                    cacheSort(sourceKey, sortXml);
-                                                }
-                                            });
-                                        }
-                                    } else {
-                                        postSortResult(sourceKey, sortXml);
-                                        cacheSort(sourceKey, sortXml);
-                                    }
-                                } else {
-                                    postSortResult(sourceKey, null);
-                                }
-                            }
-
-                            @Override
-                            public void onError(Response<String> response) {
-                                super.onError(response);
-                                postSortResult(sourceKey, null);
-                            }
-                        });
-            }else {
-                try {
-                    Map<String, String> params = new HashMap<>();
-                    params.put("filter","true");
-                    if (extend != null && !extend.isEmpty()) {
-                        params.put("extend",extend);
+                RemoteTVBox.post(sourceBean.getApi(), params, sourceBean.getHeader(), new okhttp3.Callback() {
+                    @Override
+                    public void onFailure(@NonNull Call call, IOException e) {
+                        postSortResult(sourceKey, null);
                     }
-                    RemoteTVBox.post(sourceBean.getApi(), params, sourceBean.getHeader(), new okhttp3.Callback() {
-                        @Override
-                        public void onFailure(@NonNull Call call, IOException e) {
-                            postSortResult(sourceKey, null);
-                        }
 
-                        @Override
-                        public void onResponse(@NonNull Call call, @NonNull okhttp3.Response response) throws IOException {
-                            assert response.body() != null;
-                            String sortJson = response.body().string();
-                            final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
-                            attachSortSource(sourceKey, sortXml);
-                            if (sortXml != null) {
-                                AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
-                                if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
-                                    sortXml.videoList = absXml.movie.videoList;
-                                    postSortResult(sourceKey, sortXml);
-                                    cacheSort(sourceKey, sortXml);
-                                }
-                            } else {
+                    @Override
+                    public void onResponse(@NonNull Call call, @NonNull okhttp3.Response response) throws IOException {
+                        assert response.body() != null;
+                        String sortJson = response.body().string();
+                        final AbsSortXml sortXml = resultParser.sortJson(sortResult, sortJson);
+                        attachSortSource(sourceKey, sortXml);
+                        if (sortXml != null) {
+                            AbsXml absXml = resultParser.json(null, sortJson, sourceBean.getKey());
+                            if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
+                                sortXml.videoList = absXml.movie.videoList;
                                 postSortResult(sourceKey, sortXml);
                                 cacheSort(sourceKey, sortXml);
                             }
+                        } else {
+                            postSortResult(sourceKey, sortXml);
+                            cacheSort(sourceKey, sortXml);
                         }
-                    });
-                } catch (Exception ignored) {
-                    postSortResult(sourceKey, null);
-                }
+                    }
+                });
+            } catch (Exception ignored) {
+                postSortResult(sourceKey, null);
             }
-        } else {
-            postSortResult(sourceKey, null);
         }
+    
     }
 }

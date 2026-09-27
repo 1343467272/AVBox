@@ -3361,3 +3361,29 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **回退**:只 revert `a034ac7` 一笔即回到 30s/20s/6s/站点值(与抽模板那笔无耦合)。
 
 **本阶段未动**:计划列入但按上表驳回的 7 个文件;`ApiConfig` 的 `WARM_ITEM_TIMEOUT_MS`(10s)与 `JsSpider.CALL_TIMEOUT_MS`(120s) 保持显式覆盖。
+## 文件级重构:阶段 4「ApiConfig 外迁 + 默认配置下沉」(2026-09-28,按 `skill/review/refactor-plan-20260928.md`)
+
+**结果**:`ApiConfig` **1794 → 1089 行**(−705);外迁实现全部落在 `api` 包内 sibling;6 个本地 commit(未推远程):
+
+| commit | 内容 | 新文件 |
+| --- | --- | --- |
+| `a352eaf` | 默认配置下沉 | `app/src/main/assets/default_config.json`(3135 字符字面量 → 3635B;**57 条广告域名、ijk 硬/软两档 15 项参数一字未动**,格式化仅空白) |
+| `d9c0b0f` | 代理入口外迁 | `api/ProxyEntry.java`(141) |
+| `7510f95` | 预热队列外迁 | `api/WarmQueue.java`(104) |
+| `d817b49` | 配置加载编排外迁 | `api/ConfigLoader.java`(445) |
+| `25f442f` | `parseJson` 规则段外提 | `api/ConfigApplier.java`(187;rules/doh/ads/parses) |
+| `703487f` | 默认 IJK 档位外迁 | 同上(三处零降级) |
+
+**暴露面记账(本阶段唯一封装代价)**:门面降为包级可见 = `parseJson` / `parseLiveConfigContent` / `hasLiveConfigResult` / `clearLiveConfigResult` / `str` / `localFileBase`(6 方法)+ `loadedLiveConfigUrl`(1 字段),共 **7 个**、暴露面限 `api` 包。`ProxyEntry`/`WarmQueue` 用构造传入 `SpiderLoader` 引用;`ConfigApplier`/默认 ijk 全走返回值 —— 这三者零降级(对比阶段 2b 的 23 个,本阶段更轻)。
+
+**口径更正(第四条)**:**计划的「门面 ≤200 行」在本约束下达不成** —— 静态门面签名不能动(31 文件 110 处 `ApiConfig.get()`、`.getInstance()` 116 处),意味着 40 余个 getter/clear/set 必须留在 ApiConfig,仅门面方法 + 字段声明 ≈400 行;要压到 200 需把状态也搬进 sibling、让每个 getter 变纯转发(高风险大重排,违反「不为行数达标硬拆」)。本阶段取实际可达口径:**1089 行 + 5 个职责文件**(ConfigLoader/ConfigApplier/WarmQueue/ProxyEntry + 留在包内的 ConfigParser)。
+
+**未做(计划列入但跳过)**:`SourceRepository`(getSource/getSwitchSourceBeanList/getCSP)——三项 26 行,搬迁净减仅 ~14 行,却要把 `sourceBeanList`/`mHomeSource` 降为包级;`getSource` 还带 `push_agent` 合成条目特例,属门面核心查询,收益/暴露比不成立。**直播解析链**(`parseLive*`/`loadLives`/`loadLiveApi`/`initLiveSettings` ≈420 行)未外迁:属直播可用性关键路径,且阶段 3 直播走查未完成,建议单独立项。
+
+**风险与硬约束核对**:配置解析是高危链路 —— `VideoParseRuler.clearRule()` 仍在 `parseJson` 入口与 `ConfigApplier.applyHostRules` 的 `rules` 分支各 1 处(与改前逐字一致);`ConfigLoader` 只搬「拉取/快照/仓分流」,未动解析顺序;`ApiConfig.FindResult`(AES)与 `ConfigParser` 全部保留原位。
+
+**顺带清理**:死代码 `parseJson(String, File)`(全库 0 调用)删除;随搬迁失效的 import 统一清除(含 `Depot` 这个从未使用的 import)。注释红线存量(`BugReview #27`、日期注释)随搬迁**原样保留**,待专项清理。
+
+**等价性校验**(每笔都用「旧文件 `git show HEAD:` 逐行去空白 + 多重集比对」):ProxyEntry 95/95(差异=3 处 `owner.` 前缀 + 2 处可见性);WarmQueue 62/60(差异=2 行构造移到调用方);ConfigLoader 436/384(差异全为 `owner.`/`ApiConfig.` 前缀与签名);ConfigApplier+默认 ijk(差异=2 行改名、2 行注释、签名与 return)。**踩坑**:一次脚本替换的结束标记命中第二处(`loadDefaultConfig` 的 ads 段),误删 `parseJson` 收尾 + `loadDefaultConfig` 开头,已按 HEAD 原文补回并复验 —— 结论:行替换的 marker 必须全库查重,替换后必须做「方法级存在性 + 行集比对」双验证。
+
+**验证**:`assembleDebug` + `testDebugUnitTest`(**45 类 / 367 用例 / 0 失败**);APK 内 `assets/default_config.json` 与源文件逐字一致(SAME=True);已装机 vivo V2425A(iQOO Neo10)。**待走查**:①换源成功/失败两条路径上嗅探规则不真空(click/广告/`exclude`);②默认广告拦截与 ijk 硬/软解码档位仍在(播放器设置里切换仍生效);③直播代理源(py/js)与预热队列(首屏测速)不回归。

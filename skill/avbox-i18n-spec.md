@@ -67,14 +67,14 @@
 | # | 位置 | 中文值 | 性质 |
 |---|---|---|---|
 | R1 | `"硬解码"` / `"软解码"` 全仓出现 35 次(硬 26 / 软 9),集中在 `bean/LivePlayerManager`、`player/PlaybackController`、`player/controller/ComposeVideoController`、`ui/page/PlaySettingsPage` | `硬解码` / `软解码` | **KV 持久化值**(`HawkConfig.IJK_CODEC` / `EXO_DECODE`)+ 播放配置 JSON 值 + 逻辑判据(`equals("硬解码")` / 切解码写回)。显示可翻译,**值一律不动** |
-| R2 | `viewmodel/SourceViewModel.java:235` | `name.endsWith("搜")` | 站点命名约定(数据规则),不能翻译 |
+| R2 | `viewmodel/SortLoader.java:135` | `name.endsWith("搜")` | 站点命名约定(数据规则),不能翻译 |
 | R3 | `ui/activity/LiveEpgParser.kt:155` | `contains("未提供")` / `contains("暂无")` | EPG 文本内容判据(数据规则) |
 | R4 | `util/FileUtils.java:536` | `contains("模板.js")` | 本地文件名约定 |
 | R5 | `player/PlaybackController.java:1232` | `contains("歌词")` | 媒体文件名约定 |
 | R6 | `crawler/js/Trans` 字表 + `DanmakuApi` 的 `Trans.t2s` | 简繁字表 | 数据转换(§4.5),不是 UI 文案 |
 | R7 | `api/ApiConfig.addSuperParse` | `"超级解析"` | 解析名参与 `HawkConfig.DEFAULT_PARSE` 持久化 + `getName().equals()` 比较 ⇒ 值不动(第 1 步实测发现) |
-| R8 | `viewmodel/SourceViewModel.createPushDetail` | `"推送"` / `"播放$" + url` / `InfoBean("播放")` | 合成 Movie 的结构化数据(type / 线路 flag / `名字$地址` 格式),进历史与播放链路 ⇒ 值不动(第 1 步实测发现) |
-| R9 | `viewmodel/SourceViewModel` | `IllegalStateException("网络请求错误")`(9 处,含变体) | 只经 `convertResponse → onError → LOG.i` 进日志,无 UI 出口 ⇒ 不翻 |
+| R8 | `viewmodel/DetailLoader.java:174`（`createPushDetail`） | `"推送"` / `"播放$" + url` / `InfoBean("播放")` | 合成 Movie 的结构化数据(type / 线路 flag / `名字$地址` 格式),进历史与播放链路 ⇒ 值不动(第 1 步实测发现) |
+| R9 | `viewmodel/SourceHelper.java:44`（常量定义）+ 5 个 Loader 的 9 处引用（`DetailLoader`1 / `ListLoader`3 / `PlayLoader`1 / `SearchLoader`2 / `SortLoader`2；另 `SearchLoader.java:131` 是仅进日志的变体文案） | `IllegalStateException("网络请求错误")`（9 处引用 + 1 处日志变体；`player/PlayUrlResolver.java:332` 另有 1 处同文案字面量） | 只经 `convertResponse → onError → LOG.i` 进日志,无 UI 出口 ⇒ 不翻 |
 | R10 | `ui/page/HistoryPage.kt` | `Regex("(\\d+)\\s*[集期]")` | 匹配源数据(片名/备注)里的集数标记,不是 UI 文案 |
 | R11 | `api/ApiConfig.defaultIJKADS` | ijk 分组的 `"硬解码"` / `"软解码"` | R1 的另一处落点:该 JSON 是 KV 值与 `getIJKCodec(name)` 的比较键 ⇒ 值不动 |
 | R12 | `ui/activity/DetailViewModel.kt` | `SOURCE_EMPTY_MSG = "数据列表"` | 源返回 msg 的"非错误"哨兵值(数据规则)⇒ 不翻 |
@@ -284,7 +284,7 @@ Android 13+ 的「系统设置 → 应用 → 语言」需要 `res/xml/locales_c
 - `values-zh-rHK`(差异层)的 key 必须是 `values` 的**子集**(允许少、禁止多;缺失条目按预期回落基础层);
 - 无"中文片段拼接"(`"共" + n + "集"` 形态);
 - 占位符一致性:各语言条目的 `%1$s` 参数齐全;
-- ⚠️ **扫描盲区 1:`\uXXXX` 转义中文** —— 状态机只认原字符,转义写法不命中。2026-09-22 审查专项扫描(全仓 118 处):**显示值**已补齐(轨道前缀 Ijk/Exo 的音轨·视轨·字幕、Exo 声道标签 单声道/立体声/`%1$d 声道`),剩余 100 处均为**数据判据**(`ExoPlayer`/`IjkMediaPlayer` 语言映射表、`DanmakuApi` 电影·国语·粤语判据、`EpisodeMatcher` "第"、`SourceViewModel` "豆瓣"、`ExoPlayer` "未知" 过滤),按 keep 处理、英语步前复核;
+- ⚠️ **扫描盲区 1:`\uXXXX` 转义中文** —— 状态机只认原字符,转义写法不命中。2026-09-22 审查专项扫描(全仓 118 处):**显示值**已补齐(轨道前缀 Ijk/Exo 的音轨·视轨·字幕、Exo 声道标签 单声道/立体声/`%1$d 声道`),剩余 100 处均为**数据判据**(`ExoPlayer`/`IjkMediaPlayer` 语言映射表、`DanmakuApi` 电影·国语·粤语判据、`EpisodeMatcher` "第"、`SourceHelper` "豆瓣"、`ExoPlayer` "未知" 过滤),按 keep 处理、英语步前复核;
 - ⚠️ **扫描盲区 2:日志豁免正则** —— `i18n_hardcoded_scan.LOG_HINT` 原含过宽模式 `KL`/`TAG,`(任意含此串的行都豁免);2026-09-22 收紧为 `LOG\.|Log\.[dviwe]|printStackTrace|System\.out|DebugLog|logger\.|LogUtils`,严格模式对拍 **0 假阴性**。
 
 **B. 红线校验**

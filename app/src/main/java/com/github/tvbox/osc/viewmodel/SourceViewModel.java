@@ -21,7 +21,6 @@ import com.github.tvbox.osc.player.thirdparty.RemoteTVBox;
 import com.github.tvbox.osc.util.BoundedCall;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.HawkConfig;
-import com.github.tvbox.osc.util.HeaderGuard;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.PlayerHelper;
 import com.google.gson.Gson;
@@ -41,7 +40,6 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,10 +57,6 @@ import okhttp3.Call;
  * @description:
  */
 public class SourceViewModel extends ViewModel {
-    private static final String PUSH_AGENT = "push_agent";
-    private static final String PUSH_FALLBACK = "push_fallback";
-    private static final String PUSH_HEADERS_MARKER = "@Headers=";
-
     public MutableLiveData<AbsSortXml> sortResult;
     public MutableLiveData<AbsXml> listResult;
     public MutableLiveData<AbsXml> searchResult;
@@ -622,7 +616,7 @@ public class SourceViewModel extends ViewModel {
             });
             return;
         }
-        if (urlid.startsWith("push://") && ApiConfig.get().getSource(PUSH_AGENT) != null) {
+        if (urlid.startsWith("push://") && ApiConfig.get().getSource(PushUrlParser.PUSH_AGENT) != null) {
             String pushUrl = urlid.substring(7);
             if (pushUrl.startsWith("b64:")) {
                 try {
@@ -633,15 +627,15 @@ public class SourceViewModel extends ViewModel {
             } else {
                 pushUrl = URLDecoder.decode(pushUrl);
             }
-            sourceKey = isCastPushUrl(pushUrl) ? PUSH_FALLBACK : PUSH_AGENT;
+            sourceKey = PushUrlParser.isCastPushUrl(pushUrl) ? PushUrlParser.PUSH_FALLBACK : PushUrlParser.PUSH_AGENT;
             urlid = pushUrl;
-        } else if (PUSH_AGENT.equals(sourceKey) && isCastPushUrl(urlid)) {
-            sourceKey = PUSH_FALLBACK;
+        } else if (PushUrlParser.PUSH_AGENT.equals(sourceKey) && PushUrlParser.isCastPushUrl(urlid)) {
+            sourceKey = PushUrlParser.PUSH_FALLBACK;
         }
         String id = urlid;
     
         SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
-        if (isPushFallback(sourceKey, sourceBean)) {
+        if (PushUrlParser.isPushFallback(sourceKey, sourceBean)) {
             detailResult.postValue(createPushDetail(urlid, sourceKey));
             return;
         }
@@ -900,11 +894,11 @@ public class SourceViewModel extends ViewModel {
     private void getPlayPrepared(AtomicInteger seqHolder, MutableLiveData<JSONObject> resultChannel, int requestSeq, String requestTag,
                                  String sourceKey, String playFlag, String progressKey, String url, String subtitleKey) {
         SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
-        boolean pushFallback = isPushFallback(sourceKey, sourceBean);
-        PushUrl pushUrl = pushFallback ? parsePushUrl(url) : createPushUrl(url);
+        boolean pushFallback = PushUrlParser.isPushFallback(sourceKey, sourceBean);
+        PushUrlParser.PushUrl pushUrl = pushFallback ? PushUrlParser.parsePushUrl(url) : PushUrlParser.createPushUrl(url);
         String requestUrl = pushUrl.url;
         if (pushFallback) {
-            postPlayResult(seqHolder, resultChannel, requestSeq, createPushPlayResult(url, pushUrl, progressKey, subtitleKey, playFlag));
+            postPlayResult(seqHolder, resultChannel, requestSeq, PushUrlParser.createPushPlayResult(url, pushUrl, progressKey, subtitleKey, playFlag));
             return;
         }
         if (sourceBean == null) {
@@ -941,7 +935,7 @@ public class SourceViewModel extends ViewModel {
                     try {
                         JSONObject result = normalizePlayerResult(new JSONObject(json));
                         result.put("key", url);
-                        mergePushHeaders(result, pushUrl);
+                        PushUrlParser.mergePushHeaders(result, pushUrl);
                         mergeSiteHeaders(result, sourceBean);
                         result.put("proKey", progressKey);
                         result.put("subtKey", subtitleKey);
@@ -970,7 +964,7 @@ public class SourceViewModel extends ViewModel {
                     result.put("parse", 1);
                     result.put("url", requestUrl);
                 }
-                mergePushHeaders(result, pushUrl);
+                PushUrlParser.mergePushHeaders(result, pushUrl);
                 mergeSiteHeaders(result, sourceBean);
                 result.put("proKey", progressKey);
                 result.put("subtKey", subtitleKey);
@@ -1010,7 +1004,7 @@ public class SourceViewModel extends ViewModel {
                         try {
                             JSONObject result = normalizePlayerResult(new JSONObject(json));
                             result.put("key", url);
-                            mergePushHeaders(result, pushUrl);
+                            PushUrlParser.mergePushHeaders(result, pushUrl);
                             mergeSiteHeaders(result, sourceBean);
                             result.put("proKey", progressKey);
                             result.put("subtKey", subtitleKey);
@@ -1044,7 +1038,7 @@ public class SourceViewModel extends ViewModel {
                 && (requestUrl.startsWith("http://") || requestUrl.startsWith("https://"));
     }
 
-    private JSONObject createDirectPlayResult(String rawUrl, PushUrl pushUrl, String progressKey, String subtitleKey, String playFlag, SourceBean sourceBean) {
+    private JSONObject createDirectPlayResult(String rawUrl, PushUrlParser.PushUrl pushUrl, String progressKey, String subtitleKey, String playFlag, SourceBean sourceBean) {
         try {
             JSONObject result = new JSONObject();
             result.put("key", rawUrl);
@@ -1054,7 +1048,7 @@ public class SourceViewModel extends ViewModel {
             result.put("parse", 0);
             result.put("jx", 0);
             result.put("url", pushUrl.url);
-            mergePushHeaders(result, pushUrl);
+            PushUrlParser.mergePushHeaders(result, pushUrl);
             mergeSiteHeaders(result, sourceBean);
             LOG.i("echo--getPlay--direct:" + pushUrl.url);
             return result;
@@ -1109,14 +1103,6 @@ public class SourceViewModel extends ViewModel {
         return result;
     }
 
-    private boolean isPushFallback(String sourceKey, SourceBean sourceBean) {
-        return PUSH_FALLBACK.equals(sourceKey) || (sourceBean != null && PUSH_AGENT.equals(sourceBean.getKey()) && sourceBean.getType() == -1);
-    }
-
-    private boolean isCastPushUrl(String url) {
-        return !TextUtils.isEmpty(url) && url.contains(PUSH_HEADERS_MARKER);
-    }
-
     private AbsXml createPushDetail(String url, String sourceKey) {
         AbsXml data = new AbsXml();
         data.sourceKey = sourceKey;
@@ -1139,23 +1125,6 @@ public class SourceViewModel extends ViewModel {
         movie.videoList.add(video);
         data.movie = movie;
         return data;
-    }
-
-    private JSONObject createPushPlayResult(String rawUrl, PushUrl pushUrl, String progressKey, String subtitleKey, String playFlag) {
-        try {
-            JSONObject result = new JSONObject();
-            result.put("key", rawUrl);
-            result.put("proKey", progressKey);
-            result.put("subtKey", subtitleKey);
-            result.put("flag", playFlag);
-            result.put("parse", 0);
-            result.put("url", pushUrl.url);
-            mergePushHeaders(result, pushUrl);
-            return result;
-        } catch (Throwable th) {
-            LOG.e("SourceViewModel", th);
-            return null;
-        }
     }
 
     /**
@@ -1182,67 +1151,6 @@ public class SourceViewModel extends ViewModel {
         } catch (Throwable th) {
             LOG.e("SourceViewModel", "merge site headers failed", th);
         }
-    }
-
-    private void mergePushHeaders(JSONObject result, PushUrl pushUrl) {
-        if (result == null || pushUrl == null || pushUrl.headers.isEmpty()) return;
-        try {
-            JSONObject header = result.optJSONObject("header");
-            if (header == null) header = result.optJSONObject("headers");
-            if (header == null) header = new JSONObject();
-            for (String key : pushUrl.headers.keySet()) {
-                header.put(key, pushUrl.headers.get(key));
-            }
-            result.put("header", header);
-        } catch (Throwable th) {
-            LOG.e("SourceViewModel", "merge push headers failed", th);
-        }
-    }
-
-    private PushUrl createPushUrl(String rawUrl) {
-        PushUrl pushUrl = new PushUrl();
-        pushUrl.url = rawUrl == null ? "" : rawUrl;
-        return pushUrl;
-    }
-
-    private PushUrl parsePushUrl(String rawUrl) {
-        PushUrl pushUrl = createPushUrl(rawUrl);
-        parseMarkedHeaders(pushUrl);
-        return pushUrl;
-    }
-
-    private boolean parseMarkedHeaders(PushUrl pushUrl) {
-        String marker = PUSH_HEADERS_MARKER;
-        int start = pushUrl.url.indexOf(marker);
-        if (start < 0) return false;
-        int valueStart = start + marker.length();
-        int end = pushUrl.url.indexOf('@', valueStart);
-        if (end < 0) return false;
-        try {
-            String text = URLDecoder.decode(pushUrl.url.substring(valueStart, end), "UTF-8");
-            JSONObject json = new JSONObject(text);
-            Iterator<String> keys = json.keys();
-            while (keys.hasNext()) {
-                String key = keys.next();
-                String value = json.optString(key, "");
-                if (TextUtils.isEmpty(key)) continue;
-                // push 标记头同样会进 OkGo 与本地 m3u8 净化:非法字符挡在入口
-                if (!HeaderGuard.isSendable(key, value)) {
-                    LOG.i("echo-push-header-skip:" + key);
-                    continue;
-                }
-                pushUrl.headers.put(key, value);
-            }
-            pushUrl.url = pushUrl.url.substring(0, start) + pushUrl.url.substring(end + 1);
-            return true;
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
-    private static class PushUrl {
-        String url = "";
-        HashMap<String, String> headers = new HashMap<>();
     }
 
     private void postPlayResult(AtomicInteger seqHolder, MutableLiveData<JSONObject> resultChannel, int requestSeq, JSONObject result) {

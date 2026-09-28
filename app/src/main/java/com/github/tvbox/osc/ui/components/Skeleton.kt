@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import com.github.tvbox.osc.ui.theme.cardContainer
+import kotlin.math.hypot
 
 fun Modifier.shimmer(
     base: Color? = null,
@@ -37,15 +38,21 @@ fun Modifier.shimmer(
         label = "shimmerProgress",
     )
     drawWithCache {
-        val bandWidth = size.width
-        val startX = -bandWidth + 2f * bandWidth * progress
+        val startX = shimmerStartX(size.width, size.height, progress)
         val brush = Brush.linearGradient(
             colors = listOf(baseColor, shineColor, baseColor),
             start = Offset(startX, 0f),
-            end = Offset(startX + bandWidth, size.height),
+            end = Offset(startX + size.width, size.height),
         )
         onDrawBehind { drawRect(brush) }
     }
+}
+
+internal fun shimmerStartX(width: Float, height: Float, progress: Float): Float {
+    val diagonal = hypot(width, height)
+    if (width <= 0f || diagonal <= 0f) return 0f
+    val travel = diagonal * diagonal / width
+    return -travel + 2f * travel * progress
 }
 
 @Composable

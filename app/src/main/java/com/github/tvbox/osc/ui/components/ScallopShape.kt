@@ -10,10 +10,6 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
-/**
- * 扇贝花边形（13 瓣，音乐播放器跳播键与播放器上一/下一集共用）：
- * 半径按 `r = R * (1 + depth * cos(lobes * angle))` 波动，外接尺寸与同尺寸圆一致。
- */
 class ScallopShape(
     private val lobes: Int = 13,
     private val depth: Float = 0.07f,

@@ -3589,3 +3589,113 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **验证**:`.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(48 类 / 376 用例 / 0 失败);日志里的 `BaseActivity.java` 过时 API 提示是该文件一直用旧式 `SYSTEM_UI_FLAG_*` 的既有 note(本次未新增过时调用)。**未真机验证**,待走查:①横屏全屏下退出→入场,顶栏应不再下滑回弹;②竖屏全屏/贴顶预览的挖孔避让不变;③平板竖屏(≥600dp)与横屏全屏的顶栏位置正常;④全屏切换与回前台的系统栏隐藏、以及那条 100ms 兜底是否够快(若系统露出动画仍在进行中被抢,可回调该常量)。
 
 **未做**:`LiveScreens.kt:191` 直播页顶栏用 `statusBarsPadding()`,同源抖动机制仍在(其顶栏本就整体跟 inset 走,未纳入本次范围)。
+
+## 竖向海报骨架 shimmer「闪回左上角」修复:高光位移按对角线算(2026-09-28,用户"首页影视海报骨架的加载动画不平滑,就是那个涟漪加载到左下角后会突然闪现会右上角" → 追问后更正为"从左上角到右下角,加载到右下角后会突然闪现到左上角,然后继续动画")
+
+**现象**:首页竖向海报骨架(`HomeGridLayout.kt` / `HomePage.kt` 的 `.aspectRatio(2f/3f)`,高 > 宽)上,高光沿对角线扫到右下角后不消失,被无限循环直接切回左上角再扫一遍 —— 肉眼即"闪一下再继续"。同一共享组件的 Hero 骨架(`aspectRatio(1.5f)`,宽 > 高)看不出异常。
+
+**根因**:`ui/components/Skeleton.kt` 的 shimmer 渐变**沿盒子对角线铺**(`end - start = (width, height)`),两个量咬在一起:①图案长度 = 对角线,而**矩形沿对角线方向的投影跨度也恒等于对角线** ⇒ 图案永远正好铺满整个盒子,高光从来不是"一道窄光带"而是整块软渐变,任何时刻都盖在框内;②位移只按宽度算(`startX = -width + 2*width*progress`,共 2×宽),投影到对角线方向只剩 `2w²/对角线`,在 `高 > 宽` 时**短于对角线** ⇒ 峰值在整个周期里都走不出框(200×300 的框:progress 0 时峰值在对角线 19% 处、progress 1 时只到 81%,一圈只走了 222px / 366px)。于是 `infiniteRepeatable`(默认 `RepeatMode.Restart`)把它从右下角硬切回左上角,两端亮度差极大 ⇒ 可见跳变。判据可精确写出:峰值在 progress=0 落到框外需 `|d|/2 - w²/|d| ≤ 0`,即 **`height ≤ width`** —— 这解释了为什么只有竖版海报中招、横版 Hero 正常。
+
+**改动(1 文件)**:`ui/components/Skeleton.kt` —— 位移改为 `travel = 对角线² / 宽`(投影到对角线方向正好 **2×对角线**),抽成 `internal fun shimmerStartX(width, height, progress)`。修正后 progress=0 图案整体停在框外左上、progress=1 整体停在框外右下,且渐变两端颜色都是 `baseColor` ⇒ 循环重启处框内是同一底色,接缝不可见;周期中点(progress=0.5)图案仍正好铺满盒子,原观感不变。判据与宽高比无关,竖版 / 正方形 / 横版一并成立。
+
+**新增单测**:`app/src/test/java/com/github/tvbox/osc/ui/components/ShimmerBandTest.kt`(5 例)—— 锁"progress 0/1 时高光整体在框外"(竖版 / 正方形 / 横版 / 极端 100×560 各跑一遍;**把旧公式代进去会失败**:200×300 时末端 249.7 > 容差 0.5)、"中点图案覆盖整框"、"单向扫过不回弹"、"零尺寸不出 NaN"。这条几何不变量 review 时看不出来(只有竖版才暴露),抽成纯函数才测得到。
+
+**验证**:`.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败)。**未真机验证**。**待走查**:①竖向海报骨架的高光是否不再闪回 —— 从左上角扫入、右下角扫出后自然淡出;②Hero 与首页横排 3 张骨架的观感是否与修复前一致。**代价 / 待确认**:修复前高光在竖版上"没走完就被切回",现在要用周期的中间一半(≈500ms)走完整个盒子 ⇒ **比修复前快,也比现在的 Hero 快约 1.7 倍**;`durationMillis` 仍是 2026-09-27 定的 1000ms(未擅自改),若偏快调到 1600~1800ms 可让穿过耗时回到修复前 Hero 的水平;想更像"细光条"需把渐变的 start/end 缩短到对角线的一小段,代价是每次扫过之间留一段全暗。**未做**:每个 `SkeletonBox` 各自持有 `rememberInfiniteTransition`,惰性网格里后组合进来的格子相位不同步(既有,与本次无关);全仓仅 `Skeleton.kt` 一处用 `infiniteRepeatable`,无同类问题第二例。
+
+## 播放器:中央三键去底色 + 顶栏返回箭头换 .tubiao 新素材(2026-09-28,用户"将播放器界面中间三个控件的半透明黑色圆形背景容器删除,只留下图标本身,然后将左上角的箭头图标换成.tubiao文件夹里的影视播放器界面的左箭头.svg" + 一张播放器截图)
+
+**改动(3 文件)**:
+
+- `player/ui/PlayerOverlay.kt`:中央三键(`PlayerCenterControls`)的底色整体删除 —— `CenterControlCircle` 改名 `CenterControlIcon`、去掉 `shape: Shape = CircleShape` 形参,`.background(Color.Black.copy(alpha = 0.35f), shape)` 整行删除;**触摸盒(`.size(48.dp)`/中间 `60.dp`)与 `pointerInput` 原样保留**(点按热区与点击行为零变化),图形仍为盒的 `0.55`;三颗调用点的 `shape = ScallopShape()` 两处删除(上一/下一集原为扇贝形底)。连带清掉三个因此不再使用的 import(`CircleShape`/`Shape`/`ScallopShape`)。
+- `res/drawable/player_ic_back.xml`:**内容整体替换**为用户新素材(`.tubiao/影视播放器界面的左箭头.svg`,Material Symbols 的粗 chevron,单 path、`viewBox="0 -960 960 960"`)→ 按本仓约定转 `viewportWidth/Height=960` + `<group android:translateY="960">` 平移负坐标 + `fillColor="#FFFFFFFF"`(用点 `PlayerTopBar.kt:100` 是 `Image(painter=)` 不走 tint,故白色写进 drawable)。**选择覆盖而非新建**:该 drawable 全仓仅 `PlayerTopBar.kt:100` 一处引用,同一语义位直接换字形,不留废弃文件(与 `ic_switch_repo` 那种"两个消费者要各自可调"的情形不同)。
+- `ui/components/ScallopShape.kt`:KDoc 首行由"音乐播放器跳播键与播放器上一/下一集共用"改为"音乐播放器的跳播键在用"(类未删,`MusicPlayerScreen` 仍在用)。
+
+**验证**:`.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败);Kotlin 无新增告警。**未真机验证**,待走查:①中央三键只剩白图标压在画面上(亮画面下可读性)、三键间距 28dp 在无底色后的观感(两颗相邻图标的视觉留白会显得比原来大,若嫌空需调 `Arrangement.spacedBy`);②新返回箭头在 24dp 下的视觉大小 —— 该 chevron 字形只占画布 x 297→676(**约 39.5% 宽**)、y -844→-101(约 77% 高),24dp 盒里可见部分约 **9.5×18.5dp**,比被替换的 `arrow_back`(约 16×16dp)**明显更窄**,若要求视觉等需把 `Modifier.size(24.dp)` 提到 32~36dp(或换更宽的字形);③顶栏返回钮 36dp 触摸盒未动。
+
+### 追加:中央三键去底色**回退** + 统一 48dp 圆底(2026-09-28,用户"算了还是加回半透明的圆形背景容器吧,圆形尺寸48dp,暂停时也一样")
+
+**净效果**:中央三键 + 暂停浮层 = 同款 48dp 半透明黑圆 + 白图标,四处等大。
+
+- `player/ui/PlayerOverlay.kt`:恢复 `.background(Color.Black.copy(alpha = 0.35f), CircleShape)`,并把该组件由 private 提为 **`internal fun CenterControlIcon(icon, label, onClick)`** —— 尺寸(48dp)、图形占比(0.55)、底色 alpha 全部收进函数体,三颗调用点不再各传尺寸(上一轮为此加的 `box: Dp` 形参随之删掉)。**中间那颗由 60dp 收到 48dp**,与左右两颗等大;上一/下一集**不再用 `ScallopShape()`**(此次口径是"圆形",故一律 `CircleShape`)。
+- `player/ui/PlayerLayers.kt`:`PlayerPauseLayer`(暂停浮层,原先自绘 60dp 圆底 + 同一 alpha)改为 `Box(fillMaxSize, contentAlignment = Center) { CenterControlIcon(play 图标, common_play, actions::onPlayPauseClicked) }` —— **与中央三键同一组件**,尺寸 60→48dp,**行为零变化**(点按续播、退后台暂停与遮罩在屏时仍不显示);连带删掉该文件里因此不再使用的 `CircleShape` import。两个文件同包,无需新增 import。
+
+**未做 / 已知后果**:①`ScallopShape` 自此只剩音乐播放器一个消费者(类保留),播放器里不再有扇贝边;②中央键触摸盒由 60dp 缩到 48dp(仍是 Material 最小触摸尺寸);③三键间距 `28.dp` 未动。
+
+**验证**:`.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败);Kotlin 无新增告警(仅既有的 `kotlin.android` 插件弃用提示)。**未真机验证**,待走查:①底栏唤出时三颗圆底是否等大 48dp、中间那颗与暂停浮层那颗(点暂停出现的那颗)是否同款同大;②中间那颗由 60→48dp 后与左右两颗并排的观感(比原来更"平"了);③暂停态若同时按下"控件可见 + 暂停浮层在屏",两者在屏幕正中同尺寸重合,视觉上应无感(改前两者也都是 60dp 且同色,该重合是既有的)。
+
+### 追加 2(取代上方"追加"里的"统一 48dp 圆底"):左右两颗改 44dp + 恢复扇贝底(2026-09-28,用户"下一集和上一级控件的半透明圆形背景容器小一点改为44dp,原来的花瓣形状")
+
+**改动(2 文件)**:
+
+- `player/ui/PlayerOverlay.kt`:`CenterControlIcon` 重新开出声参 **`box: Dp = 48.dp` / `shape: Shape = CircleShape`**(默认档 = 中间那颗与暂停浮层),上一/下一集两颗显式传 `box = 44.dp, shape = ScallopShape()` ⇒ **左右 44dp 扇贝底、中间 48dp 正圆底**;图标仍按盒的 `0.55` 等比 ⇒ **左右两颗的图标由 26.4dp 缩到 24.2dp**。补回 `Shape` / `ScallopShape` 两个 import。
+- `ui/components/ScallopShape.kt`:KDoc 退回"音乐播放器跳播键与播放器上一/下一集共用"(上一轮刚改成"仅音乐播放器",现又回到两处共用;该文件内容因此与 HEAD 完全一致,不再出现在改动清单里)。
+
+**未做 / 已知后果**:①左右两颗的触摸盒随圆底缩到 **44dp**(低于 Material 建议的 48dp;若要"圆底 44dp、触摸盒仍 48dp",得把该组件的盒与圆底拆成两个参数);②三键间距 `28.dp` 未动 —— 左右两颗变小后,与中间那颗之间的视觉留白会比等大时略增。
+
+**验证**:`.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败);Kotlin 无新增告警。**未真机验证**,待走查:①左右两颗是否比中间那颗明显小一圈且带扇贝边(44dp 扇贝 vs 48dp 正圆)、一眼能看出"两颗小跳集键夹一颗大播放键";②暂停浮层那颗仍与中间那颗一致(48dp 正圆);③44dp 下点击是否仍好按。
+
+### 追加 3:清掉本轮改动处的注释(2026-09-28,用户"把注释删掉包括已经存在的")
+
+删的是**本轮改动所及元素**上的注释共 4 处:`PlayerOverlay.PlayerCenterControls` 与 `CenterControlIcon` 的 KDoc、`PlayerLayers.PlayerPauseLayer` 的 KDoc、`PlayerTopBar` 返回箭头那行内联注释、`ScallopShape` 类头 KDoc(删后该文件已无任何注释;删掉的这几处内容在活规范 §128/§372/§373 与 history 396–401 都有同源记录,不丢信息)。
+
+**刻意留下**(属"不写会再踩"的就地防卫,也是规范里点名过的):`PlayerOverlay` 文件头(层级顺序 + ⚠️ 遮罩必须最底)、`playerMmScale`(⚠️ 别改回 `getDimension*()` + 方向补偿)、`rawMm`(⚠️ 必须 `complexToFloat`)、`playerTextSize`(非负保证)、`PlayerMenuButton`/`PlayerPillIconButton`/`playerIconBox`(图标盒钳制)、`PlayerTipLayer`(遮罩画在控制栏之前)、`PlayerTopBar` 的安全区分档与左右块标记。**要连这些一起清需用户明说**(会丢的就地信息见上表,规范里只有部分同源)。
+
+## 播放器三处细节:预览态分辨率胶囊 / 顶栏左右首行对齐 / 预览态横滑进度(2026-09-29,用户"图一竖屏影视详情页面的预览态不要在右下角显示胶囊分辨率,只要在计入横屏观看或者竖屏观看时才显示……图二右上角的电量时间这些信息的高度要对齐左边的影视标题……竖屏影视详情页面能否支持手势控制调整进度")
+
+**现象与判定(用户 2800×1260 真机截图两张,像素扫描而非目测)**:
+
+- **分辨率胶囊**:预览态与横屏全屏态的胶囊字形带**完全同尺寸**(高 42px),即同一颗 `VideoSizePill` 在两态都画 —— 它挂在 `if (!state.previewMode)` **之外**,与时间胶囊不同守卫。用户诉求 = 只进横屏/竖屏观看看时显示。
+- **右上角对齐**:两侧字形带中心 —— 片名(`ts_24` CJK)`y=110px`,右侧「78% 🔋 23:42」(`ts_20` 数字)`y=94.5px`,**差 15.5px**;竖屏预览态同一位置的差值同为 15.5px,证明是布局性偏差而非字体差异。根因:左块片名在**返回箭头 36dp 触摸盒内居中**(内容盒中心 = `36/2 + vs_5/2` = 19.56dp),右块首行却从 Column 顶起算(内容盒中心 = `vs_5` + 24dp/2 = 15.1dp),差的正是 (36 − 27.1)/2 ≈ 4.4dp = 15.5px。
+- **预览态手势**:`ComposeVideoController.onScroll` 开头有 `if (previewMode) return true`,把预览态全部滑动一次性吃掉;而 `canSlide` 本身是 true(`PlayContainer.initView` 早已 `setEnableInNormal(true)`,配 `setPlayerState(PLAYER_NORMAL)`)⇒ **不是能力缺失,只是被显式拦掉**。
+
+**改动(3 文件)**:
+
+- `player/ui/PlayerBottomBar.kt`:`VideoSizePill` 移进 `if (!state.previewMode)` 块(与时间胶囊同一守卫),预览态整行不画。
+- `player/ui/PlayerTopBar.kt`:新增 `private val TopBarLineHeight = 36.dp`,同时用于①返回箭头触摸盒 ②右块首行 `Row(modifier = Modifier.height(TopBarLineHeight))` ⇒ 两侧首行内容盒中心都 = `36/2 + vs_5/2`,必然对齐,且**与字号/窗口 mm 缩放无关**(两侧都是"在同一个 36dp 盒里居中")。
+- `player/controller/ComposeVideoController.kt`:`onScroll` 删掉开头的 `if (previewMode) return true`,改在 `!changePosition`(竖向)分支里 `if (previewMode) return true` ⇒ 预览态只放行横滑进度,亮度/音量与长按倍速维持旧行为;链路其余部分(预览态 `onTouch` 直通 gestureDetector、`onTouchEvent` 的 ACTION_UP 提交 `mSeekPosition`、`PlayerSeekHint` 药丸)都是现成的,未新建。
+
+**同日追加:删掉本轮改动所及处的注释** —— `onScroll` 里本轮新增的那行与紧邻的「禁用手势控制」行、`onTouch` 预览态分支的三行、`PlayerBottomBar` 胶囊行的块标记(共 6 行;所涉事实已在 `history/steps.md` 的「详情页透明点击层已移除」、活规范「禁用手势控制」与底栏胶囊条留档,不丢信息)。
+
+**未做 / 已知后果**:①预览态竖向滑动(亮度/音量)与长按倍速仍不响应(用户只提进度);②预览态横滑起手仍受 `PlayerUtils.isEdge` 限制(**四边各 40dp 内按下不触发任何滑动**),竖屏预览高度 ≈171dp ⇒ 起手可用带从距顶 40dp 起,属既有约束未动;③36dp 这个盒高只在 `PlayerTopBar` 内收成一个 val,未提到跨文件常量。
+
+**验证**:`.\\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败);已装真机(vivo `10AF1J04JX0016G`,`lastUpdateTime` 核对)。**未真机走查**,待走查:①预览态唤出底栏 —— 右下角应只剩「播放钮 + 当前时间 - 进度条 - 总时长」、无分辨率胶囊;点全屏(横屏 / 竖屏视频)或进播放页后胶囊照常出现;②横屏全屏顶栏:「78% 🔋 23:42」与片名应在同一水平线上(改前右侧高约 4dp);③竖屏预览内横滑:应出现顶部药丸提示(快进/快退图标 + 目标时间),松手后进度跳过去;竖滑应无任何反应(与改前一致)。
+
+## 搜索框:键盘收起时清焦点,收掉残留的「粘贴」浮层(2026-09-29,用户"在搜索框长按出现粘贴,但是我无法通过侧边滑动屏幕边缘退出手势的方式让这个粘贴消失……键盘消失了,这个粘贴还停留在上面,我只有输入新的文字才能消失,这是bug吗?")
+
+**定性(先给结论,未直接动手)**:不是我们改出来的回归,是**平台层行为 × 应用侧没兜住** —— ①那个「粘贴 ▶」气泡是**文本编辑器的浮动工具栏**(插入态 ActionMode,独立窗口),与键盘无关;②Android 13+ 的返回事件**先派发给输入法**,所以侧滑那一下页面侧收不到、无法即时反应;③该工具栏只在「改文 / 选区变化 / 输入框失焦」时结束 ⇒ 点空白处也不掉、只有打字才消失(与用户观察一致)。收口权限在应用侧(能清焦点),故可修。用户选方案 A(只修搜索框)。
+
+**改动(1 文件)**:`ui/components/SearchField.kt` —— 组件内读 `WindowInsets.isImeVisible`,在「显示→隐藏」跳变且本输入框仍有焦点(`onFocusChanged` 记录)时 `focusManager.clearFocus()`。
+
+**取舍(为什么不是另外两条路)**:①不用 `LocalTextToolbar.status` 做条件 —— 该状态是否覆盖「光标态(空框)的粘贴浮层」取决于 Compose 版本,判定失败就是**静默不修**(最差结果);②不只 `hideSoftInputFromWindow` —— 键盘与工具栏是两个窗口,收键盘不结束工具栏。代价 = **任何**收键盘场景都会让输入框失焦(光标不再闪,再点一下即恢复);范围 = 只覆盖 `SearchField` 的两个调用点(搜索页顶栏 / 首页订阅源 sheet),配置管理页、弹幕/字幕搜索、播放参数面板等输入框仍有原现象。
+
+**验证**:`.\\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败);已装真机(`lastUpdateTime` 核对)。**未真机走查**,待走查:①搜索框长按出「粘贴」→ 侧滑返回:气泡应与键盘一起消失;②收键盘后光标不再闪、点一下输入框恢复输入;**③反面检查:若浮层仍残留**(说明该气泡不随失焦结束),下一步在清焦点之后再补一次 `LocalTextToolbar.hide()`,回报即可;④正常"输入 → 提交搜索"链路不受影响;⑤首页订阅源 sheet 的搜索框表现一致。
+
+## 搜索页「闲置区 → 结果区」过渡动画:重开一次(带"仅页内发起的搜索才播"闸门)(2026-09-29,用户"能否在搜索页面添加跳转至搜索结果页面的动画效果,首页点击影视海报进入的搜索页面则不需要,因为已经有 activity 跳转动画了,动画该怎么实现什么效果呢" → 给出 A/B 两案后用户选 A)
+
+**过程教训(提案前提)**:给出方案前只读了搜索页附近几段,没读到 §4.6 那条**2026-09-21 的定稿**「内容分区不做过渡动画(两版 AnimatedContent 都被用户以"效果不好 + 卡顿"整体删除)」—— 方案 A 基本就是当年被否的第一版(fade+slide+spring)。落地方案时才发现;补救 = 保留本次实现(用户当天明确要求"试试"),同时把新旧口径的差别与回退路径写回规范。
+
+**这次能重开的实质差别**:用户新给的约束"首页海报菜单带标题进页那条不要动画"恰好把当年那版的最大疑点去掉 —— 那版对**带标题进页的自动搜索**也播过渡,与 Activity 转场叠在一起(进页先看转场、紧接着内容又来一次位移/淡入),这极可能就是当时"效果不好"的一半原因。为此本次把过渡挂在**触发源**上而不是阶段上:`animateStage` 默认 false,只有 `submit()`(键盘搜索键 / 点历史 / 点热搜 / 点联想)置 true ⇒ 页面首帧与自动搜索那条天然不播。**"两棵全屏子树同时在场 ⇒ 叠绘"的卡顿风险未消除**,故仍以硬切为回退口径。
+
+**改动(1 文件)**:`ui/activity/SearchScreen.kt` —— ①新增 `private enum class SearchStage { Empty, Idle, Results }` 与三个过渡参数常量(`STAGE_FADE_IN_MS = 220` / `STAGE_FADE_OUT_MS = 150` / `STAGE_RISE_DP = 16`);②`var animateStage by remember { mutableStateOf(false) }`,只在 `submit()` 里置 true;③原来那段 `if/else` 收进 `AnimatedContent(targetState = stage, transitionSpec = if (!animateStage) None togetherWith None else (fadeIn(220ms) + slideInVertically(spring(StiffnessMedium), 16dp)).togetherWith(fadeOut(150ms)), modifier = Modifier.fillMaxSize())`,三分支改 `when` 且入参不变。`SearchViewModel` / `SearchIdleScreens` / `SearchListScreens` 未动。
+
+**未做**:①没做"结果淡入、闲置区不动"(少一次叠绘)的变体;②没测低端机;③`animateStage` 一旦置位不复位 —— 当前不存在"用户发起之后又需要静默切换"的路径,若将来有(如自动换源触发的重搜),要在那里显式复位。
+
+### 追加:过渡期间不拉网络(2026-09-29,用户"感觉有点掉帧,是否应该等动画播完再搜索" → 认可该方向后"修改试试")
+
+**定性**:掉帧有三个来源 —— ①**过渡期间结果区正被网络回填**(逐源到达 ⇒ 结果区重排 + 卡片合成 + Coil 取图);②两棵全屏子树叠绘(09-21 被否的那条理由);③液态玻璃顶栏的 backdrop 在内容移动时每帧重采。用户的建议只治 ①,但那是最大也最容易去的一块;**②③未消除**,故回退口径不变。另给了一个不用改代码的对照实验判据:结果页切「竖排 / 横排」那段动画(此前保留的)若同样掉帧 ⇒ 卡在 ②/③,该回退;若它顺、只有 idle→结果 卡 ⇒ 就是 ①。
+
+**改动(2 文件)**:①`SearchViewModel.search(title, startDelayMs = 0L)` —— **占位仍同步落库**(`results` = 各源 Pending + `running = true`),网络 fan-out 在 `scope.launch` 里先 `delay(startDelayMs)` 再发;token 在同一函数同步捕获 ⇒ 延后发起的批次仍被 `myToken != token` 守卫,不会与新搜索打架。②`SearchScreen`:`submit()` 传 `SEARCH_START_DELAY_MS = 200L`(≈ 入 180ms);过渡时长由 出 150 / 入 220 压到 **出 120 / 入 180**。带标题进页的自动搜索不传延时(即时)。
+
+**为什么不让 UI 侧"先设 pending、动画后再调 search()"**(最初的写法):那样动画期间 `results` 仍为空,结果区只剩「全部」一颗 rail 项 + 波浪线(观感更空),还要额外维护 pending 状态并在结果区覆盖 `running`;"占位立即 + 网络延后"这套则**动画首帧就有完整源栏**,UI 侧一行都不用加。
+
+**未做**:①没测低端机;②没做"结果回填攒到动画后一次性放"的 VM 缓冲变体(启动延迟更小但更重,若 200ms 起搜延迟不可接受再走);③没动 ②③(叠绘 / 玻璃)。
+
+### 回退:不要过渡动画了(2026-09-29,用户"全部回退吧不要动画效果了")
+
+**决定**:试完「延后网络」那一版后用户仍判掉帧,要求整段回退。**已按原样还原 2 文件**:`SearchScreen.kt`(删掉 `SearchStage` 枚举、三个过渡参数常量、`animateStage`、`AnimatedContent` 包裹与四个新增 import,恢复 `if/else` 硬切换)、`SearchViewModel.kt`(`search(title)` 去掉 `startDelayMs` 与 `delay` 导入及其 KDoc 行)。**保留不动**:结果区「竖排 / 横排」切换动画(`SearchResultsContent` 内的 `AnimatedContent`)、搜索记录卡片内部的过渡(2026-09-26)。
+
+**结论(两次被否的共同点,别再提第三版)**:搜索页不换 Activity + 两棵全屏子树叠绘 + 液态玻璃顶栏 backdrop 逐帧重采 —— 这三项成本不是靠"错开网络 / 压时长"能消掉的;`SearchScreen` 的 idle↔results 保持硬切。若哪天真要做,前提是先解决玻璃/子树,而不是再调参数。
+
+**验证**:`.\\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败);残留检查无 `SearchStage`/`animateStage`/`SEARCH_START_DELAY_MS`/`startDelayMs`/`slideInVertically`/`LocalDensity` 等标识符残留;已装机(`lastUpdateTime` 核对)。**未真机走查**,待走查:页内提交应立刻出结果区(与改动前一致)、无任何内容过渡。
+
+**验证**:`.\\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败);已装真机(`lastUpdateTime` 核对)。**未真机走查**,待走查:①页内提交(键盘搜索键 / 点历史词 / 点热搜词):闲置区淡出、结果区自下上浮 16dp 淡入,顶部波浪线随之出现;②首页海报长按菜单 → 搜索:进页**不应**再出现内容二次动画(只有 Activity 转场);③连打多个搜索:只刷新内容、不重播过渡;④真机观感 + 帧率 —— 若仍"卡顿 / 不好看",按 §4.6 原口径把这段整段回退(deleting `AnimatedContent` + `animateStage` + 枚举与常量即回到硬切)。

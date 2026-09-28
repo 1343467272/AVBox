@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ContainedLoadingIndicator
@@ -125,31 +124,15 @@ fun PlayerTipLayer(state: PlayerUiState) {
     }
 }
 
-/**
- * 暂停浮层：仅中央播放键（60dp 半透明圆底，点按即续播，免二次点击）。
- * 退后台触发的暂停不显示（pauseOverlayVisible 排除 lifecyclePaused）——避免被系统任务快照拍出"已暂停"假象。
- * 遮罩在屏时同样不显示：那时暂停的是上一次会话的残留内核，键压在遮罩上会误导（点它启停的不是即将播放的内容）。
- */
 @Composable
 fun PlayerPauseLayer(state: PlayerUiState, actions: PlayerActions) {
     if (!state.pauseOverlayVisible || state.tipVisible) return
-    Box(Modifier.fillMaxSize()) {
-        Box(
-            Modifier
-                .align(Alignment.Center)
-                .size(60.dp)
-                .background(Color.Black.copy(alpha = 0.35f), CircleShape)
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = { actions.onPlayPauseClicked() })
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(R.drawable.player_ic_play),
-                contentDescription = stringResource(R.string.common_play),
-                modifier = Modifier.size(60.dp * 0.55f),
-            )
-        }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CenterControlIcon(
+            icon = painterResource(R.drawable.player_ic_play),
+            label = stringResource(R.string.common_play),
+            onClick = actions::onPlayPauseClicked,
+        )
     }
 }
 

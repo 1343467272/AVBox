@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -36,6 +37,8 @@ import androidx.compose.ui.res.stringResource
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.player.state.PlayerActions
 import com.github.tvbox.osc.player.state.PlayerUiState
+
+private val TopBarLineHeight = 36.dp
 
 @Composable
 fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
@@ -84,13 +87,12 @@ fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
                     bottom = playerDim(R.dimen.vs_5),
                 )
         ) {
-            // —— 左块：返回箭头 + 片名 + 分辨率 ——
+                    // —— 左块：返回箭头 + 片名 ——
             if (state.topLeftVisible) {
                 Row(Modifier.weight(3f), verticalAlignment = Alignment.CenterVertically) {
-                    // 返回箭头：点击等价于遥控器返回键（onBackClicked）
                     Box(
                         Modifier
-                            .size(36.dp)
+                            .size(TopBarLineHeight)
                             .pointerInput(Unit) {
                                 detectTapGestures(onTap = { actions.onBackClicked() })
                             },
@@ -102,32 +104,18 @@ fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
                             modifier = Modifier.size(24.dp),
                         )
                     }
-                    Column {
-                        Text(
-                            text = state.title,
-                            color = Color.White,
-                            fontSize = playerTextSize(R.dimen.ts_22),
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(
-                                start = playerDim(R.dimen.vs_10),
-                                top = playerDim(R.dimen.vs_5),
-                            )
+                    Text(
+                        text = state.title,
+                        color = Color.White,
+                        fontSize = playerTextSize(R.dimen.ts_24),
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(
+                            start = playerDim(R.dimen.vs_10),
+                            top = playerDim(R.dimen.vs_5),
                         )
-                        Text(
-                            text = state.videoSize,
-                            color = Color.White,
-                            fontSize = playerTextSize(R.dimen.ts_20),
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(
-                                start = playerDim(R.dimen.vs_10),
-                                top = playerDim(R.dimen.vs_5),
-                            )
-                        )
-                    }
+                    )
                 }
             } else {
                 Spacer(Modifier.weight(3f))
@@ -135,7 +123,10 @@ fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
             // —— 右块：网速/进度时间/系统时间 ——
             if (state.topRightVisible) {
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.height(TopBarLineHeight),
+                    ) {
                         if (state.netSpeedSideVisible) {
                             TopBarText(state.netSpeedTopRight)
                         }

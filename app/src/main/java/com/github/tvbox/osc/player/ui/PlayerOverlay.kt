@@ -207,12 +207,6 @@ internal fun playerTextSize(@DimenRes id: Int): TextUnit {
 internal fun playerEdgePadding(): Dp =
     if (LocalConfiguration.current.screenWidthDp >= 600) 48.dp else 16.dp
 
-/**
- * 中央控制组（图二样式）：显示底栏时屏幕中央出现三个半透明圆形按钮：
- * 左＝上一集、中＝播放/暂停（图标随播放态切换）、右＝下一集。
- * 触摸点按；锁定时不显示。固定尺寸（等比例缩放已回退）。
- * 预览态（竖屏详情页）同样显示；加载/解析期隐藏。
- */
 @Composable
 private fun PlayerCenterControls(state: PlayerUiState, actions: PlayerActions, modifier: Modifier = Modifier) {
     if (!state.centerControlsVisible) return
@@ -222,40 +216,39 @@ private fun PlayerCenterControls(state: PlayerUiState, actions: PlayerActions, m
         horizontalArrangement = Arrangement.spacedBy(28.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CenterControlCircle(
-            diameter = 48.dp,
+        CenterControlIcon(
             icon = painterResource(R.drawable.player_ic_prev),
             label = stringResource(R.string.player_prev_episode),
             onClick = actions::onPreClicked,
+            box = 44.dp,
             shape = ScallopShape(),
         )
-        CenterControlCircle(
-            diameter = 60.dp,
+        CenterControlIcon(
             icon = painterResource(if (playing) R.drawable.player_ic_pause else R.drawable.player_ic_play),
             label = stringResource(if (playing) R.string.common_pause else R.string.common_play),
             onClick = actions::onPlayPauseClicked,
         )
-        CenterControlCircle(
-            diameter = 48.dp,
+        CenterControlIcon(
             icon = painterResource(R.drawable.player_ic_next),
             label = stringResource(R.string.player_next_episode),
             onClick = actions::onNextClicked,
+            box = 44.dp,
             shape = ScallopShape(),
         )
     }
 }
 
 @Composable
-private fun CenterControlCircle(
-    diameter: Dp,
+internal fun CenterControlIcon(
     icon: Painter,
     label: String,
     onClick: () -> Unit,
+    box: Dp = 48.dp,
     shape: Shape = CircleShape,
 ) {
     Box(
         Modifier
-            .size(diameter)
+            .size(box)
             .background(Color.Black.copy(alpha = 0.35f), shape)
             .pointerInput(onClick) {
                 detectTapGestures(onTap = { onClick() })
@@ -265,7 +258,7 @@ private fun CenterControlCircle(
         Image(
             painter = icon,
             contentDescription = label,
-            modifier = Modifier.size(diameter * 0.55f),
+            modifier = Modifier.size(box * 0.55f),
         )
     }
 }

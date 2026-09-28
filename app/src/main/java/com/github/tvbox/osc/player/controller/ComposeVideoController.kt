@@ -55,19 +55,6 @@ import java.util.HashMap
 import java.util.Locale
 import kotlin.math.abs
 
-/**
- * 点播控制层 Compose 实现（Compose 化改造 §3.3 方案 C1，阶段 8 起为唯一控制层实现）。
- *
- * 结构：
- * - 继承 [BaseVideoController]，`getLayoutId() = 0`（不 inflate XML）；
- * - UI 由 [PlayerOverlay]（Compose）渲染，颜色/字号跟随 MaterialTheme，顶部/底栏补 scrim；
- * - 原生字幕视图（§5.4）作为控制器直接子 View 保留，位于 Compose 层之下；
- * - 事件经控制器钩子（onPlayStateChanged/setProgress/onLockStateChanged/onVisibilityChanged）
- *   汇入 [PlayerUiState]（替代旧 Handler msg 100/1000-1004 + myHandle 两套异步）；
- * - 手势照抄 BaseController（§4.4 方案 A：GestureDetector 保留）+ VodController 扩展
- *   （竖屏上下滑切集、长按 3.0x、单击显隐底栏、锁屏触摸守卫）；
- * - 对外契约通过 [PlayerControlApi] 对 PlayContainer / DanmuLoadController 等价（§5.1/§5.2）。
- */
 @Suppress("MemberVisibilityCanBePrivate")
 class ComposeVideoController @JvmOverloads constructor(
     context: Context,
@@ -77,12 +64,7 @@ class ComposeVideoController @JvmOverloads constructor(
     GestureDetector.OnGestureListener, GestureDetector.OnDoubleTapListener, View.OnTouchListener {
 
     companion object {
-        /**
-         * 横滑进度灵敏度:全屏宽 = 240000ms(即 4 分钟)。
-         * 原为 120000ms(照抄 GestureVideoController/BaseController),2026-09-13 用户要求
-         * "调钝一点不要太灵敏" → 翻倍:同样时间跨度需要滑动两倍距离(约 1dp ≈ 0.58s)。
-         * 手感仍嫌灵敏就继续调大此值,嫌迟钝就调回 120000f。
-         */
+        
         private const val SLIDE_POSITION_FULL_WIDTH_MS = 240000f
         /** 锁屏图标 3s 后隐藏 */
         private const val LOCK_HIDE_DELAY_MS = 3000L
@@ -92,9 +74,6 @@ class ComposeVideoController @JvmOverloads constructor(
         private const val SEEK_MAX = 1000
     }
 
-    // ============================================================
-    // 状态与桥接（initView 内赋值：super 构造期间属性初始化器尚未执行）
-    // ============================================================
 
     private lateinit var state: PlayerUiState
 
@@ -398,12 +377,7 @@ class ComposeVideoController @JvmOverloads constructor(
                 !PlayerUtils.isEdge(context, event)
     }
 
-    /**
-     * 是否允许"上下滑调亮度/音量"(2026-09-13「禁用手势控制」设置项)。
-     *
-     * <p>与 [canHandleGesture] 分开是本设置项的硬要求:第一版把设置并进 `canHandleGesture`,
-     * 会连带把别的滑动手势一起禁掉。
-     */
+
     private fun canChangeBrightnessVolume(event: MotionEvent): Boolean {
         return canHandleGesture(event) && !GestureHelper.isControlDisabled()
     }
@@ -429,14 +403,13 @@ class ComposeVideoController @JvmOverloads constructor(
         distanceY: Float,
     ): Boolean {
         if (e1 == null) return true
-        if (previewMode) return true
         if (!canHandleGesture(e1)) return true
         val deltaX = e1.x - e2.x
         val deltaY = e1.y - e2.y
         if (firstTouch) {
             changePosition = abs(distanceX) >= abs(distanceY)
             if (!changePosition) {
-                // 禁用手势控制:竖向滑动既不进度也不亮度/音量 —— 静默忽略,不给出任何反馈
+                if (previewMode) return true
                 if (!canChangeBrightnessVolume(e1)) return true
                 val halfScreen = PlayerUtils.getScreenWidth(context, true) / 2
                 if (e2.x > halfScreen) changeVolume = true else changeBrightness = true
@@ -484,9 +457,6 @@ class ComposeVideoController @JvmOverloads constructor(
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouch(v: View, event: MotionEvent): Boolean {
         if (previewMode) {
-            // 预览态（竖屏详情页）：详情页透明点击层已移除，触摸直接落到控制器；
-            // 放行单击显隐（onSingleTapConfirmed → toggleControls）与双击暂停/播放（onDoubleTap）；
-            // 滑动/长按等其余手势在预览态不响应（对齐旧版预览态行为）
             return gestureDetector?.onTouchEvent(event) ?: false
         }
         if (isLocked()) {

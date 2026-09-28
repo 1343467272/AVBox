@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -82,12 +83,15 @@ fun PlayerBottomBar(
             )
             .padding(start = edge, end = edge, top = 10.dp, bottom = bottomPad)
     ) {
-        // —— 时间胶囊（进度条左上角）；预览态不显示（预览态时间仍在进度条两侧） ——
-        if (!state.previewMode) {
-            PlayerTimePill(
-                state = state,
-                modifier = Modifier.padding(bottom = 4.dp),
-            )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(bottom = 4.dp)
+        ) {
+            if (!state.previewMode) {
+                PlayerTimePill(state = state, modifier = Modifier.align(Alignment.CenterStart))
+                VideoSizePill(state = state, modifier = Modifier.align(Alignment.CenterEnd))
+            }
         }
 
         // —— 进度行（预览态 = 播放/暂停钮 + 时间 - 进度条 - 总时长；全屏态 = 进度条整行） ——
@@ -253,11 +257,8 @@ private fun PlayerPillDivider(iconBox: Dp) {
     )
 }
 
-/**
- * 进度条左上角的时间胶囊（`当前 / 总时长`）：仅全屏态显示，与动作胶囊同色同圆角。
- */
 @Composable
-private fun PlayerTimePill(state: PlayerUiState, modifier: Modifier = Modifier) {
+private fun PlayerInfoPill(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
         modifier
             .background(Color.Black.copy(alpha = OVERLAY_PILL_ALPHA), RoundedCornerShape(50))
@@ -266,8 +267,26 @@ private fun PlayerTimePill(state: PlayerUiState, modifier: Modifier = Modifier) 
                 vertical = playerDim(R.dimen.vs_5),
             ),
         verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TimeRangeText(state)
+        content = content,
+    )
+}
+
+@Composable
+private fun PlayerTimePill(state: PlayerUiState, modifier: Modifier = Modifier) {
+    PlayerInfoPill(modifier) { TimeRangeText(state) }
+}
+
+@Composable
+private fun VideoSizePill(state: PlayerUiState, modifier: Modifier = Modifier) {
+    if (state.videoSize.isBlank()) return
+    PlayerInfoPill(modifier) {
+        Text(
+            text = state.videoSize,
+            color = Color.White,
+            fontSize = playerTextSize(R.dimen.ts_20),
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+        )
     }
 }
 

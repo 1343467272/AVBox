@@ -5,14 +5,40 @@ import com.github.tvbox.osc.bean.VodInfo
 import com.github.tvbox.osc.data.CacheManager
 import com.github.tvbox.osc.player.PlaybackService
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 续播点(app 侧进度)的唯一写入/清除出口:判据与护栏只写在一处,分散在多处等于没加。
  * 进度键是"源+片+线路+集+集名"无分隔符拼接后取 MD5,**反推不出归属**,owner(源|片id)只能由调用方给。
+ *
+ * <p>落库走独立单线程([writer]):判据仍在调用线程上同步做,只有 ObjectOutputStream + SQLite 写挪走。
+ * FIFO ⇒ 同键的"后写先到"不会发生;"刚写完就读"必须先过 [awaitWrites]。
  */
 object WatchProgressStore {
 
-    /** 落盘在主线程、级联清理在历史页 IO 协程,两边可能并发读改写同一条索引;锁序只允许 indexLock → PlaybackProgress/EpisodeTotals */
+    private const val WRITER_THREAD_NAME = "vod-progress-writer"
+
+    /** 等落库完成的兜底上限:超时只是退回"可能读到旧值",不能把调用线程挂到用户可感 */
+    private const val DRAIN_TIMEOUT_MS = 500L
+
+    /** 落库通道(与 HistoryWriter 同构);调用线程只往里丢任务,不自己做序列化与 DB 写 */
+    private val writer: ExecutorService by lazy {
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, WRITER_THREAD_NAME).also { writerThread = it }
+        }
+    }
+
+    /** 在飞行中的落库任务数:为 0 时 [awaitWrites] 直接返回,不起线程跳转 */
+    private val pendingWrites = AtomicInteger(0)
+
+    @Volatile
+    private var writerThread: Thread? = null
+
+    /** 落盘在写线程、级联清理在历史页 IO 协程,两边可能并发读改写同一条索引;锁序只允许 indexLock → PlaybackProgress/EpisodeTotals */
     private val indexLock = Any()
 
     /** 每部片最近一拍的真实时长:释放内核那一刻读不到时长,靠它判"看完即清";每秒 tick 会读它,故不加 indexLock */
@@ -25,6 +51,48 @@ object WatchProgressStore {
 
     /** 被删掉历史的缓存键(MD5,与落盘同形):播放器里那份还停在旧位置,退出/释放时的回写必须丢弃 */
     private val discardedKeys: MutableSet<String> = HashSet()
+
+    /** 排队一段落库;[task] 执行时还要自查一遍作废/无痕(见各调用点) */
+    private fun submit(task: () -> Unit) {
+        pendingWrites.incrementAndGet()
+        try {
+            writer.execute {
+                try {
+                    task()
+                } catch (th: Throwable) {
+                    // 后台线程的失败不能静默:消息带 echo-progress 前缀才进 fileLog 白名单
+                    LOG.e("WatchProgressStore", "echo-progress write failed: " + th, th)
+                } finally {
+                    pendingWrites.decrementAndGet()
+                }
+            }
+        } catch (th: Throwable) {
+            pendingWrites.decrementAndGet()
+            LOG.e("WatchProgressStore", "echo-progress submit failed: " + th, th)
+        }
+    }
+
+    /**
+     * 读侧屏障:等已排队的落库执行完再读,否则读到的是"保存/清除"之前的值(续播丢位置、重播从旧位置起)。
+     * 无排队任务时是空转;writer 任务内部与持 `indexLock` 时都不得调用(前者等自己,后者与写任务抢同一把锁)。
+     */
+    @JvmStatic
+    fun awaitWrites() {
+        if (pendingWrites.get() == 0) return
+        if (Thread.currentThread() === writerThread) return
+        try {
+            val barrier = CountDownLatch(1)
+            writer.execute { barrier.countDown() }
+            if (!barrier.await(DRAIN_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                LOG.i("echo-progress drain-timeout pending=" + pendingWrites.get())
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } catch (th: Throwable) {
+            // 屏障都排不进去(线程创建失败等):退回"可能读到旧值",不回抛打断起播
+            LOG.e("WatchProgressStore", "echo-progress drain failed: " + th, th)
+        }
+    }
 
     /** 索引归属键,与 PlaybackProgress.key / EpisodeTotals.key / HistoryPage.key 同构 */
     @JvmStatic
@@ -51,10 +119,14 @@ object WatchProgressStore {
         when (WatchProgressRules.decide(positionMs, resolveDuration(owner, durationMs))) {
             WatchDecision.SAVE -> {
                 if (HistoryHelper.isIncognito()) return
-                CacheManager.save(md5(progressKey), positionMs)
-                remember(owner, progressKey)
+                submit {
+                    // 执行时复查:排队期间刚落下的删除、刚打开的无痕,都要能拦住这次写
+                    if (isDiscarded(progressKey) || HistoryHelper.isIncognito()) return@submit
+                    CacheManager.save(md5(progressKey), positionMs)
+                    remember(owner, progressKey)
+                }
             }
-            WatchDecision.CLEAR -> {
+            WatchDecision.CLEAR -> submit {
                 CacheManager.delete(md5(progressKey), 0L)
                 forget(owner, progressKey)
             }
@@ -79,12 +151,17 @@ object WatchProgressStore {
         synchronized(indexLock) { return lastDurations[owner] ?: 0L }
     }
 
-    /** 清除某条进度(重播/播出完成/离开该集);任何模式下都执行 */
+    /**
+     * 清除某条进度(重播/播出完成/离开该集);任何模式下都执行。
+     * 与写入同一条队列:先写后清、先清后写都靠 FIFO 定序,不会互相颠覆;读侧过 [awaitWrites] 即见结果。
+     */
     @JvmStatic
     fun clear(owner: String?, progressKey: String?) {
         if (progressKey.isNullOrEmpty()) return
-        CacheManager.delete(md5(progressKey), 0L)
-        forget(owner, progressKey)
+        submit {
+            CacheManager.delete(md5(progressKey), 0L)
+            forget(owner, progressKey)
+        }
     }
 
     /**
@@ -99,15 +176,21 @@ object WatchProgressStore {
         if (HistoryHelper.isIncognito()) return
         if (isDiscarded(toKey)) return
         if (WatchProgressRules.decide(positionMs, 0L) == WatchDecision.SKIP) return
-        if (CacheManager.getCache(md5(toKey)) != null) return
-        CacheManager.save(md5(toKey), positionMs)
-        remember(owner, toKey)
+        submit {
+            // 读-判-写必须在同一条串行通道里:排队期间同键可能已有更新值落盘,读到了就必须放弃继承
+            if (isDiscarded(toKey) || HistoryHelper.isIncognito()) return@submit
+            if (CacheManager.getCache(md5(toKey)) != null) return@submit
+            CacheManager.save(md5(toKey), positionMs)
+            remember(owner, toKey)
+        }
     }
 
     /** 用户删单条历史:该片进度键 + 索引 + 百分比 + 集数一起清(主动操作,不受无痕拦截) */
     @JvmStatic
     fun clearOwner(owner: String?) {
         if (owner.isNullOrEmpty()) return
+        // 先把在飞的落库放完再删:否则排队的写会在删除之后落盘,把刚删掉的记录救回来
+        awaitWrites()
         val cleared = synchronized(indexLock) { clearTitleLocked(owner) }
         discard(cleared)
         // eps=0 = 该片本就没有索引(存量进度未建索引),不是漏清
@@ -142,6 +225,8 @@ object WatchProgressStore {
     /** 清空历史:全部片级联 + 两张快照整体清空(快照直接整张清,不逐片读改写) */
     @JvmStatic
     fun clearAll() {
+        // 同 clearOwner:在飞的落库先落地,避免清空之后又被排队的写补回来
+        awaitWrites()
         var titles = 0
         val owners = ArrayList<String>()
         val keys = ArrayList<String>()
@@ -167,7 +252,11 @@ object WatchProgressStore {
     private fun clearTitleLocked(owner: String): List<String> {
         val indexKey = WatchProgressIndex.keyOf(owner)
         val eps = WatchProgressIndex.decode(KV.get(indexKey, ""))?.eps.orEmpty()
-        eps.forEach { CacheManager.delete(md5(it), 0L) }
+        eps.forEach {
+            // 先登记作废再删:迟到/在飞的落盘看到它就不再补写,否则删过的片会被救回来
+            discardedKeys.add(md5(it))
+            CacheManager.delete(md5(it), 0L)
+        }
         KV.delete(indexKey)
         return eps
     }
@@ -176,6 +265,8 @@ object WatchProgressStore {
     private fun remember(owner: String?, ep: String) {
         if (owner.isNullOrEmpty()) return
         synchronized(indexLock) {
+            // 任务执行途中可能刚落下一个删除/淘汰:作废优先,否则索引会被这次写入救回来
+            if (discardedKeys.contains(md5(ep))) return
             val key = WatchProgressIndex.keyOf(owner)
             KV.put(key, WatchProgressIndex.withEp(KV.get(key, ""), ep, System.currentTimeMillis()))
             trimCapacityLocked(owner)

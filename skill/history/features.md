@@ -3699,3 +3699,17 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **验证**:`.\\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败);残留检查无 `SearchStage`/`animateStage`/`SEARCH_START_DELAY_MS`/`startDelayMs`/`slideInVertically`/`LocalDensity` 等标识符残留;已装机(`lastUpdateTime` 核对)。**未真机走查**,待走查:页内提交应立刻出结果区(与改动前一致)、无任何内容过渡。
 
 **验证**:`.\\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败);已装真机(`lastUpdateTime` 核对)。**未真机走查**,待走查:①页内提交(键盘搜索键 / 点历史词 / 点热搜词):闲置区淡出、结果区自下上浮 16dp 淡入,顶部波浪线随之出现;②首页海报长按菜单 → 搜索:进页**不应**再出现内容二次动画(只有 Activity 转场);③连打多个搜索:只刷新内容、不重播过渡;④真机观感 + 帧率 —— 若仍"卡顿 / 不好看",按 §4.6 原口径把这段整段回退(deleting `AnimatedContent` + `animateStage` + 枚举与常量即回到硬切)。
+
+### 进度落库挪出主线程(2026-09-29,用户"审查相关代码,这个问题存在吗" → "收尾")
+
+**起因是一份外部审查的条目 4**:"主线程做 DB 写 + Java 序列化 —— `AppDataManager.java:57` 的 `allowMainThreadQueries()` 配合 `CacheManager` 的 `ObjectOutputStream` 同步写,触发点 `setProgress → savePlaybackProgress` 就在主线程,是播放时卡顿的真凶"。核对结论:前提**属实**(`allowMainThreadQueries` 确在第 57 行;`CacheManager` 确在调用线程同步序列化 + 落库),**但触发链不存在** —— `setProgress`(每秒 tick)的下游是 `PlaybackProgress.onProgress`(5 秒节流 + `playback-progress` 线程写 MMKV),`savePlaybackProgress` 只在 IDLE/PAUSED/COMPLETED 触发且只 flush MMKV,两者互不调用;`PlaybackProgress.kt` 的三个历史版本均未引用过 `CacheManager`。真正残留的主线程 DB 写是**换集 / 释放 / 播完 / 换源**这些单帧路径(经 `WatchProgressStore` → `CacheManager`,载荷是 Long、不是整剧 JSON),故"卡顿真凶"不成立;用户据此确认收尾。
+
+**改动(3 文件)**:①`util/WatchProgressStore.kt` 新增单线程落库通道 `writer`(线程名 `vod-progress-writer`,与 `HistoryWriter` 同构)+ `pendingWrites` + `submit {}` + `awaitWrites()`:`save` 的 SAVE/CLEAR 分支、`clear`、`inherit`(整段读-判-写)全部入队,**判据仍同步做**(作废 / 无痕 / 看完即清的口径不延后),队列任务执行时复查 `isDiscarded` 与无痕;`clearTitleLocked` 改为**先登记作废再删**、`remember` 增加作废守卫(在飞任务跨越删除时不再把索引救回来)、`clearOwner`/`clearAll` 入口先 `awaitWrites()`。②`player/PlaybackController.java` 的 `getSavedProgress`、③`player/PreloadCoordinator.java` 的下一集进度读 —— 读前各加一次 `awaitWrites()`。
+
+**读侧屏障为什么必须加**:`clear()` 之后**同帧就有读**的路径真实存在 —— 重播(reset)与音乐页单曲循环都是"清进度 → 立刻起播 → `VideoView.start()` 读同一键",不 drain 就会从旧位置起播;级联删除不前置 drain,则排队的写会在删除之后落盘、把刚删的片救回来。
+
+**收益与代价**:收益 = 进度落库的主线程成本(ObjectOutputStream + SQLite insert/delete + 索引 KV 读改写)挪到 IO,换集 / 退出 / 播完 / 换源这些触发点不再占主线程帧;代价 = 新增读侧契约(直接读进度缓存必须先 `awaitWrites()`;有排队任务时才有一次线程跳转等待,上限 500ms、超时只退化为读旧值)。
+
+**未做**:①`PlaybackProgress.flush()` 的 MMKV 读改写仍在调用线程(历史页快照紧接着读它,异步化会读到旧百分比);②`DefaultSubtitleEngine` 的字幕缓存写、`DetailViewModel.toggleCollect` 的收藏写仍在主线程(不在播放热路径,属 2026-09-28 主线程审计判定的"有意保留");③没做真机帧率量化。
+
+**验证**:`.\\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败);已装机。**未真机走查**,待走查:①退出播放器 → 立刻重进同一集:续播位置正确(不能从头);②重播 / 音乐页单曲循环:确实从头起播(不被旧进度顶回);③换集 / 换源:历史页进度条与续播点仍正常;④删单条历史 / 清空历史:刚删的片不被迟到的回写救回。

@@ -537,6 +537,7 @@
 - ⚠️ **两张快照与索引同口径回收**:`PlaybackProgress.retain` / `EpisodeTotals.retain` 在容量淘汰流程里按"索引内 owner + 正在看的片"裁剪(60 秒节流)。不这么做的话,两张快照各留 300 条且按 HashMap 迭代序淘汰 ⇒ 会删掉刚看的、留下记录已被回收的孤儿。`LIMIT`(= 300)至此只是防御性安全阀。代价:索引之外的存量快照会在首次回收时被清掉(卡片上的"已看 X%/X/Y 集"消失,续播点与历史条目不受影响)。
 - ⚠️ **无痕的读侧/接管侧/展示侧各有落点**:`PlaybackController.getSavedProgress`(续播点)、`DetailViewModel.onDetailResult`(集数/线路/播放配置)、`PreloadCoordinator`(预载起点)、`PlaybackProgress.snapshot` + `EpisodeTotals.snapshot`(展示)、`PlayContainer.isSamePlaybackOwned`(**仅在内容未在播时**拒绝接管)、`HistoryPage`(`incognito` 空态 + 不读库 + 跳过去重删库)、`SearchActivity`(搜索记录区显示无痕提示,清空按钮保留)。新增任何读旧进度/旧历史/旧搜索记录的地方都必须带上判断,判定统一走 `HistoryHelper.isIncognito()`。
 - ⚠️ **索引载荷只增不删的两种情形**:`MAX_EPS_PER_TITLE`(= 300)裁剪与载荷损坏降级都会让个别进度键失去索引 ⇒ 那些集只能等容量淘汰整片;改动索引格式时必须保留"损坏载荷降级为无索引、不抛异常"的行为。
+- ⚠️ **落库走单线程通道(`vod-progress-writer`),读侧必须先 `awaitWrites()`**:`WatchProgressStore` 只把 ObjectOutputStream + SQLite 写排进队列(判据仍在调用线程同步做),故**新增任何直接读进度缓存的地方**(现为 `PlaybackController.getSavedProgress`、`PreloadCoordinator` 的下一集起点)都要先过这道屏障,否则会读到"刚保存 / 刚清除"之前的值(续播丢位置、重播从旧位置起);级联删除(`clearOwner` / `clearAll`)入口同样先 drain,否则排队的写会在删除之后落盘、把删掉的片救回来。配套不变量:`clearTitleLocked` 先登记作废再删、`remember` 见作废即弃写;`writer` 任务内部与**持 `indexLock` 时**都不得调 `awaitWrites()`(前者等自己,后者与写任务抢同一把锁 ⇒ 自锁死)。
 
 ## 7. 未决 / 待细化清单
 

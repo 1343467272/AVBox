@@ -14,6 +14,7 @@ import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.MD5;
 import com.github.tvbox.osc.util.PlayerHelper;
+import com.github.tvbox.osc.util.WatchProgressStore;
 import com.github.tvbox.osc.util.thunder.Jianpian;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 import com.github.tvbox.osc.util.KV;
@@ -252,6 +253,7 @@ public final class PreloadCoordinator {
         // 无痕:预载起点同样不认旧进度,否则自动连播的下一集会带着上次的位置起播
         if (!HistoryHelper.isIncognito()) {
             try {
+                WatchProgressStore.awaitWrites();
                 Object history = CacheManager.getCache(MD5.string2MD5(snapshot.nextKey));
                 long rec = 0;
                 if (history instanceof Long) {

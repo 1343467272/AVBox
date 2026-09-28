@@ -199,6 +199,7 @@ public class PlaybackController {
         long skip = st * 1000L;
         // 无痕:旧记录连读都不读 —— 只拦写的话,重进仍会从上次留下的位置接着播,隐身等于没开
         if (HistoryHelper.isIncognito()) return skip;
+        WatchProgressStore.awaitWrites();
         Object theCache = CacheManager.getCache(MD5.string2MD5(url));
         if (theCache == null) {
             return skip;

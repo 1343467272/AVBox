@@ -31,11 +31,9 @@ class ProtectedInitJar {
     private static final int BUFFER_SIZE = 8192;
 
     private final ConcurrentHashMap<String, Boolean> jars = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Boolean> dexNativeJars = new ConcurrentHashMap<>();
 
     void clear() {
         jars.clear();
-        dexNativeJars.clear();
     }
 
     boolean check(String jar) {
@@ -167,58 +165,6 @@ class ProtectedInitJar {
         } catch (Throwable ignored) {
             return false;
         }
-    }
-
-    /** 2026-09-14:壳协议 jar 必然定义/引用 DexNative;与 check(杀进程风险)正交使用 */
-    boolean hasDexNative(String jar) {
-        Boolean cached = dexNativeJars.get(jar);
-        if (cached != null) return cached;
-        boolean result = scanDexNative(jar);
-        dexNativeJars.put(jar, result);
-        return result;
-    }
-
-    private boolean scanDexNative(String jar) {
-        try {
-            File file = new File(jar);
-            if (!file.exists()) return false;
-            if (isDexFile(file)) {
-                InputStream is = null;
-                try {
-                    is = new FileInputStream(file);
-                    return containsDexNative(readBytes(is));
-                } finally {
-                    close(is);
-                }
-            }
-            ZipFile zip = null;
-            try {
-                zip = new ZipFile(file);
-                java.util.Enumeration<? extends ZipEntry> entries = zip.entries();
-                while (entries.hasMoreElements()) {
-                    ZipEntry entry = entries.nextElement();
-                    if (!entry.getName().endsWith(".dex")) continue;
-                    InputStream is = null;
-                    try {
-                        is = zip.getInputStream(entry);
-                        if (containsDexNative(readBytes(is))) return true;
-                    } finally {
-                        close(is);
-                    }
-                }
-            } finally {
-                close(zip);
-            }
-        } catch (Throwable ignored) {
-            LOG.d("ProtectedInitJar", "scan dex native failed");
-        }
-        return false;
-    }
-
-    /** dex string pool 里类型描述符连续存储,ISO-8859-1 无损映射后字节级搜索即可,无误报 */
-    private static boolean containsDexNative(byte[] data) {
-        return new String(data, java.nio.charset.StandardCharsets.ISO_8859_1)
-                .contains("Lcom/github/catvod/spider/DexNative;");
     }
 
     private static boolean isDexFile(File file) {

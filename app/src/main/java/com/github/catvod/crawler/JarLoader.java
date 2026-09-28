@@ -113,112 +113,14 @@ public class JarLoader {
             riskyJar = protectedInitJar.check(jar);
             if (riskyJar) {
                 LOG.i("echo--jar-initProtectedJar file=" + jar);
-                if (protectedInitJar.hasDexNative(jar) && protectedInitJar.init(clz)) {
-                    return true;
-                }
-
-                // 2026-09-14 二轮(反汇编 + 离线解密实证):该 jar 的 Init.init 开头就是包名白名单
-                // 闸门 —— getApplicationInfo(getPackageName()) -> getApplicationLabel,再用内置
-                // AES 密文("XMjUpOPJ...",key/iv 由 Init.short[1664] 运行时解出)解出逗号分隔的包名
-                // 表(共 50 个:com.fongmi.android.tv、com.github.tvbox.osc(MBox)、com.hisense... 等,
-                // **不含本包名 com.github.avbox.osc**);未命中即提示"包名不匹配,当前包名: xxx"
-                // 并在 5 秒后 Process.killProcess。所以本应用无法通过闸门,伪装包名也只会撞上
-                // Android 11+ 包可见性(NameNotFoundException) —— 伪装这条路已废弃。
-                //
-                // 闸门之后 init 真正做、且其它站点依赖的副作用只有 saveConfig():
-                // 往 filesDir/Pizazz/config.json 写入内置默认配置(437 字节 JSON,19 个键:
-                // quarkQuality/quarkThread/proxyMode/pansouUrl/panView/aliThread/xunleiThread...)。
-                // 配置中心(csp_Config)每个分类都要读这些键:
-                //   new JsonParser().parse(读config.json).getAsJsonObject().get("quarkQuality").getAsString()
-                // —— 键缺失 = NPE -> catch(Exception) -> return "" -> 分类空白"暂无内容";
-                // 只有"光鸭"分类不读 config.json,所以它是唯一出卡片的分类(用户截图实证)。
-                // 结论:绕过闸门,只补做 saveConfig,永不进入 killProcess 分支。
-                boolean bound = bindInitContext(clz, AppContextHolder.context());
-                boolean saved = invokeSaveConfig(clz);
-                ensureInitConfig();
-                LOG.i("echo--jar-skip Init.init(whitelist-gated) contextBound=" + bound
-                        + ", saveConfig=" + saved + ", file=" + jar);
-                return true;
+                return protectedInitJar.init(clz);
             }
             Method method = clz.getMethod("init", Context.class);
             method.invoke(null, AppContextHolder.context());
-            return true;
         } catch (Throwable e) {
             LOG.e("JarLoader", e);
         }
         return !riskyJar;
-    }
-
-    private boolean bindInitContext(Class<?> clz, Context hostContext) {
-        boolean bound = false;
-        try {
-            Object instance = null;
-            try {
-                instance = clz.getMethod("get").invoke(null);
-            } catch (Throwable ignored) {
-                LOG.d("JarLoader", "init get() invoke failed");
-            }
-            Context app = hostContext;
-            for (java.lang.reflect.Field field : clz.getDeclaredFields()) {
-                if (!Context.class.isAssignableFrom(field.getType())) continue;
-                field.setAccessible(true);
-                if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
-                    if (field.get(null) != null) continue;
-                    field.set(null, app);
-                    bound = true;
-                } else if (instance != null) {
-                    if (field.get(instance) != null) continue;
-                    field.set(instance, app);
-                    bound = true;
-                }
-            }
-        } catch (Throwable e) {
-            LOG.i("echo--jar-bindInitContext error " + e.getClass().getSimpleName() + ":" + e.getMessage());
-        }
-        return bound;
-    }
-
-    /**
-     * 2026-09-14 二轮(实证):jar 的 Init.saveConfig() 位于包名闸门之后,但本身与闸门无关,
-     * 可反射单独调用。它把内置默认配置合并进 filesDir/Pizazz/config.json(已存在的键保留,
-     * 缺失的键补齐,并强制刷新 version)。网盘"配置·中心"各分类(读 quarkQuality /
-     * quarkThread / proxyMode / pansouUrl / panView 等)完全依赖这份默认值,否则
-     * JsonObject.get(key) 返回 null,getAsString() 抛 NPE,分类内容被 catch 成空字符串。
-     */
-    private boolean invokeSaveConfig(Class<?> clz) {
-        try {
-            Method method = clz.getDeclaredMethod("saveConfig");
-            method.setAccessible(true);
-            method.invoke(null);
-            return true;
-        } catch (Throwable e) {
-            LOG.i("echo--jar-saveConfig error " + e.getClass().getSimpleName() + ":" + e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * 2026-09-14:Init.saveConfig 本该生成的 filesDir/config.json 缺失时,依赖它的站点
-     * (豆瓣)homeContent 开头 new JSONObject(读文件) 直接 syntaxError(真机堆栈实证)。
-     * 该 JSON 的键均经 optString 带默认值(homePage 等),写 "{}" 即可通过;文件已存在则
-     * 不动(保留后续 init/saveConfig 或用户数据的真实内容)。
-     */
-    private void ensureInitConfig() {
-        try {
-            // jar 的 merge.m.k.d(name) 实际路径 = filesDir/Pizazz/<name>(字节码反汇编实证),
-            // 豆瓣 homeContent 读的就是 filesDir/Pizazz/config.json。
-            java.io.File dir = new java.io.File(AppContextHolder.context().getFilesDir(), "Pizazz");
-            if (!dir.exists()) dir.mkdirs();
-            java.io.File f = new java.io.File(dir, "config.json");
-            if (!f.exists()) {
-                java.io.FileOutputStream out = new java.io.FileOutputStream(f);
-                out.write(new byte[]{'{', '}'});
-                out.close();
-                LOG.i("echo--jar-init config.json created");
-            }
-        } catch (Throwable e) {
-            LOG.i("echo--jar-init config.json error " + e.getClass().getSimpleName() + ":" + e.getMessage());
-        }
     }
 
     private void invokeProxy(String key, DexClassLoader loader) {

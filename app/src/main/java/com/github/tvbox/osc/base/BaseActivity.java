@@ -18,6 +18,9 @@ import android.view.View;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.PermissionChecker;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.ui.WindowSize;
@@ -41,6 +44,9 @@ import xyz.doikki.videoplayer.util.CutoutUtil;
  */
 public abstract class BaseActivity extends AppCompatActivity implements CustomAdapt {
     protected Context mContext;
+
+    /** 系统栏被 ROM 放出后的兜底重藏延时：要短于"栏可见"的观感窗口，又不抢系统露出动画 */
+    private static final long SYSBAR_REHIDE_DELAY_MS = 100L;
 
     private static float screenRatio = -100.0f;
     private int orientationPolicy = Integer.MIN_VALUE;
@@ -112,6 +118,12 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
             uiOptions |= View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
             getWindow().getDecorView().setSystemUiVisibility(uiOptions);
         }
+        // 再走 InsetsController：把"短暂露出后自动收回"显式钉住(不依赖旧 IMMERSIVE_STICKY 的映射)，
+        // 旧接口只保留 LAYOUT_* 的布局语义与下面可见性监听依赖的隐藏位
+        WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        controller.hide(WindowInsetsCompat.Type.systemBars());
     }
 
     private void initSystemUiListener() {
@@ -122,8 +134,9 @@ public abstract class BaseActivity extends AppCompatActivity implements CustomAd
                 public void onSystemUiVisibilityChange(int visibility) {
                     int hiddenBars = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN;
                     if ((visibility & hiddenBars) != hiddenBars) {
+                        // 兜底：ROM 在沉浸进出/横竖屏/回前台会把系统栏放出来，延时要短于显示窗口
                         decorView.removeCallbacks(hideSysBarRunnable);
-                        decorView.postDelayed(hideSysBarRunnable, 300);
+                        decorView.postDelayed(hideSysBarRunnable, SYSBAR_REHIDE_DELAY_MS);
                     }
                 }
             });

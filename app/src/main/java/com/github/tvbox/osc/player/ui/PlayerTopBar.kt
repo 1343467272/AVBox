@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.painterResource
@@ -40,16 +42,20 @@ fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
     val anyVisible = state.topLeftVisible || state.topRightVisible
     // 左右边距按窗口宽度分档（竖屏预览 16dp / 横屏全屏与平板 48dp，见 playerEdgePadding）
     val edge = playerEdgePadding()
-    // 顶部安全区避让（2026-09-14 用户反馈：竖屏全屏/贴顶预览态下固定 12dp 的顶栏被摄像头挖孔遮挡）：
-    // 顶栏贴近窗口顶部时，把 safeDrawing 顶部（状态栏 + 挖孔）尚未被自身位置覆盖的差值补进 top；
-    // 不贴顶（详情页非贴顶预览态）或横屏全屏（系统栏隐藏后顶部安全区为 0、挖孔在侧边）时差值为 0，布局不变
+    // 顶栏贴顶时补上未被自身覆盖的安全区差值（不贴顶/已被上层 padding 抬下去时为 0）。宽档（≥600dp：横屏
+    // 全屏/平板）只取挖孔：safeDrawing 含状态栏，而系统栏在进应用/旋转/回前台会被短暂放出且带显隐动画，跟着它顶栏会弹一下
     val density = LocalDensity.current
-    val safeTopPx = WindowInsets.safeDrawing.getTop(density)
+    val topInset = if (LocalConfiguration.current.screenWidthDp >= 600) {
+        WindowInsets.displayCutout
+    } else {
+        WindowInsets.safeDrawing
+    }
+    val topInsetPx = topInset.getTop(density)
     var barTopPx by remember { mutableStateOf(Float.NaN) }
     val extraTop = if (barTopPx.isNaN()) {
         0.dp
     } else {
-        with(density) { (safeTopPx - barTopPx).coerceAtLeast(0f).toDp() }
+        with(density) { (topInsetPx - barTopPx).coerceAtLeast(0f).toDp() }
     }
     Box(
         Modifier

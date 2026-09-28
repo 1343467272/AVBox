@@ -23,6 +23,8 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      release_existed: ${{ steps.existing_release.outputs.existed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -103,6 +105,21 @@ jobs:
           echo "size: $(du -h "$OUT" | cut -f1)"
           echo "path=$OUT" >> "$GITHUB_OUTPUT"
 
+      # 同版本重跑时 action-gh-release 会就地更新已有 release（只换 APK），此时不该再打扰订阅者
+      - name: Check if release already exists
+        id: existing_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION='${{ github.event.inputs.version }}'
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "existed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$VERSION 已有 release：本次覆盖 APK，不发 Telegram 通知"
+          else
+            echo "existed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload APK to Release
         uses: softprops/action-gh-release@v3
         with:
@@ -119,6 +136,7 @@ jobs:
   # 用 GITHUB_TOKEN 创建的 release 不会触发 notify.yml 的 release 事件，故在此显式调用
   notify:
     needs: build
+    if: needs.build.outputs.release_existed != 'true'
     uses: ./.github/workflows/notify.yml
     with:
       tag: ${{ inputs.version }}

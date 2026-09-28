@@ -11,6 +11,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
@@ -49,23 +50,28 @@ internal val GlassHighlight: Highlight = Highlight.Ambient.copy(
     )
 )
 
+/** [pressEffect] = false 时不做按压缩放与按压光斑:含输入框的控件必须选这档,见 `SearchField` */
 @Composable
 fun Modifier.glassTopBarSurface(
     shape: Shape,
     fallbackColor: Color,
-): Modifier = glassSurface(LocalTopBarGlassBackdrop.current, shape, fallbackColor)
+    pressEffect: Boolean = true,
+): Modifier = glassSurface(LocalTopBarGlassBackdrop.current, shape, fallbackColor, pressEffect)
 
+/** [pressEffect] = false 时不做按压缩放与按压光斑:含输入框的控件必须选这档,见 `SearchField` */
 @Composable
 fun Modifier.glassSurface(
     shape: Shape,
     fallbackColor: Color,
-): Modifier = glassSurface(emptyBackdrop(), shape, fallbackColor)
+    pressEffect: Boolean = true,
+): Modifier = glassSurface(emptyBackdrop(), shape, fallbackColor, pressEffect)
 
 @Composable
 private fun Modifier.glassSurface(
     backdrop: Backdrop?,
     shape: Shape,
     fallbackColor: Color,
+    pressEffect: Boolean,
 ): Modifier {
     val config = LiquidGlassState.config
     val glassEnabled = backdrop != null &&
@@ -84,7 +90,8 @@ private fun Modifier.glassSurface(
         alpha = 0.45f * config.containerAlphaScale
     )
     val animationScope = rememberCoroutineScope()
-    val interactiveHighlight = remember(animationScope) { InteractiveHighlight(animationScope) }
+    val interactiveHighlight =
+        if (pressEffect) remember(animationScope) { InteractiveHighlight(animationScope) } else null
 
     return this.drawBackdrop(
         backdrop = backdrop,
@@ -120,16 +127,21 @@ private fun Modifier.glassSurface(
                 alpha = GLASS_THICKNESS_ALPHA,
             )
         },
-        layerBlock = {
-            val progress = interactiveHighlight.pressProgress
-            if (progress > 0f && size.height > 0f && size.width > 0f) {
-                val growthPx = 4.dp.toPx() * progress
-                scaleY = 1f + growthPx / size.height
-                scaleX = 1f + growthPx / size.maxDimension
-            }
-        },
+        layerBlock = interactiveHighlight?.let(::pressGrowthLayerBlock),
         onDrawSurface = { drawRect(containerColor) },
     )
-        .then(interactiveHighlight.modifier)
-        .then(interactiveHighlight.gestureModifier)
+        .then(interactiveHighlight?.modifier ?: Modifier)
+        .then(interactiveHighlight?.gestureModifier ?: Modifier)
+}
+
+/** 按压放大:竖向 4dp,横向按最长边算 ⇒ 圆钮两轴同增保持正圆,宽控件只增高、几乎不变宽 */
+private fun pressGrowthLayerBlock(
+    interactiveHighlight: InteractiveHighlight,
+): GraphicsLayerScope.() -> Unit = {
+    val progress = interactiveHighlight.pressProgress
+    if (progress > 0f && size.height > 0f && size.width > 0f) {
+        val growthPx = 4.dp.toPx() * progress
+        scaleY = 1f + growthPx / size.height
+        scaleX = 1f + growthPx / size.maxDimension
+    }
 }

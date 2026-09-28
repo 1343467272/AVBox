@@ -3550,3 +3550,42 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **未纳入(已与用户核对过口径)**:选集面板(`ui/activity/DetailEpisodes`)是详情页的 sheet、与竖屏详情页共用,其 M3 `FilterChip` 标签本身就是 `labelLarge`(M3 默认 Medium),故不在本次范围;直播页的 `AVBoxBottomSheet` 同理(非播放器 UI)。
 
 **验证**:`assembleDebug` + `testDebugUnitTest` 通过(48 类 / 376 用例 / 0 失败),Kotlin 无告警;APK 已装到设备(保留数据)。**待真机走查**:字重整体加粗后各弹窗的观感(尤其投屏面板 ts_18 的说明行、字幕/弹幕面板的长文案)、以及画面比例那 6 枚 chips 是否如规范所记在第二行换行(该风险与本次无关,是 2026-09-27 就存在的问题)。
+
+## 搜索框「水滴」手柄闪烁修复:玻璃退出输入框节点(2026-09-28,用户"搜索框有文字时再点击搜索框,此时会出现指针,这个指针会闪烁(开启液态玻璃效果时,surface 模式下的搜索框无此问题)"+ 一张设备截图)
+
+**现象**:液态玻璃开启时,在**已有文字**的搜索框上再点一下,插入符下方冒出一个水滴形手柄并反复闪;同一搜索框在 surface 档(关掉「液态玻璃应用控件」)不复发。首页订阅源弹窗里的站点搜索框是同一组件,同样受影响。
+
+**定位(只读框架源码,未靠真机)**:那个水滴不是本项目画的控件,而是 Compose 编辑态的**光标手柄** `CursorHandle` —— `foundation` 的 `AndroidCursorHandle.android.kt` 用 `createHandleImage()` 画圆再转 45° 得到水滴,外层是 `HandlePopup` → **`Popup`(独立窗口)**。它的显隐闸门(`CoreTextField.kt` 的 `TextFieldCursorHandle` / `showHandleAndMagnifier` / `LegacyTextFieldState.showCursorHandle`):
+
+1. `manager.transformedText.isNotEmpty()` —— **空搜索框根本不存在这个手柄**,对上"有文字时";
+2. `state.handleState == HandleState.Cursor` —— 由"在已聚焦的输入框内点一下"设置,对上"再点击搜索框";
+3. `state.showCursorHandle = value.selection.collapsed && isSelectionHandleInVisibleBound(true)`,判据 = `state.layoutCoordinates.visibleBounds().containsInclusive(getHandlePosition(true))` —— 即**「插入符底边中点」是否落在「输入框被祖先裁剪后的可见矩形」内,一个压在边界上的比较**;它只在 `onGloballyPositioned`(几何变化)与 `updateSelection`(指针选中更新)里重算;
+4. 它**不跟随光标闪烁**:`cursorAlpha`(`CursorAnimationState`,500ms 循环)只被画竖线光标的 `TextFieldCursor.kt` 消费;手柄是"存在/销毁"二态 —— `HandlePositionProvider` 注释写明 position 变 `Unspecified` 时 Popup 立即被 dismiss,**没有淡入淡出** ⇒ 闸门每翻一次就是一次 Popup 重建,肉眼即"闪"。
+
+**根因**:`SearchField` 原先把玻璃直接挂在持有 `BasicTextField` 的那一行上,而玻璃相对 surface 档多三样东西(surface 分支在 `glassSurface` 里 early-return,只剩 `clip(shape).background(color)`):①`layerBlock` 的**按压放大**(`InteractiveHighlight` 的欠阻尼弹簧 `spring(0.5f, 300f)` 驱动 `Modifier.graphicsLayer`);②`drawBackdrop` 作为 `LayoutModifierNode` 把内容 `placeWithLayer(clip = true, shape = 胶囊, compositingStrategy = Offscreen)`,输入框的 `visibleBounds()` 从此是"被胶囊层裁剪 + 整数量化"的结果;③额外挂上的按压光斑与 `pointerInput` 拖拽观察器。几何被带动、判据又压在边界上 ⇒ `showCursorHandle` 反复翻转 ⇒ 水滴 Popup 反复重建。
+
+**改动(2 文件)**:
+
+- `ui/components/GlassTopBar.kt`:`glassTopBarSurface` / `glassSurface` 各加 `pressEffect: Boolean = true`(**默认 true ⇒ 搜索钮、返回钮、订阅源胶囊、`TopBarActionBox` 等既有调用点行为与外观零变化**)。`pressEffect = false` 时不建 `InteractiveHighlight` ⇒ 不传 `layerBlock`(库内部只在不传时跳过 `Modifier.graphicsLayer`,此时采样端变换为恒等、无需反向补偿),也不挂按压光斑与手势观察器;按压放大那段 lambda 抽成 `pressGrowthLayerBlock()`,两档共用一份。
+- `ui/components/SearchField.kt`:结构改为 `Box(modifier) { Box(matchParentSize().then(glass)); Row(clip(胶囊).padding(12dp)) { …原有内容原样… } }` —— 玻璃只作背景层,输入框成为它的**兄弟节点**;两档都传 `pressEffect = false`;外层 `Box` 取 `contentAlignment = Center`(顶栏 title 槽会给标题内容最小高度,外层被拉伸时内容仍需居中)。内容行保留 `clip(ContinuousCapsule)`(= surface 档原有写法,裁切观感与改造前一致)。⚠️ `matchParentSize()` 只能给背景层:两个子项都用会让外层 `Box` 没有参与测量的子项 ⇒ 尺寸塌成 0。
+
+**验证**:`.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(48 类 / 376 用例 / 0 失败);Kotlin 源码无告警(仅 `build.gradle.kts` 与插件那 3 条既有弃用提示)。**未真机验证** —— 本次只有源码级推理 + 编译:待走查 ①搜索页顶栏与订阅源弹窗两处搜索框的水滴是否不再闪;②两处搜索框的玻璃观感(模糊/折射/通透/高光/内外阴影)与改造前是否一致、位置尺寸有无像素偏移;③其余顶栏玻璃控件(搜索钮/返回钮/订阅源胶囊)按压形变仍在。**未做**:把按压光斑还给搜索框(要真机确认是否复发,活规范该条已写明"不要把输入框塞进玻璃层");`GlassTopBar.kt` 里 `androidx.compose.ui.graphics.graphicsLayer` 这个 import 改造前就已未被使用(既有噪声,未顺手删)。
+
+## 播放器顶栏「进应用时向下弹一下」修复:安全区取值按窗口档分岔(2026-09-28,用户"处于图一这个播放器界面时退出应用…从桌面点击图标进入,可以看到进入应用的一瞬间播放器界面上方的标题会向下移动抽搐一下"+ 三张截图)
+
+**现象**:全屏播放(横屏沉浸)时退出应用 → 从桌面点图标回来,入场瞬间顶栏(标题/分辨率/旋转/返回那一条)整体下滑一个状态栏高度再弹回;用户把录屏放进剪辑软件逐帧看,两帧差异正好是一个状态栏高度(一帧状态栏可见、一帧不可见)。
+
+**定位(读代码,未真机验证)**:
+
+1. `player/ui/PlayerTopBar.kt` 的顶栏纵向位置 = `padding(top = 12.dp + extraTop)`,而 `extraTop = (WindowInsets.safeDrawing.getTop() − 顶栏自身窗口 y)`。`safeDrawing` **含状态栏** ⇒ 状态栏只要在任意一帧可见,`extraTop` 就等于状态栏高度,顶栏整条被顶下去;它再隐藏又弹回。原注释写的前提正是"横屏全屏(系统栏隐藏后顶部安全区为 0、挖孔在侧边)时差值为 0" —— 这个前提在入场那几帧不成立。
+2. 状态栏为什么会在入场时短暂可见(应用侧无法避免):应用只在离散时机重新隐藏 —— `BaseActivity.onResume`(:97)/`onWindowFocusChanged(true)`(:141-149)调 `hideSysBar()`(DetailActivity 还只在 `fullScreen` 时下发),而 `initSystemUiListener`(:117-131,以上行号均为改动前)在"系统栏没完全隐藏"时是 **postDelayed 300ms** 才兜底重藏 —— 那 300ms 就是"标题停在下面"的窗口;隐藏机制本身用的是旧式 `SYSTEM_UI_FLAG_IMMERSIVE_STICKY`,sticky 语义即"允许系统短时放出系统栏"。冷启动路径更确定:`enableTransparentEdgeToEdge()` 是显示式透明栏,而隐藏只由 `LaunchedEffect(full){ applyFullscreen(full) }`(`ui/activity/DetailScreen.kt:96`)在首帧之后触发。已登记的同源事实:`steps.md:96` 记的 ROM(vivo V2425A/OriginOS)"沉浸进出/横竖屏过渡与回前台会重设状态栏"。
+3. 竖屏的影响:设备竖屏时 `applyFullscreen(true)` 请求 `SENSOR_LANDSCAPE`(`ui/activity/DetailActivity.kt:234-239`),入场还要经历一次竖→横旋转,旋转又会让系统再放一次系统栏,而 `DetailScreen` 的 `fullBox` 在 `rotating` 期间按实时方向取(`:64`)⇒ 这段 inset 抖动正好落在用户盯着的入场瞬间。
+
+**改动(2 文件)**:
+
+- `player/ui/PlayerTopBar.kt`:安全区取值按窗口档分岔 —— **宽档(`screenWidthDp >= 600`:横屏全屏/平板)只取 `WindowInsets.displayCutout`,窄档(竖屏预览/竖屏全屏)保持 `safeDrawing`**。挖孔是硬件量(窗口已设 `LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES`,`CutoutUtil`),横屏时挖孔在长边、`displayCutout` 顶部为 0 ⇒ 横屏全屏行为与原来一致,但不再随系统栏抖动;竖屏(含 2026-09-14 那条"竖屏全屏/贴顶预览被挖孔遮挡"的场景)判据不变。判据**故意用 `screenWidthDp`(随方向变)**:要判的是"窗口当前是不是横屏全屏形态",与 `playerEdgePadding()` 同一套(设备档判据才是 `smallestScreenWidthDp`)。
+- `base/BaseActivity.java`:`hideSysBar()` 在旧式 flags 之外**再走 `WindowInsetsControllerCompat`**(`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE` + `hide(systemBars())`),把"短暂露出后自动收回"显式钉住而不是依赖旧 `IMMERSIVE_STICKY` 的映射;`initSystemUiListener` 的兜底重藏延时抽成 `SYSBAR_REHIDE_DELAY_MS`,由 `300ms` **收紧到 100ms**。**旧 flags 全部保留**(LAYOUT_* 的布局语义 + 可见性监听依赖的隐藏位),故各页布局与"重启再断言"链路零变化。
+
+**验证**:`.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(48 类 / 376 用例 / 0 失败);日志里的 `BaseActivity.java` 过时 API 提示是该文件一直用旧式 `SYSTEM_UI_FLAG_*` 的既有 note(本次未新增过时调用)。**未真机验证**,待走查:①横屏全屏下退出→入场,顶栏应不再下滑回弹;②竖屏全屏/贴顶预览的挖孔避让不变;③平板竖屏(≥600dp)与横屏全屏的顶栏位置正常;④全屏切换与回前台的系统栏隐藏、以及那条 100ms 兜底是否够快(若系统露出动画仍在进行中被抢,可回调该常量)。
+
+**未做**:`LiveScreens.kt:191` 直播页顶栏用 `statusBarsPadding()`,同源抖动机制仍在(其顶栏本就整体跟 inset 走,未纳入本次范围)。

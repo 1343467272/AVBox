@@ -805,38 +805,34 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         }
     }
 
+    /**
+     * 回调线程可能不是主线程:本方法会走"释放内核 + 重起播"这条**增删播放器子视图**的链路,必须整段在主线程,
+     * 非主线程增删子视图会让 {@code ViewGroup.mChildren} 出 null 洞(下次 traversal 崩)——不能只把提示文案 post 出去。
+     */
     void errorWithRetry(String err, boolean finish) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mHandler.post(() -> errorWithRetry(err, finish));
+            return;
+        }
         if (scheduler.isPlaybackStarted()) {
             scheduler.cancelPlayTimeout();
             hideTipOnUiThread();
             if (scheduler.retryAfterStartedError()) return;
             scheduler.stopMusicSessionForFailedPlayback();
             if (!isAttached()) return;
-            mActivity.runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    setTip(err, false, true);
-                    if (finish) {
-                        Toast.makeText(mContext, err, Toast.LENGTH_SHORT).show();
-                    }
-                }
-            });
+            setTip(err, false, true);
+            if (finish) {
+                Toast.makeText(mContext, err, Toast.LENGTH_SHORT).show();
+            }
             return;
         }
         if (!scheduler.autoRetry()) {
             scheduler.stopMusicSessionForFailedPlayback();
             if (!isAttached()) return;
-            mActivity.runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    if (finish) {
-                        setTip(err, false, true);
-                        Toast.makeText(mContext, err, Toast.LENGTH_SHORT).show();
-                    } else {
-                        setTip(err, false, true);
-                    }
-                }
-            });
+            setTip(err, false, true);
+            if (finish) {
+                Toast.makeText(mContext, err, Toast.LENGTH_SHORT).show();
+            }
         }
     }
 

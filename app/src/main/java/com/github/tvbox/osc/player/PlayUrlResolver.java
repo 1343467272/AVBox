@@ -58,6 +58,8 @@ import org.json.JSONObject;
  *
  * <p>坑:代际必须"发起时捕获值 vs 当前值"比较;写成当前值自比较即恒真闸门(等于没装)。
  * 解析超时由本类 Handler 管,与宿主 timeoutHandler 各自独立。
+ * <p>坑2:解析线程池里碰视图一律走 {@code view.runOnUi} —— 非主线程写视图会让 ViewGroup.mChildren
+ * 出 null 洞,下次 traversal 必崩。
  */
 final class PlayUrlResolver {
 
@@ -379,7 +381,10 @@ final class PlayUrlResolver {
                     if (!isParseResultCurrent(gen)) return;
                     JSONObject rs = ApiConfig.get().jsonExt(pb.getUrl(), jxs, webUrl);
                     if (rs == null || !rs.has("url") || rs.optString("url").isEmpty()) {
-                        if (isParseResultCurrent(gen) && host.view() != null) host.view().showTip(str(R.string.player_parse_error), false, true);
+                        if (isParseResultCurrent(gen) && host.view() != null) {
+                            PlaybackViewBridge bridge = host.view();
+                            bridge.runOnUi(() -> bridge.showTip(str(R.string.player_parse_error), false, true));
+                        }
                     } else {
                         HashMap<String, String> headers = PlaybackController.extractHeaders(rs);
                         if (rs.has("jxFrom") && host.view() != null) {
@@ -437,13 +442,19 @@ final class PlayUrlResolver {
                 if (isSuper) {
                     JSONObject rs = SuperParse.parse(jxs, parseFlag + "123", webUrl, parseTargets);
                     if (!rs.has("url") || rs.optString("url").isEmpty()) {
-                        if (isParseResultCurrent(gen) && host.view() != null) host.view().showTip(str(R.string.player_parse_error), false, true);
+                        if (isParseResultCurrent(gen) && host.view() != null) {
+                            PlaybackViewBridge bridge = host.view();
+                            bridge.runOnUi(() -> bridge.showTip(str(R.string.player_parse_error), false, true));
+                        }
                     } else {
                         if (rs.has("parse") && rs.optInt("parse", 0) == 1) {
                             if (rs.has("ua")) {
                                 host.setWebUserAgent(rs.optString("ua").trim());
                             }
-                            if (host.view() != null) host.view().showTip(str(R.string.player_super_parsing), true, false);
+                            if (host.view() != null) {
+                                PlaybackViewBridge bridge = host.view();
+                                bridge.runOnUi(() -> bridge.showTip(str(R.string.player_super_parsing), true, false));
+                            }
                             final String mixParseUrl = DefaultConfig.checkReplaceProxy(rs.optString("url", ""));
                             if (host.view() != null) {
                                 host.view().runOnUi(() -> {
@@ -469,7 +480,10 @@ final class PlayUrlResolver {
                 } else {
                     JSONObject rs = ApiConfig.get().jsonExtMix(parseFlag + "111", pb.getUrl(), finalExtendName, jxs, webUrl);
                     if (rs == null || !rs.has("url") || rs.optString("url").isEmpty()) {
-                        if (isParseResultCurrent(gen) && host.view() != null) host.view().showTip(str(R.string.player_parse_error), false, true);
+                        if (isParseResultCurrent(gen) && host.view() != null) {
+                            PlaybackViewBridge bridge = host.view();
+                            bridge.runOnUi(() -> bridge.showTip(str(R.string.player_parse_error), false, true));
+                        }
                     } else {
                         if (rs.has("parse") && rs.optInt("parse", 0) == 1) {
                             if (rs.has("ua")) {

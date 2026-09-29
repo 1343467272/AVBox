@@ -690,14 +690,22 @@ class ComposeVideoController @JvmOverloads constructor(
                 unavailableReason = PictureEffects.unavailableReason(),
                 onPresetSelected = {
                     PictureEffects.selectPreset(it)
+                    restartForPictureIfNeeded()
                     refreshParamsSheet()
                 },
-                onTuningChanged = { PictureEffects.setCustom(it) },
+                onTuningChanged = {
+                    PictureEffects.setCustom(it)
+                    restartForPictureIfNeeded()
+                },
                 onReset = {
                     PictureEffects.reset()
+                    restartForPictureIfNeeded()
                     refreshParamsSheet()
                 },
-                onCompareChanged = { PictureEffects.compare(it) },
+                onCompareChanged = {
+                    PictureEffects.compare(it)
+                    restartForPictureIfNeeded()
+                },
             ),
             timeStartText = state.timeStartText,
             timeEndText = state.timeEndText,
@@ -716,6 +724,11 @@ class ComposeVideoController @JvmOverloads constructor(
     private fun refreshParamsSheet() {
         if (state.paramsSheet == null) return
         state.paramsSheet = buildParamsSheet()
+    }
+
+    /** 开/关画质都要重播一次本集才生效(开=挂链,关=回 Surface 直通;media3 只在渲染器 enable 时建/不建 sink) */
+    private fun restartForPictureIfNeeded() {
+        if (PictureEffects.consumeRestartNeeded()) listener?.replay(false)
     }
 
     /** 解码选项：只有硬/软两档(软解 = media3 的视频解码选择器优先系统软件解码器) */

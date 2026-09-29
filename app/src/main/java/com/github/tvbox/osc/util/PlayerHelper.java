@@ -78,16 +78,6 @@ public class PlayerHelper {
         }
     }
 
-    /**
-     * 下发 EXO 解码方式(2026-09-17)。
-     *
-     * <p>EXO 没有"构造时固化"的 options,软/硬解由 media3 的 {@code MediaCodecSelector} 决定,
-     * 而选择器只在**解码器新建**时才被查询 —— 故下发本身只写一个进程级静态位,不需要拿播放器实例。
-     * 但内核复用时 media3 可能继续沿用旧的 MediaCodec(renderer disable 只 flush 不 release),
-     * 光改静态位对本次复用无效 —— 故返回 true 时由调用方补一个"必须重建内核"标记兜住。
-     *
-     * @return 本次下发是否**改变了**解码方式(调用方据此判断复用中的内核要不要重建,见 updateCfg)
-     */
     private static boolean applyExoDecode(String exoDecode) {
         boolean prefer = "软解码".equals(exoDecode); // i18n: keep
         if (ExoPlayer.isPreferSoftwareDecode() == prefer) return false;
@@ -96,29 +86,25 @@ public class PlayerHelper {
     }
 
     /**
-     * 本地代理 URL 判定(2026-09-13):spider 自建代理(网盘)/M3U8 净化/DASH 代理都是
-     * 127.0.0.1 上 App 内服务的地址,不是稳定的可随机访问 HTTP 文件源。
-     * 边播缓存的 CacheDataSource 与这类 URL 的区间读取语义不兼容 —— 实测夸克 4K mp4 源
-     * 需跳读文件尾 moov 时抛 ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,EXO 直接无法起播
-     * (关掉边播缓存即恢复正常);直连 URL(可随机访问)不受影响。
-     * 故这类 URL 跳过磁盘缓存,与预载侧 PreloadCoordinator 的排除口径一致。
+     * 存活内核**已生效**的解码方式是否与 cfg 目标值一致;静态位只在起播链路下发,而 media3 不给复用内核重选解码器 ——
+     * 不一致就只能重建内核(D6 同片接管这类不走起播的路径据此判断)。
      */
+    public static boolean isExoDecodeApplied(JSONObject playerCfg) {
+        String exoDecode = playerCfg == null ? null : playerCfg.optString("exo", "硬解码"); // i18n: keep
+        return isExoDecodeApplied(exoDecode, ExoPlayer.isPreferSoftwareDecode());
+    }
+
+    /** 上一条的口径本体(exo 值只认"软解码",缺键/空串按硬解);独立出来供 JVM 单测锁真值表 */
+    static boolean isExoDecodeApplied(String exoDecode, boolean preferSoftwareDecode) {
+        return "软解码".equals(exoDecode) == preferSoftwareDecode; // i18n: keep
+    }
+
     public static boolean isLocalProxyUrl(String url) {
         if (url == null) return false;
         return url.startsWith("http://127.0.0.1") || url.startsWith("https://127.0.0.1")
                 || url.startsWith("http://localhost") || url.startsWith("https://localhost");
     }
 
-    /**
-     * 从 getPlay 结果 JSON 提取请求头(header/headers 字段,兼容 JSONObject 与 JSON 文本两种形态)。
-     *
-     * <p>2026-09-13 修复:预载({@code PreloadCoordinator.extractHeaders})与播放
-     * ({@code PlayContainer.getHeaders})必须共用本方法 —— 此前预载侧只认 JSONObject、
-     * 播放侧还认 String,源返回 {@code "header":"{\"User-Agent\":\"...\"}"} 时两侧的
-     * {@code keyOf(url,headers)} 不一致,预载内存数据永不命中(仅剩磁盘兜底)。
-     *
-     * @return 提取到的请求头(键值均原样保留,不 trim);无任何头时返回 null(与旧实现语义一致)
-     */
     public static HashMap<String, String> extractPlayHeaders(JSONObject playResult) {
         if (playResult == null) return null;
         HashMap<String, String> headers = new HashMap<>();
@@ -181,12 +167,6 @@ public class PlayerHelper {
 
     private static HashMap<Integer, Boolean> mPlayersExistInfo = null;
 
-    /**
-     * 作废"可用播放器"缓存(2026-09-13)。
-     * ⚠️ 该表是**进程级缓存**(首次调用后不再重算),而 13 号 RemoteTVBox 的可用性取决于
-     * `HawkConfig.REMOTE_TVBOX` —— 投屏扫描/投屏成功时才写入。不重置缓存的话,
-     * 「RemoteTVBox 播放器」选项在本次进程内永远不会出现。
-     */
     public static void invalidatePlayersExistInfo() {
         mPlayersExistInfo = null;
     }
@@ -282,17 +262,11 @@ public class PlayerHelper {
         }
     }
 
-    /**
-     * 资源文案;App 未就绪(极早调用/单测)返回空串,不抛异常。
-     * 走 {@link LanguageManager#localized}:Application 的 base 只在进程启动时挂一次,切语言后
-     * 直接用 app.getString 会停在旧语言。
-     */
     private static String str(int resId) {
         Context app = AppContextHolder.context();
         return app == null ? "" : LanguageManager.INSTANCE.localized(app).getString(resId);
     }
 
-    /** 网速文本:入参是字节/秒,按 1024 进制显示 B/s / KB/s / MB/s;show=false 时 0 返回空串 */
     public static String getDisplaySpeed(long speed,boolean show) {
         if(speed > 1048576)
             return new DecimalFormat("#.00").format(speed / 1048576d) + "MB/s";

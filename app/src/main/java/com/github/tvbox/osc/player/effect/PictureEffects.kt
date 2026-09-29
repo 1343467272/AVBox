@@ -37,9 +37,6 @@ object PictureEffects {
     private val detail = DetailAdjustEffect()
     private val activeEffects: List<Effect> = listOf(colorTone, detail)
 
-    // 挂上过就不再摘:「无效果」靠参数恒等表达,回退成空列表会让 media3 拆建整条 GL 链(且不等旧帧走完)
-    private var activated = false
-
     /** 当前在出画的内核实例(实时调参打给它) */
     private var current: WeakReference<ExoPlayer>? = null
 
@@ -133,9 +130,10 @@ object PictureEffects {
         val profile = applied()
         colorTone.setProfile(profile)
         detail.setProfile(profile)
-        if (!profile.isNoOp) activated = true
-        openedThisSession = activated
-        if (activated) player.applyVideoEffects(activeEffects)
+        // 链挂着 ⟺ 当前参数非恒等:关闭(参数回恒等)只表示"下次起播不再挂链",绝不下发空列表摘链
+        val enabled = !profile.isNoOp
+        openedThisSession = enabled
+        if (enabled) player.applyVideoEffects(activeEffects)
     }
 
     /** 内核释放:摘掉引用,后续调参只落库、等下次起播生效 */
@@ -155,20 +153,30 @@ object PictureEffects {
         )
     }
 
-    /** 参数变化:已挂效果时只改实例参数(着色器每帧现读);仅"首次从恒等切到有效果"要把链挂上 */
+    /** 面板改参数后调用:true = 需要重播本集才生效(开=本集还没挂链;关=预置回「原始」且链还挂着);同启用态调参不触发 */
+    fun consumeRestartNeeded(): Boolean {
+        val player = current?.get() ?: return false
+        if (tunneling || player.isPictureHdrSource()) return false
+        return restartNeeded(!applied().isNoOp, openedThisSession, preset() == PicturePreset.Original)
+    }
+
+    /** 上一条的口径本体(独立出来供 JVM 单测):开=有效果但本集没挂链;关=已回恒等、挂着链且预置是「原始」 */
+    internal fun restartNeeded(wantEffects: Boolean, opened: Boolean, presetOriginal: Boolean): Boolean =
+        if (wantEffects) !opened else (opened && presetOriginal)
+
+    /** 参数变化:本集已挂效果时只改实例参数(着色器每帧现读);本集未挂则先下发一次(链要等重播后的 prepare 才真建) */
     private fun push() {
         val player = current?.get() ?: return
         val profile = applied()
         colorTone.setProfile(profile)
         detail.setProfile(profile)
         if (tunneling) return
-        if (activated) {
+        if (openedThisSession) {
             // 暂停态没有新帧流过管线:要一次重绘才看得到变化
             if (!player.isPlaying) player.redrawVideoEffects()
             return
         }
         if (profile.isNoOp) return
-        activated = true
         player.applyVideoEffects(activeEffects)
     }
 }

@@ -52,6 +52,7 @@ import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.MD5;
+import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.SubtitleHelper;
 import com.github.tvbox.osc.util.TrackMemory;
 import com.github.tvbox.osc.util.KV;
@@ -64,6 +65,7 @@ import androidx.media3.ui.CaptionStyleCompat;
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.io.File;
@@ -152,6 +154,9 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
     }
 
     private final PlaybackViewBridge viewBridge = new PlayContainerViewBridge(this);
+
+    /** 控制器回调:切解码重播等复用路径要直接触发,故存字段 */
+    private final PlayContainerControlListener controlListener = new PlayContainerControlListener(this);
 
     private boolean lifecyclePaused;
     private String ownedPlaybackKey;
@@ -335,7 +340,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         mController.setEnableInNormal(true);
         mController.setGestureEnabled(true);
         mVideoView = engine == null ? null : engine.player();
-        mController.setListener(new PlayContainerControlListener(this));
+        mController.setListener(controlListener);
         if (mVideoView != null) mVideoView.setVideoController((BaseVideoController) mController);
     }
 
@@ -1125,6 +1130,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
             scheduler.setUserPickedLine(session.userPickedLine());
             rebindPlaybackOverlay();
             ownedPlaybackKey = session.playbackKey();
+            if (alignInstanceConfigOnTakeover()) return;
             if (mVideoView != null && !mVideoView.isPlaying()) mVideoView.start();
             return;
         }
@@ -1140,6 +1146,25 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
     void playViaScheduler(boolean reset) {
         reviveEngineIfReleased();
         scheduler.play(reset);
+    }
+
+    /**
+     * D6 同片接管时对齐实例级配置:缩放直接下发;解码必须重建内核才生效(media3 不给复用内核重选解码器),
+     * 此处改走既有"切解码重播"链路并返回 true,调用方不要再 resume。
+     */
+    private boolean alignInstanceConfigOnTakeover() {
+        if (mVideoView == null || scheduler == null) return false;
+        JSONObject cfg = scheduler.playerCfg();
+        if (cfg == null) return false;
+        mVideoView.setScreenScaleType(cfg.optInt("sc", 0));
+        // 外部播放器由 goPlayUrl 交给第三方,内核重建/重播不由这里发起(与 trySoftDecodeFallback 同一判据)
+        if (cfg.optInt("pl", 2) >= 10) return false;
+        if (PlayerHelper.isExoDecodeApplied(cfg)) return false;
+        LOG.i("echo-exo-decode-changed: rebuild kernel on takeover");
+        // 重建后按配置值重新起播一次:重试阶梯(含自动软解额度)随之复位,起播失败时仍能自动回退
+        scheduler.beginNewPlay();
+        controlListener.replay(false);
+        return true;
     }
 
     public boolean hasClaimedPlayback() {

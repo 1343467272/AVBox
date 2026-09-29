@@ -51,8 +51,10 @@ chaquopy {
             .firstOrNull { file(it).exists() }
             ?.let { buildPython(it) }
         pip {
+            // 纯 Python 包走国内镜像;Android 平台 wheel 只在 Chaquopy 官方仓库,
+            // 而 Chaquopy 检测到 -i 后不会再自动附加自己的仓库(chaquopy/pip_install.py),故显式补上
             options("-i", "https://mirrors.aliyun.com/pypi/simple/")
-            options("--find-links", file("wheels/chaquopy-prebuilt").absolutePath)
+            options("--extra-index-url", "https://chaquo.com/pypi-13.1")
             install("lxml")
             install("ujson")
             install("pyquery==2.0.2")

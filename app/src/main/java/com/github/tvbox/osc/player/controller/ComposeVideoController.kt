@@ -268,7 +268,7 @@ class ComposeVideoController @JvmOverloads constructor(
         curPlayState = playState
         state.playState = playState
         // 时长可信的状态才对齐:同片接管/页面重挂只回灌当前状态(PAUSED/PLAYING),不会再有 PREPARED;
-        // PREPARING 要排除 —— IJK 此时时长读作 0,会把点播误判成直播源而隐藏倍速/片头尾
+        // PREPARING 要排除 —— 此时时长读作 0,会把点播误判成直播源而隐藏倍速/片头尾
         if (playState != VideoView.STATE_IDLE && playState != VideoView.STATE_ERROR &&
             playState != VideoView.STATE_PREPARING
         ) {
@@ -652,9 +652,9 @@ class ComposeVideoController @JvmOverloads constructor(
         return if (idx >= 0) idx else speedOptions.indexOfFirst { it == 1.0f }
     }
 
-    /** 参数面板里播放器的展示顺序:exo 在左、ijk 在右,其余保持原顺序跟在其后 */
+    /** 参数面板里播放器的展示顺序:exo 在左,外部播放器保持原顺序跟在其后 */
     private fun sheetPlayerOrder(types: List<Int>): List<Int> {
-        val head = listOf(2, 1)
+        val head = listOf(2)
         return head.filter { types.contains(it) } + types.filter { it !in head }
     }
 
@@ -671,7 +671,7 @@ class ComposeVideoController @JvmOverloads constructor(
                 selected = speedIndex(speed),
                 onSelect = { applySpeed(speedOptions[it]) },
             ),
-            decode = decodeChoice(cfg, playerType),
+            decode = decodeChoice(cfg),
             player = ParamsChoice(
                 options = players.map { PlayerHelper.getPlayerName(it) },
                 selected = players.indexOf(playerType).coerceAtLeast(0),
@@ -701,33 +701,17 @@ class ComposeVideoController @JvmOverloads constructor(
         state.paramsSheet = buildParamsSheet()
     }
 
-    /** 解码选项：EXO 只有硬/软两档，IJK 取配置里的 codes 列表 */
-    private fun decodeChoice(cfg: JSONObject, playerType: Int): ParamsChoice {
-        if (playerType == 2) {
-            val isSoft = cfg.optString("exo", "硬解码") == "软解码" // i18n: keep
-            return ParamsChoice(
-                options = listOf(
-                    context.getString(R.string.player_decode_hard),
-                    context.getString(R.string.player_decode_soft),
-                ),
-                selected = if (isSoft) 1 else 0,
-                onSelect = { applyDecode(playerType, if (it == 1) "软解码" else "硬解码") }, // i18n: keep
-            )
-        }
-        val names = ApiConfig.get().ijkCodes.map { it.name }
-        val hardFirst = names.sortedBy { it != "硬解码" } // i18n: keep
+    /** 解码选项：只有硬/软两档(软解 = media3 的视频解码选择器优先系统软件解码器) */
+    private fun decodeChoice(cfg: JSONObject): ParamsChoice {
+        val isSoft = cfg.optString("exo", "硬解码") == "软解码" // i18n: keep
         return ParamsChoice(
-            options = hardFirst.map { decodeLabel(it) },
-            selected = hardFirst.indexOf(cfg.optString("ijk")).coerceAtLeast(0),
-            onSelect = { applyDecode(playerType, hardFirst[it]) },
+            options = listOf(
+                context.getString(R.string.player_decode_hard),
+                context.getString(R.string.player_decode_soft),
+            ),
+            selected = if (isSoft) 1 else 0,
+            onSelect = { applyDecode(if (it == 1) "软解码" else "硬解码") }, // i18n: keep
         )
-    }
-
-    /** IJK 的项名是码表数据值(ijk_codec 的取值),面板里与 EXO 两档同款显示本地化文案 */
-    private fun decodeLabel(name: String): String = when (name) {
-        "硬解码" -> context.getString(R.string.player_decode_hard) // i18n: keep
-        "软解码" -> context.getString(R.string.player_decode_soft) // i18n: keep
-        else -> name
     }
 
     private fun applySpeed(value: Float) {
@@ -773,13 +757,13 @@ class ComposeVideoController @JvmOverloads constructor(
         }
     }
 
-    private fun applyDecode(playerType: Int, value: String) {
+    private fun applyDecode(value: String) {
         keepControlsAlive()
         try {
             val cfg = playerConfig ?: return
-            cfg.put(if (playerType == 2) "exo" else "ijk", value)
-            // 按内核各记一个显式选择标记:否则设置页的新值会被播放记录里的旧值压住
-            cfg.put(if (playerType == 2) "exoSet" else "ijkSet", 1)
+            cfg.put("exo", value) // i18n: keep
+            // 记一个显式选择标记:否则设置页的新值会被播放记录里的旧值压住
+            cfg.put("exoSet", 1)
             // 用户显式选过解码:本次播放不再自动回退软解
             listener?.setAllowDecodeFallback(false)
             updatePlayerCfgState()
@@ -929,17 +913,10 @@ class ComposeVideoController @JvmOverloads constructor(
     }
 
     /**
-     * 自动重试切换内核(EXO⇄IJK,仅由 PlayContainer.autoRetry 调用)。
-     *
-     * 只刷新 UI 状态与本次播放配置,**不**调用 listener?.updatePlayerCfg() ——
-     * 后者会把自动切换结果写进该剧的播放记录("设置里是 EXO 却永远用 IJK"的根因,2026-09-13 修复);
-     * 自动切换是临时容错,只对本次会话生效,下次播放仍先按用户设置/记录尝试。
-     * 手动切内核(onPlayerClicked/onPlayerLongClicked)不在此列,仍持久化(按剧记忆语义)。
+     * 自动重试的"换内核"阶梯(仅由 PlayContainer.autoRetry 调用):内核只剩 EXO,恒为"跳过"。
+     * 手动换播放器([onPlayerClicked]/[onPlayerLongClicked])不受影响,仍按剧记忆持久化。
      */
-    override fun switchPlayer(): Boolean {
-        val cfg = playerConfig ?: JSONObject()
-        return PlayerSwitchUseCase.switchPlayer(cfg) { updatePlayerCfgState() }
-    }
+    override fun switchPlayer(): Boolean = PlayerSwitchUseCase.switchPlayer()
 
     override fun stopOther() {
         PlayerSwitchUseCase.stopOther()
@@ -1058,25 +1035,6 @@ class ComposeVideoController @JvmOverloads constructor(
         } catch (e: JSONException) {
             LOG.e("ComposeVideoController", e)
         }
-    }
-
-    override fun onIjkClicked() {
-        val cfg = playerConfig ?: return
-        val playerType = cfg.optInt("pl", 2)
-        val next = if (playerType == 2) {
-            // EXO:硬解/软解两取值互切;软解 = 系统软件解码器(c2.android.*)优先,
-            // 不看 ApiConfig.ijkCodes —— 那是 IJK 的 options 列表,与 media3 的选择器无关
-            if (cfg.optString("exo", "硬解码") == "软解码") "硬解码" else "软解码" // i18n: keep
-        } else {
-            // 配置里没有 ijk 键就什么都不做(缺键时 getString 会抛异常,这里不用异常做控制流)
-            if (!cfg.has("ijk")) return
-            val codecs = ApiConfig.get().ijkCodes
-            val idx = codecs.indexOfFirst { it.name == cfg.optString("ijk") }
-            // 值不在码表里时保持原值不动
-            if (idx < 0) cfg.optString("ijk") else codecs[(idx + 1) % codecs.size].name
-        }
-        applyDecode(playerType, next)
-        hideBottom()
     }
 
     override fun onTimeStartClicked() {

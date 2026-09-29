@@ -144,9 +144,6 @@ class PlayerUiState {
 
     // —— 衍生可见性（照搬 updatePortraitMenu 的逐按钮规则；与方向无关，预览态由菜单行/解析行的 previewMode 守卫） ——
 
-    /** 解码按钮:IJK(内核 options)与 EXO(media3 视频解码选择器)都有软解路径(2026-09-17 放开 EXO) */
-    val ijkBtnVisible: Boolean get() = playerType == 1 || playerType == 2
-    val trackBtnVisible: Boolean get() = playerType == 1 || playerType == 2
     val danmuBtnVisible: Boolean get() = danmuOpen
 
     /** 选集入口可见:当前线路剧集数 >1(面板只列剧集,单集时点开没有可选项);数据未就绪按不可见处理 */
@@ -289,7 +286,6 @@ interface PlayerActions {
     fun onSpeedLongClicked()
     fun onPlayerClicked()
     fun onPlayerLongClicked()
-    fun onIjkClicked()
     fun onTimeStartClicked()
     fun onTimeStartLongClicked()
     fun onTimeEndClicked()

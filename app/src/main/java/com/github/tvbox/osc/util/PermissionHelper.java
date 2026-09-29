@@ -57,7 +57,7 @@ public final class PermissionHelper {
      * {@code PlaybackController.updateMusicSession()} 在**每次播放状态回调**里调用。
      * 状态回调的密度经真机实测(app 落盘的 files/preload_debug.log)在起播后约 6 秒内为
      * **8~9 次/秒** —— 该文件显示 state=3(PLAYING) 与 state=4(PAUSED) 在 45~50ms 间隔上交替
-     * (HLS 起播期 IJK 在缓冲中 isPlaying() 报 false 所致,位置仍在推进)。
+     * (HLS 起播期内核在缓冲中 isPlaying() 报 false 所致,位置仍在推进)。
      * 若授权失败后仍继续下发申请,每次都会拉起一个 {@code GrantPermissionsActivity}
      * (已固定拒绝时它"创建→立刻 finish"、约 150ms 一轮),系统窗口反复抢焦点会 pause/resume 本页,
      * 渲染 Surface 随之被反复打断 —— 真机(vivo V2425A / Android 16,POST_NOTIFICATIONS 固定拒绝)

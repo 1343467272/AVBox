@@ -160,11 +160,7 @@ final class PlayContainerViewBridge implements PlaybackViewBridge {
     @Override
     public void applyPlayerConfigToView(int forceKernel) {
         if (container.mVideoView == null) return;
-        if (forceKernel > 0) {
-            PlayerHelper.updateCfg(container.mVideoView, container.scheduler.playerCfg(), forceKernel);
-        } else {
-            PlayerHelper.updateCfg(container.mVideoView, container.scheduler.playerCfg());
-        }
+        PlayerHelper.updateCfg(container.mVideoView, container.scheduler.playerCfg());
     }
 
     @Override

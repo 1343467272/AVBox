@@ -182,10 +182,10 @@
 
     <!-- Settings: preload -->
     <string name="preload_next_episode">Preload next episode</string>
-    <string name="preload_next_episode_subtitle">Only supported by the EXO player and some sources</string>
+    <string name="preload_next_episode_subtitle">Only supported by the Media3 player and some sources</string>
     <string name="preload_duration">Preload duration</string>
     <string name="preload_play_cache">Cache while playing</string>
-    <string name="preload_play_cache_subtitle">May make the EXO player unusable when enabled</string>
+    <string name="preload_play_cache_subtitle">May make the Media3 player unusable when enabled</string>
     <string name="preload_cache_size">Cache size</string>
 
     <!-- Search page -->
@@ -250,8 +250,7 @@
     <string name="toast_source_in_use">The source in use cannot be deleted</string>
 
     <!-- Players -->
-    <string name="player_ijk">IJK Player</string>
-    <string name="player_exo">EXO Player</string>
+    <string name="player_exo">Media3</string>
     <string name="player_mx">MX Player</string>
     <string name="player_reex">Reex Player</string>
     <string name="player_kodi">Kodi</string>
@@ -339,7 +338,6 @@
     <string name="settings_play_render">Rendering</string>
     <string name="settings_play_scale">Video Scaling</string>
     <string name="settings_play_decode">Decoding Mode</string>
-    <string name="settings_ijk_cache_play">IJK Cache Playback</string>
     <string name="settings_play_tunnel">Tunnel Mode</string>
     <string name="settings_play_prefer_aac">Prefer AAC</string>
     <string name="settings_music_page">Music Player Page</string>
@@ -361,8 +359,6 @@
     <string name="live_group_timeout">Timeout Switch</string>
     <string name="live_group_multi_source">Multi-source Switch</string>
     <string name="live_group_config_switch">Config Switch</string>
-    <string name="live_decoder_ijk_hw">IJK HW</string>
-    <string name="live_decoder_ijk_sw">IJK SW</string>
     <string name="live_setting_show_time">Show Time</string>
     <string name="live_setting_show_speed">Show Speed</string>
     <string name="live_setting_reverse">Reverse Switching</string>

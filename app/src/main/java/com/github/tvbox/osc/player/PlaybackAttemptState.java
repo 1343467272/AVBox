@@ -17,11 +17,11 @@ final class PlaybackAttemptState {
     /** 自动"硬解→软解"是否已用过;兼任"用户显式选过解码 ⇒ 本次不再自动回退"的阻断标记,只有确有自动态可回滚时才清除 */
     boolean hasAutoSwitchedDecode = false;
 
-    /** 自动切软解前的 cfg.ijk(仅回滚/落库剔除用;null = 不在自动软解态) */
+    /** 自动切软解前的 cfg.exo(仅回滚/落库剔除用;null = 不在自动软解态) */
     String autoSwitchedDecodeOld = null;
 
-    /** 自动软解改的是哪个解码键("ijk"/"exo"):回滚与落库剔除按它还原 */
-    String autoSwitchedDecodeKey = "ijk";
+    /** 自动软解改的解码键(内核只剩 EXO):回滚与落库剔除按它还原 */
+    String autoSwitchedDecodeKey = "exo";
 
     /** "起播后错误"自动重播是否已用过(每轮一次) */
     boolean hasRetriedAfterStart = false;

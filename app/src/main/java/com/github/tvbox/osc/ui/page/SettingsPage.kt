@@ -83,9 +83,7 @@ data class SettingsState(
     val playType: Int,
     val playRender: Int,
     val playScale: Int,
-    val ijkCodec: String,
     val exoDecode: String,
-    val ijkCachePlay: Boolean,
     val playTunnel: Boolean,
     val preferAac: Boolean,
     val musicPlayerPage: Boolean,
@@ -166,9 +164,7 @@ class SettingsViewModel : ViewModel() {
         playType = KV.get(HawkConfig.PLAY_TYPE, 2),
         playRender = KV.get(HawkConfig.PLAY_RENDER, 1),
         playScale = KV.get(HawkConfig.PLAY_SCALE, 0),
-        ijkCodec = KV.get(HawkConfig.IJK_CODEC, "硬解码"), // i18n: keep
         exoDecode = KV.get(HawkConfig.EXO_DECODE, "硬解码"), // i18n: keep
-        ijkCachePlay = KV.get(HawkConfig.IJK_CACHE_PLAY, false),
         playTunnel = KV.get(HawkConfig.PLAY_TUNNEL, false),
         preferAac = KV.get(HawkConfig.PLAY_PREFER_AAC, false),
         musicPlayerPage = MusicSettings.autoOpenPage(),

@@ -74,7 +74,7 @@ public final class TrackMemory {
         return "T" + "/" + field(language) + "/" + fieldCodec(codec);
     }
 
-    /** 指纹是否"能定位":全字段为空(如 IJK 读不到轨信息)会退化成"匹配第一条"而静默选错轨,故既不写库也不用它还原 */
+    /** 指纹是否"能定位":全字段为空(读不到轨信息时)会退化成"匹配第一条"而静默选错轨,故既不写库也不用它还原 */
     public static boolean usable(String fingerprint) {
         if (fingerprint == null) return false;
         String[] parts = fingerprint.split("/", -1);
@@ -173,7 +173,7 @@ public final class TrackMemory {
     /**
      * 记住用户显式的字幕决定(内置指纹 / #off / #local / #online)。
      *
-     * <p>不可定位的指纹(如 IJK 读不到轨信息时的 `T//`)不能记:它会被当成"这个片有决定"而让默认选轨
+     * <p>不可定位的指纹(如读不到轨信息时的 `T//`)不能记:它会被当成"这个片有决定"而让默认选轨
      * 整条让位,这一集就什么字幕都没有 —— 宁可不记。
      */
     public static void saveSubtitle(String contentKey, String record) {

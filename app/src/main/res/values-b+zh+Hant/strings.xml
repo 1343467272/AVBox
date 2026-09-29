@@ -182,10 +182,10 @@
 
     <!-- 設定:預載設定 -->
     <string name="preload_next_episode">下一集預載</string>
-    <string name="preload_next_episode_subtitle">僅EXO播放器和部分源支援</string>
+    <string name="preload_next_episode_subtitle">僅Media3播放器和部分源支援</string>
     <string name="preload_duration">預載時長</string>
     <string name="preload_play_cache">邊播邊快取</string>
-    <string name="preload_play_cache_subtitle">開啟後可能導致EXO播放器無法使用</string>
+    <string name="preload_play_cache_subtitle">開啟後可能導致Media3播放器無法使用</string>
     <string name="preload_cache_size">快取容量</string>
 
     <!-- 搜尋頁 -->
@@ -250,8 +250,7 @@
     <string name="toast_source_in_use">正在使用的源不能刪除</string>
 
     <!-- 播放器 -->
-    <string name="player_ijk">IJK播放器</string>
-    <string name="player_exo">EXO播放器</string>
+    <string name="player_exo">Media3</string>
     <string name="player_mx">MX播放器</string>
     <string name="player_reex">Reex播放器</string>
     <string name="player_kodi">Kodi</string>
@@ -339,7 +338,6 @@
     <string name="settings_play_render">畫面渲染</string>
     <string name="settings_play_scale">畫面縮放</string>
     <string name="settings_play_decode">解碼方式</string>
-    <string name="settings_ijk_cache_play">IJK 快取播放</string>
     <string name="settings_play_tunnel">隧道模式</string>
     <string name="settings_play_prefer_aac">AAC 優先</string>
     <string name="settings_music_page">音樂播放頁</string>
@@ -361,8 +359,6 @@
     <string name="live_group_timeout">逾時換源</string>
     <string name="live_group_multi_source">多源切換</string>
     <string name="live_group_config_switch">設定切換</string>
-    <string name="live_decoder_ijk_hw">ijk硬解</string>
-    <string name="live_decoder_ijk_sw">ijk軟解</string>
     <string name="live_setting_show_time">顯示時間</string>
     <string name="live_setting_show_speed">顯示網速</string>
     <string name="live_setting_reverse">換台反轉</string>

@@ -11,7 +11,6 @@ import com.github.catvod.crawler.Spider;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.bean.LiveChannelGroup;
-import com.github.tvbox.osc.bean.IJKCode;
 import com.github.tvbox.osc.bean.LiveChannelItem;
 import com.github.tvbox.osc.bean.LiveSettingGroup;
 import com.github.tvbox.osc.bean.LiveSettingItem;
@@ -73,7 +72,6 @@ public class ApiConfig {
     // volatile:DNS 解析在 OkHttp 线程读,配置解析在主线程写
     private volatile Map<String,String> vodHosts;
     private volatile Map<String,String> liveHosts;
-    private List<IJKCode> ijkCodes;
     String loadedLiveConfigUrl = "";
     private String danmaku = "";
     private volatile String configLogo = ""; // 配置级头像(接口 JSON 顶层 "logo")
@@ -421,12 +419,9 @@ public class ApiConfig {
     }
 
     private void loadDefaultConfig() {
-        // i18n: keep —— default_config.json 里 ijk 分组的 "硬解码"/"软解码" 是 KV 值(ijk_codec)与 getIJKCodec 的比较键
         JsonObject defaultJson = gson.fromJson(FileUtils.getAsOpen("default_config.json"), JsonObject.class);
         if (defaultJson == null) {
-            // assets 缺失/不可读时保底空列表:构造函数里 NPE 会让整个单例初始化失败
             LOG.e("ApiConfig: default_config.json unavailable");
-            ijkCodes = new ArrayList<>();
             return;
         }
         // 广告地址
@@ -435,10 +430,6 @@ public class ApiConfig {
             for (JsonElement host : defaultJson.getAsJsonArray("ads")) {
                 AdBlocker.addAdHost(host.getAsString());
             }
-        }
-        // IJK解码配置
-        if(ijkCodes==null){
-            ijkCodes = ConfigApplier.parseDefaultIjk(defaultJson);
         }
         LOG.i("echo-default-config-----------load");
     }
@@ -483,7 +474,6 @@ public class ApiConfig {
         initLiveSettings();
         KV.put(HawkConfig.LIVE_GROUP_LIST, new JsonArray());
         KV.put(HawkConfig.EPG_URL, ConfigParser.extractLiveTextEpg(content));
-        KV.put(HawkConfig.LIVE_PLAY_TYPE, KV.get(HawkConfig.PLAY_TYPE, 2));
         KV.put(HawkConfig.LIVE_WEB_HEADER, null);
         // 文本直播配置没有 hosts 字段:清掉上一份直播源留下的映射,否则会继续生效
         liveHosts = null;
@@ -536,7 +526,7 @@ public class ApiConfig {
                 str(R.string.common_default), "16:9", "4:3",
                 str(R.string.player_scale_fill), str(R.string.player_scale_origin), str(R.string.player_scale_crop)));
         ArrayList<String> playerDecoderItems = new ArrayList<>(Arrays.asList(
-                str(R.string.live_decoder_ijk_hw), str(R.string.live_decoder_ijk_sw), "exo"));
+                str(R.string.player_decode_hard), str(R.string.player_decode_soft)));
         ArrayList<String> timeoutItems = new ArrayList<>(Arrays.asList("5s", "10s", "15s", "20s", "25s", "30s"));
         ArrayList<String> personalSettingItems = new ArrayList<>(Arrays.asList(
                 str(R.string.live_setting_show_time), str(R.string.live_setting_show_speed),
@@ -821,13 +811,6 @@ public class ApiConfig {
             }else {
                 KV.put(HawkConfig.EPG_URL,"");
             }
-            //直播播放器类型
-            if(livesOBJ.has("playerType")){
-                String livePlayType =livesOBJ.get("playerType").getAsString();
-                KV.put(HawkConfig.LIVE_PLAY_TYPE,livePlayType);
-            }else {
-                KV.put(HawkConfig.LIVE_PLAY_TYPE,KV.get(HawkConfig.PLAY_TYPE, 2));
-            }
             //设置UA
             if(livesOBJ.has("timeout")){
                 int timeout = Math.max(5, Math.min(30, livesOBJ.get("timeout").getAsInt()));
@@ -863,10 +846,9 @@ public class ApiConfig {
         }
     }
 
-    /** 线路被拒载时的 KV 复位:与文本直播分支保持同一套"无直播配置"状态,避免沿用上一条线路的 EPG/UA/内核 */
+    /** 线路被拒载时的 KV 复位:与文本直播分支保持同一套"无直播配置"状态,避免沿用上一条线路的 EPG/UA */
     private void resetLiveKvOnUnsupportedLine() {
         KV.put(HawkConfig.EPG_URL, "");
-        KV.put(HawkConfig.LIVE_PLAY_TYPE, KV.get(HawkConfig.PLAY_TYPE, 2));
         KV.put(HawkConfig.LIVE_WEB_HEADER, null);
     }
 
@@ -1024,23 +1006,6 @@ public class ApiConfig {
 
     public List<LiveChannelGroup> getChannelGroupList() {
         return liveChannelGroupList;
-    }
-
-    public List<IJKCode> getIjkCodes() {
-        return ijkCodes;
-    }
-
-    public IJKCode getCurrentIJKCode() {
-        String codeName = KV.get(HawkConfig.IJK_CODEC, "硬解码"); // i18n: keep
-        return getIJKCodec(codeName);
-    }
-
-    public IJKCode getIJKCodec(String name) {
-        for (IJKCode code : ijkCodes) {
-            if (code.getName().equals(name))
-                return code;
-        }
-        return ijkCodes.get(0);
     }
 
     /** 点播/直播两套 hosts 的合并视图(点播优先):DNS 解析只认这一份 */

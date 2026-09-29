@@ -63,7 +63,6 @@ public final class KVKeySpec implements KVDecoder.TypeRegistry {
         register(HawkConfig.API_LINE_SOURCE, "");
         register(HawkConfig.HOME_API, "");
         register(HawkConfig.DEFAULT_PARSE, "");
-        register(HawkConfig.IJK_CODEC, "");
         register(HawkConfig.EXO_DECODE, "");
         register(HawkConfig.LIVE_CHANNEL, "");
         register(HawkConfig.DOH_JSON, "");
@@ -79,7 +78,6 @@ public final class KVKeySpec implements KVDecoder.TypeRegistry {
 
         // ---- int ----
         register(HawkConfig.PLAY_TYPE, 0);
-        register(HawkConfig.LIVE_PLAY_TYPE, 0);
         register(HawkConfig.PLAY_RENDER, 0);
         register(HawkConfig.PLAY_SCALE, 0);
         register(HawkConfig.LIVE_PLAY_SCALE, 0);
@@ -110,7 +108,6 @@ public final class KVKeySpec implements KVDecoder.TypeRegistry {
         register(HawkConfig.LIVE_CROSS_GROUP, false);
         register(HawkConfig.LIVE_SHOW_NET_SPEED, false);
         register(HawkConfig.LIVE_SHOW_TIME, false);
-        register(HawkConfig.IJK_CACHE_PLAY, false);
         register(HawkConfig.M3U8_PURIFY, false);
         register(HawkConfig.AUTO_SWITCH_LINE, false);
         register(HawkConfig.DEFAULT_LOAD_LIVE, false);

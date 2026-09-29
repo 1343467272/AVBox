@@ -27,7 +27,6 @@ import com.github.tvbox.osc.dlna.CastVideo;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.player.ExoPlayer;
 import com.github.tvbox.osc.player.PreloadCoordinator;
-import com.github.tvbox.osc.player.IjkMediaPlayer;
 import com.github.tvbox.osc.player.MyVideoView;
 import com.github.tvbox.osc.player.PageHost;
 import com.github.tvbox.osc.player.PlaybackEngine;
@@ -74,8 +73,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import me.jessyan.autosize.AutoSize;
 import master.flame.danmaku.ui.widget.DanmakuView;
-import tv.danmaku.ijk.media.player.IMediaPlayer;
-import tv.danmaku.ijk.media.player.IjkTimedText;
 import xyz.doikki.videoplayer.controller.BaseVideoController;
 import xyz.doikki.videoplayer.player.AbstractPlayer;
 import xyz.doikki.videoplayer.player.VideoView;
@@ -538,9 +535,6 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         if (mVideoView == null) return;
         AbstractPlayer mediaPlayer = mVideoView.getMediaPlayer();
         TrackInfo trackInfo = null;
-        if (mediaPlayer instanceof IjkMediaPlayer) {
-            trackInfo = ((IjkMediaPlayer)mediaPlayer).getTrackInfo();
-        }
         if (mediaPlayer instanceof ExoPlayer) {
             trackInfo = ((ExoPlayer)mediaPlayer).getTrackInfo();
         }
@@ -573,17 +567,15 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
                         LOG.i("echo-setTrack request: name=" + value.name + " render=" + value.renderId
                                 + " group=" + value.trackGroupId + " track=" + value.trackId
                                 + " pos=" + progress + " state=" + (mVideoView == null ? -999 : mVideoView.getCurrentPlayState()));
-                        if (mediaPlayer instanceof IjkMediaPlayer) ((IjkMediaPlayer) mediaPlayer).setTrack(value);
                         if (mediaPlayer instanceof ExoPlayer) ((ExoPlayer) mediaPlayer).setTrack(value);
                         final int seq = trackSwitchSeq.incrementAndGet();
                         new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
                             @Override
                             public void run() {
                                 if (seq != trackSwitchSeq.get()) return;
-                                if (mediaPlayer instanceof IjkMediaPlayer) mediaPlayer.seekTo(progress);
                                 mediaPlayer.start();
                                 // 诊断:切轨 +200ms 后的内核状态。⚠️ 只读播放状态、不读位置:本 runnable 在 try 块之外,
-                                // 而这 200ms 内内核可能已被释放,IJK 的 getCurrentPosition() 无异常保护(会崩主线程)
+                                // 而这 200ms 内内核可能已被释放
                                 LOG.i("echo-setTrack after start: state="
                                         + (mVideoView == null ? -999 : mVideoView.getCurrentPlayState()));
                             }
@@ -599,9 +591,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         if (mVideoView == null) return;
         AbstractPlayer mediaPlayer = mVideoView.getMediaPlayer();
         TrackInfo trackInfo = null;
-        if (mediaPlayer instanceof IjkMediaPlayer) {
-            trackInfo = ((IjkMediaPlayer) mediaPlayer).getTrackInfo();
-        } else if (mediaPlayer instanceof ExoPlayer) {
+        if (mediaPlayer instanceof ExoPlayer) {
             trackInfo = ((ExoPlayer) mediaPlayer).getTrackInfo();
         }
         if (trackInfo == null || trackInfo.getVideo().isEmpty()) {
@@ -624,9 +614,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
                         }
                         mediaPlayer.pause();
                         long progress = mediaPlayer.getCurrentPosition();
-                        if (mediaPlayer instanceof IjkMediaPlayer) {
-                            ((IjkMediaPlayer) mediaPlayer).setTrack(value);
-                        } else if (mediaPlayer instanceof ExoPlayer) {
+                        if (mediaPlayer instanceof ExoPlayer) {
                             ((ExoPlayer) mediaPlayer).setTrack(value);
                         }
                         final int seq = trackSwitchSeq.incrementAndGet();
@@ -649,9 +637,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         if (mVideoView == null) return;
         AbstractPlayer mediaPlayer = mVideoView.getMediaPlayer();
         TrackInfo trackInfo = null;
-        if (mediaPlayer instanceof IjkMediaPlayer) {
-            trackInfo = ((IjkMediaPlayer) mediaPlayer).getTrackInfo();
-        } else if (mediaPlayer instanceof ExoPlayer) {
+        if (mediaPlayer instanceof ExoPlayer) {
             trackInfo = ((ExoPlayer) mediaPlayer).getTrackInfo();
         }
         if (trackInfo == null) {
@@ -675,23 +661,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
                         for (TrackInfoBean subtitle : bean) {
                             subtitle.selected = isSameTrack(subtitle, value);
                         }
-                        if (mediaPlayer instanceof IjkMediaPlayer) {
-                            mediaPlayer.pause();
-                            long progress = mediaPlayer.getCurrentPosition();
-                            mController.getSubtitleView().destroy();
-                            mController.getSubtitleView().clearSubtitleCache();
-                            mController.getSubtitleView().isInternal = true;
-                            ((IjkMediaPlayer) mediaPlayer).setTrack(value);
-                            final int seq = trackSwitchSeq.incrementAndGet();
-                            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-                                @Override
-                                public void run() {
-                                    if (seq != trackSwitchSeq.get()) return;
-                                    mediaPlayer.seekTo(progress);
-                                    mediaPlayer.start();
-                                }
-                            }, 800);
-                        } else if (mediaPlayer instanceof ExoPlayer) {
+                        if (mediaPlayer instanceof ExoPlayer) {
                             mController.getSubtitleView().setVisibility(View.GONE);
                             mController.getSubtitleView().destroy();
                             mController.getSubtitleView().clearSubtitleCache();
@@ -886,27 +856,6 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         mController.getSubtitleView().isInternal = false;
         hideExoInternalSubtitle();
         String memoryKey = trackMemoryKey();
-        if (mediaPlayer instanceof IjkMediaPlayer) {
-            IjkMediaPlayer ijkPlayer = (IjkMediaPlayer) mediaPlayer;
-            ijkPlayer.setContentKey(memoryKey);
-            trackInfo = ijkPlayer.getTrackInfo();
-            if (trackInfo != null && trackInfo.getSubtitle().size() > 0) {
-                mController.getSubtitleView().hasInternal = true;
-            }
-            // 按记忆还原音轨/视轨/内置字幕;无记忆的类型保持播放器默认(音轨仍是"多条选第一条")
-            ijkPlayer.restoreTracks(trackInfo);
-            ijkPlayer.setOnTimedTextListener(new IMediaPlayer.OnTimedTextListener() {
-                @Override
-                public void onTimedText(IMediaPlayer mp, IjkTimedText text) {
-                    if(text==null)return;
-                    if (mController.getSubtitleView().isInternal) {
-                        com.github.tvbox.osc.subtitle.model.Subtitle subtitle = new com.github.tvbox.osc.subtitle.model.Subtitle();
-                        subtitle.content = text.getText();
-                        mController.getSubtitleView().onSubtitleChanged(subtitle);
-                    }
-                }
-            });
-        }
         if (mediaPlayer instanceof ExoPlayer) {
             ExoPlayer exoPlayer = (ExoPlayer) mediaPlayer;
             exoPlayer.setContentKey(memoryKey);
@@ -1001,8 +950,6 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
             exoInternalSubtitle = true;
             mController.getExoSubtitleView().setVisibility(View.VISIBLE);
             applyExoSubtitleSettings();
-        } else if (mediaPlayer instanceof IjkMediaPlayer) {
-            mController.getSubtitleView().isInternal = true;
         }
     }
 
@@ -1010,16 +957,13 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
      * 补一次默认内置选轨。
      *
      * <p>只在"外挂字幕落地失败回落"这条路上需要:那时播放器一条内置轨都没选过(EXO 只自动选带 DEFAULT
-     * 标记的轨、IJK 完全不自动选),光把视图置为显示态会得到整集无字幕。
-     * ⚠️ 不要在"按指纹还原"那条分支上加这个调用:`selected` 是**旧快照/旧状态**(IJK 快照在 selectTrack
-     * 后不刷新、EXO 的 getCurrentTracks 读不到刚下发到播放线程的 setParameters),会把刚还原好的
-     * 用户选择当成"没选",再顶成默认轨。
+     * 标记的轨),光把视图置为显示态会得到整集无字幕。
+     * ⚠️ 不要在"按指纹还原"那条分支上加这个调用:EXO 的 getCurrentTracks 读不到刚下发到播放线程的
+     * setParameters,会把刚还原好的用户选择当成"没选",再顶成默认轨。
      */
     private void ensureInternalSubtitleTrackSelected(AbstractPlayer mediaPlayer, TrackInfo trackInfo) {
         if (mediaPlayer instanceof ExoPlayer) {
             ((ExoPlayer) mediaPlayer).ensureSubtitleTrackSelected();
-        } else if (mediaPlayer instanceof IjkMediaPlayer) {
-            ((IjkMediaPlayer) mediaPlayer).ensureSubtitleTrackSelected(trackInfo);
         }
     }
 

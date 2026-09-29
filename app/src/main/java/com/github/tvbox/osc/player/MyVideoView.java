@@ -12,16 +12,12 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.github.tvbox.osc.util.ImgUtil;
-import com.github.tvbox.osc.util.PlayerHelper;
-
-import java.util.Map;
 
 import master.flame.danmaku.controller.DrawHandler;
 import master.flame.danmaku.danmaku.model.BaseDanmaku;
 import master.flame.danmaku.danmaku.model.DanmakuTimer;
 import master.flame.danmaku.ui.widget.DanmakuView;
 import xyz.doikki.videoplayer.player.AbstractPlayer;
-import xyz.doikki.videoplayer.player.PlayerFactory;
 import xyz.doikki.videoplayer.player.VideoView;
 import xyz.doikki.videoplayer.render.TextureRenderViewFactory;
 
@@ -32,19 +28,10 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
     private coil3.request.Disposable artworkDisposable;
     private View frameCover;
 
-    // updateCfg 保存的用户配置引擎;播放 rtmp 源时临时切换 ijk,切回非 rtmp 源时还原
-    private PlayerFactory<? extends AbstractPlayer> mConfiguredFactory;
-    private boolean mRtmpForced;
     /** 点播磁盘缓存标记(第二期扩展「边播边缓存」):默认 false(直播页不设置),点播容器 PlayContainer 启用 */
     private boolean mExoDiskCacheEnabled;
     /** "本次起播必须重建内核"标记(EXO 解码方式变更,见 PlayerHelper.updateCfg) */
     private boolean mKernelRebuildRequired;
-    /**
-     * 本次播放的有效 IJK 解码名("本剧配置 → 缺省全局",由 {@code PlayerHelper.updateCfg} 下发)。
-     * rtmp 强制 IJK 的工厂/推送在 {@link #setUrl} 时才建,那时拿不到 playerCfg —— 靠这里带上
-     * (见 PlayerHelper.applyRtmpSchemeOverride)。
-     */
-    private String mEffectiveIjkCodec;
 
     /**
      * 点播磁盘缓存标记:true 时 Exo 播放器对普通集也使用 cache 数据源(边播边缓存)。
@@ -73,8 +60,6 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
     private void applyTrackMemoryKey() {
         if (mMediaPlayer instanceof ExoPlayer) {
             ((ExoPlayer) mMediaPlayer).setContentKey(mTrackMemoryKey);
-        } else if (mMediaPlayer instanceof IjkMediaPlayer) {
-            ((IjkMediaPlayer) mMediaPlayer).setContentKey(mTrackMemoryKey);
         }
     }
 
@@ -100,15 +85,6 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
         return mMediaPlayer;
     }
 
-    public void saveConfiguredFactory(PlayerFactory<? extends AbstractPlayer> factory) {
-        mConfiguredFactory = factory;
-        mRtmpForced = false;
-    }
-
-    public boolean isRtmpForced() {
-        return mRtmpForced;
-    }
-
     /**
      * 标记"本次起播必须重建内核"(2026-09-17,EXO 解码方式变更时由 PlayerHelper.updateCfg 写入)。
      *
@@ -124,36 +100,6 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
         boolean required = mKernelRebuildRequired;
         mKernelRebuildRequired = false;
         return required;
-    }
-
-    /** 记录本次播放的有效 IJK 解码名(见 PlayerHelper.updateCfg / applyRtmpSchemeOverride) */
-    public void setEffectiveIjkCodec(String name) {
-        mEffectiveIjkCodec = name;
-    }
-
-    /** 本次播放的有效 IJK 解码名;未下发过(从未走过 updateCfg)返回 null,调用方回落全局设置 */
-    public String effectiveIjkCodec() {
-        return mEffectiveIjkCodec;
-    }
-
-    public void forceIjkFactory(PlayerFactory<? extends AbstractPlayer> factory) {
-        mRtmpForced = true;
-        setPlayerFactory(factory);
-    }
-
-    public void restoreConfiguredFactory() {
-        if (!mRtmpForced) return;
-        mRtmpForced = false;
-        if (mConfiguredFactory != null) {
-            setPlayerFactory(mConfiguredFactory);
-        }
-    }
-
-    @Override
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    public void setUrl(String url, Map headers) {
-        PlayerHelper.applyRtmpSchemeOverride(this, url);
-        super.setUrl(url, headers);
     }
 
     /** 当前渲染视图是否为 SurfaceView(见 [switchRenderToTexture] 的纯音频兜底) */

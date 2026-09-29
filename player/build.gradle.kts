@@ -41,6 +41,9 @@ dependencies {
     api(libs.media3.exoplayer.hls)
     api(libs.media3.exoplayer.rtsp)
     api(libs.media3.datasource)
+    // rtmp 扩展(DefaultDataSource 反射加载 RtmpDataSource);其自带的 io.antmedia:rtmp-client 为 4KB 页对齐,
+    // 由 app 侧 exclude 后改用 app/libs 里已修 16KB 的同名库
+    api(libs.media3.datasource.rtmp)
     api(libs.media3.database)
     api(libs.media3.ui)
     // jellyfin 预编译 ffmpeg 软解(16KB 页对齐),类名 androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer

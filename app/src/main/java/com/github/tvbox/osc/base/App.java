@@ -68,7 +68,6 @@ public class App extends Application {
                 .setSupportDP(false)
                 .setSupportSP(false)
                 .setSupportSubunits(Subunits.MM);
-        PlayerHelper.init();
         // 共享缓存容量(第二期扩展):设置项 → player 模块(须在首次 getSharedCache 前注入,改动重启 App 生效)
         ExoMediaSourceHelper.setSharedCacheSizeBytes(
                 Math.max(128, KV.get(HawkConfig.EXO_CACHE_SIZE_MB, HawkConfig.EXO_CACHE_SIZE_MB_DEFAULT)) * 1024L * 1024L);
@@ -88,8 +87,12 @@ public class App extends Application {
         KV.put(HawkConfig.PLAYER_IS_LIVE, false);
         if (!KV.contains(HawkConfig.PLAY_TYPE)) {
             KV.put(HawkConfig.PLAY_TYPE, 2);
-        } else if (KV.get(HawkConfig.PLAY_TYPE, 2) == 0) {
-            KV.put(HawkConfig.PLAY_TYPE, 2);
+        } else {
+            int playType = KV.get(HawkConfig.PLAY_TYPE, 2);
+            // 0 为非法值、1 为已移除的 IJK 内核 —— 一并归一到 EXO,避免设置页选不出内核
+            if (playType == 0 || playType == 1) {
+                KV.put(HawkConfig.PLAY_TYPE, 2);
+            }
         }
     }
 

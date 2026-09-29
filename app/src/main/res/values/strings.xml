@@ -182,10 +182,10 @@
 
     <!-- 设置:预载设置 -->
     <string name="preload_next_episode">下一集预载</string>
-    <string name="preload_next_episode_subtitle">仅EXO播放器和部分源支持</string>
+    <string name="preload_next_episode_subtitle">仅Media3播放器和部分源支持</string>
     <string name="preload_duration">预载时长</string>
     <string name="preload_play_cache">边播边缓存</string>
-    <string name="preload_play_cache_subtitle">开启后可能导致EXO播放器无法使用</string>
+    <string name="preload_play_cache_subtitle">开启后可能导致Media3播放器无法使用</string>
     <string name="preload_cache_size">缓存容量</string>
 
     <!-- 搜索页 -->
@@ -250,8 +250,7 @@
     <string name="toast_source_in_use">正在使用的源不能删除</string>
 
     <!-- 播放器 -->
-    <string name="player_ijk">IJK播放器</string>
-    <string name="player_exo">EXO播放器</string>
+    <string name="player_exo">Media3</string>
     <string name="player_mx">MX播放器</string>
     <string name="player_reex">Reex播放器</string>
     <string name="player_kodi">Kodi播放器</string>
@@ -339,7 +338,6 @@
     <string name="settings_play_render">画面渲染</string>
     <string name="settings_play_scale">画面缩放</string>
     <string name="settings_play_decode">解码方式</string>
-    <string name="settings_ijk_cache_play">IJK 缓存播放</string>
     <string name="settings_play_tunnel">隧道模式</string>
     <string name="settings_play_prefer_aac">AAC 优先</string>
     <string name="settings_music_page">音乐播放页</string>
@@ -361,8 +359,6 @@
     <string name="live_group_timeout">超时换源</string>
     <string name="live_group_multi_source">多源切换</string>
     <string name="live_group_config_switch">配置切换</string>
-    <string name="live_decoder_ijk_hw">ijk硬解</string>
-    <string name="live_decoder_ijk_sw">ijk软解</string>
     <string name="live_setting_show_time">显示时间</string>
     <string name="live_setting_show_speed">显示网速</string>
     <string name="live_setting_reverse">换台反转</string>

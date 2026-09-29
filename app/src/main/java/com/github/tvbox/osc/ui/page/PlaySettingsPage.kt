@@ -33,7 +33,7 @@ import com.github.tvbox.osc.util.PlayerHelper
 import kotlin.math.roundToInt
 import xyz.doikki.videoplayer.player.VideoView
 
-// KV 持久化值(ijk_codec/exo_decode),不能翻;显示走 player_decode_* 资源
+// KV 持久化值(exo_decode),不能翻;显示走 player_decode_* 资源
 private const val DecodeHard = "硬解码" // i18n: keep
 private const val DecodeSoft = "软解码" // i18n: keep
 
@@ -107,11 +107,9 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                     )
                 }
                 SettingsCard(SettingsCardPosition.LAST) {
-                    // 解码方式单行联动(2026-09-17):显示/写入**当前内核**那一份设置 —— IJK 与 EXO 独立开键、
-                    // 各自记忆(IJK 软解 = 内核自带 ffmpeg;EXO 软解 = 系统软件解码器 c2.android.*,仅视频)
-                    val isIjkKernel = state.playType == 1
-                    val isExoKernel = state.playType == 2
-                    val codec = if (isIjkKernel) state.ijkCodec else state.exoDecode
+                    // 解码方式:软解 = 系统软件解码器 c2.android.*(仅视频渲染器);
+                    // 内核选外部播放器时该设置不生效,行置灰
+                    val codec = state.exoDecode
                     val decodeLabels = listOf(
                         stringResource(R.string.player_decode_hard),
                         stringResource(R.string.player_decode_soft),
@@ -123,15 +121,10 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                             DecodeHard -> decodeLabels[0]
                             else -> codec
                         },
-                        enabled = isIjkKernel || isExoKernel,
+                        enabled = state.playType == 2,
                         options = decodeLabels,
                         selectedIndex = if (codec == DecodeSoft) 1 else 0,
-                        onSelect = { idx ->
-                            vm.put(
-                                if (isIjkKernel) HawkConfig.IJK_CODEC else HawkConfig.EXO_DECODE,
-                                if (idx == 1) DecodeSoft else DecodeHard,
-                            )
-                        },
+                        onSelect = { idx -> vm.put(HawkConfig.EXO_DECODE, if (idx == 1) DecodeSoft else DecodeHard) },
                     )
                 }
             }
@@ -140,13 +133,6 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
 
             SettingsGroup(title = stringResource(R.string.settings_group_play_behavior)) {
                 SettingsCard(SettingsCardPosition.FIRST) {
-                    SettingsSwitchRow(
-                        title = stringResource(R.string.settings_ijk_cache_play),
-                        checked = state.ijkCachePlay,
-                        onCheckedChange = { vm.put(HawkConfig.IJK_CACHE_PLAY, it) },
-                    )
-                }
-                SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_play_tunnel),
                         checked = state.playTunnel,

@@ -334,9 +334,9 @@ public final class PlaybackEngine implements PlaybackHostApi {
     /**
      * 直播/点播标记(2026-09-15 修复):唯一写入点是**引擎的模式切换**,不再跟直播页的 onCreate/onDestroy 走。
      *
-     * <p>{@code IjkMediaPlayer.setOptions()/setDataSource()} 与 {@code ApiConfig.proxyLocal()} 都会在
-     * prepare/取流时读它(决定缓存窗口、解码线程数、M3U8/itv 代理与爬虫路由),而 Activity 的销毁时机
-     * 与"引擎已切回点播"没有时序关系 —— 直播页还在栈里/销毁未完成时,点播起播会读到滞后的直播参数。
+     * <p>{@code ApiConfig.proxyLocal()} 取流时读它(决定爬虫路由),{@code ExoPlayer.setDataSource} 也用它
+     * 决定 rtmp 是否补 live=1;而 Activity 的销毁时机与"引擎已切回点播"没有时序关系 —— 直播页还在栈里/
+     * 销毁未完成时,点播起播会读到滞后的直播参数。
      * 引擎模式切换(enterLive/enterLiveState/exitLiveState/release)严格早于对应播放的起播 ⇒ 读到的值必然正确。
      */
     private static void setLiveFlag(boolean live) {

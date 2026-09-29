@@ -156,9 +156,6 @@
 # quickjs引擎
 #-keep class com.github.tvbox.quickjs.** {*;}
 -keep class com.whl.quickjs.** {*;}
-# IjkPlayer(player 模块内含 ijk 源码)
--keep class tv.danmaku.ijk.** { *; }
--dontwarn tv.danmaku.ijk.**
 
 # media3(含 jellyfin ffmpeg 软解,类都在 androidx.media3 包下)
 -keep class androidx.media3.** { *; }

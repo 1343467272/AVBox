@@ -43,13 +43,10 @@ public class HawkConfig {
     public static final String LIVE_API_HISTORY = "live_api_history";
     public static final String HOME_API = "home_api";
     public static final String DEFAULT_PARSE = "parse_default";
-    public static final String IJK_CODEC = "ijk_codec";
-    // EXO 解码方式(2026-09-17):与 IJK 的 IJK_CODEC 独立开键 —— IJK 走内核自带 options(mediacodec=0/1),
-    // EXO 走 media3 的 MediaCodecSelector(软解 = 系统软件解码器 c2.android.* 优先,仅视频渲染器)
+    // EXO 解码方式:走 media3 的 MediaCodecSelector(软解 = 系统软件解码器 c2.android.* 优先,仅视频渲染器)
     public static final String EXO_DECODE = "exo_decode";
     public static final String SUBTITLE_TEXT_STYLE = "subtitle_text_style";//外挂字幕文字样式 0 白 1 粉(#FFB6C1)
-    public static final String PLAY_TYPE = "play_type";//1 ijk 2 exo 10 MXPlayer
-    public static final String LIVE_PLAY_TYPE = "live_play_type";//1 ijk 2 exo 10 MXPlayer
+    public static final String PLAY_TYPE = "play_type";//2 exo 10 MXPlayer
     public static final String PLAY_RENDER = "play_render"; //0 texture 2
     public static final String PLAY_SCALE = "play_scale"; //0 texture 2
     // EXO 音频隧道(audio offload,2026-09-11):压缩音频码流直通 DSP 解码;设备/格式不支持时自动回退普通播放
@@ -74,7 +71,6 @@ public class HawkConfig {
     public static final String SUBTITLE_EXO_POSITION = "subtitle_exo_position";
     public static final String SOURCES_FOR_SEARCH = "checked_sources_for_search";
     public static final String REMOTE_TVBOX = "remote_tvbox_host";
-    public static final String IJK_CACHE_PLAY = "ijk_cache_play";
     public static final String PLAYER_IS_LIVE = "player_is_live";
     public static final String DOH_JSON = "doh_json";
     public static final String LIVE_GROUP_INDEX = "live_group_index";

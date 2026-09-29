@@ -15,7 +15,6 @@ import androidx.lifecycle.Observer;
 
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.player.ExoPlayer;
-import com.github.tvbox.osc.player.IjkMediaPlayer;
 import com.github.tvbox.osc.player.TrackInfo;
 import com.github.tvbox.osc.player.PreloadManagerHolder;
 import com.github.tvbox.osc.api.ApiConfig;
@@ -144,7 +143,7 @@ public class PlaybackController {
     }
 
     /**
-     * 初始化/补全播放器配置(内核 pl、渲染 pr/ijk/sc/sp/st/et)。
+     * 初始化/补全播放器配置(内核 pl、渲染 pr/sc/sp/st/et)。
      * 与原实现一致:优先沿用 vod.playerCfg 里已存的值,缺失项回落全局设置。
      */
     public void initPlayerCfg() {
@@ -157,20 +156,19 @@ public class PlaybackController {
             if (!playerCfg.has("pl")) {
                 // sourceBean 可能为空(切源窗口期 / 源被删):
                 // 原写法在这里 NPE,而本块 catch(Throwable) 是空的 —— 会静默跳过下面
-                // pr/ijk/sc/sp/st/et 全部设置,播放器配置只剩半截。改为退回全局播放器设置。
+                // pr/sc/sp/st/et 全部设置,播放器配置只剩半截。改为退回全局播放器设置。
                 int sourcePlayerType = sourceBean == null ? -1 : sourceBean.getPlayerType();
                 playerCfg.put("pl", (sourcePlayerType == -1) ? (int) KV.get(HawkConfig.PLAY_TYPE, 2) : sourcePlayerType);
             }
-            if (playerCfg.optInt("pl", 2) == 0) {
+            // 0 非法、1 为已移除的 IJK 内核 —— 一并归一到 EXO(老源配置/播放记录里可能还是 1)
+            int configuredType = playerCfg.optInt("pl", 2);
+            if (configuredType == 0 || configuredType == 1) {
                 playerCfg.put("pl", 2);
             }
             playerCfg.put("pr", KV.get(HawkConfig.PLAY_RENDER, 1));
-            // 解码方式(两个内核各记一份):以**全局设置**为准,只有用户在该内核下
-            // 于本剧播放器里显式选过(ijkSet / exoSet,见 ComposeVideoController.onIjkClicked)才按剧记忆 ——
-            // 否则播放记录里持久化的旧 "ijk"/"exo" 会一直压过设置页的新值,"设置里改成软解、这部剧却永远硬解"。
-            if (playerCfg.optInt("ijkSet", 0) == 0) {
-                playerCfg.put("ijk", KV.get(HawkConfig.IJK_CODEC, "硬解码")); // i18n: keep
-            }
+            // 解码方式以**全局设置**为准,只有用户在本剧播放器里显式选过(exoSet,见 ComposeVideoController)
+            // 才按剧记忆 —— 否则播放记录里持久化的旧 "exo" 会一直压过设置页的新值,
+            // "设置里改成软解、这部剧却永远硬解"。
             if (playerCfg.optInt("exoSet", 0) == 0) {
                 playerCfg.put("exo", KV.get(HawkConfig.EXO_DECODE, "硬解码")); // i18n: keep
             }
@@ -572,7 +570,7 @@ public class PlaybackController {
     /**
      * 落库用的播放器配置快照:**自动容错态不得进入播放记录**。
      *
-     * <p>自动切内核(pl)与自动切软解(ijk)都只是本次会话的临时回退,但覆盖层任一设置改动都会经
+     * <p>自动软解(exo)只是本次会话的临时回退,但覆盖层任一设置改动都会经
      * {@code PlayContainer.updatePlayerCfg()} 把当时的 playerCfg 整体写进记录/发 EventBus ——
      * 于是临时回退变成"按剧记忆",把用户的设置永久顶掉。这里返回剔除自动态后的**副本**,
      * 内存中的 {@link #playerCfg()} 不受影响(播放仍按自动态跑)。
@@ -599,22 +597,17 @@ public class PlaybackController {
     /**
      * 未按剧锁定时,让 cfg 的解码键跟随全局设置(换集入口调用)。
      *
-     * <p>背景:cfg 里的 "ijk"/"exo" 是**会话开始时**由 {@link #initPlayerCfg()} 从全局写下的副本;
-     * 用户在换集期间去设置页改了解码方式,不刷新的话要等下一部片才生效(IJK 侧因有"推给存活内核"
-     * 反而会立刻生效,两个内核行为还不一致)。这里在换集入口重写一次,让两边都按最新设置起播。
+     * <p>背景:cfg 里的 "exo" 是**会话开始时**由 {@link #initPlayerCfg()} 从全局写下的副本;
+     * 用户在换集期间去设置页改了解码方式,不刷新的话要等下一部片才生效 ——
+     * 这里在换集入口重写一次,让本次换集即按最新设置起播。
      *
-     * <p>两种不能刷新:①按剧锁定(ijkSet / exoSet == 1,用户在该内核下显式选过);②**自动软解态**
-     * (autoSwitchedDecodeOld != null)是本次会话的回退结果,用全局值顶掉就等于把回退作废 ——
-     * 只跳过被回退改过的那个键,另一个键照常跟随全局。
+     * <p>两种不能刷新:①按剧锁定(exoSet == 1,用户显式选过);②**自动软解态**
+     * (autoSwitchedDecodeOld != null)是本次会话的回退结果,用全局值顶掉就等于把回退作废。
      */
     private void syncDecodeFromGlobal() {
         if (playerCfg == null) return;
-        boolean autoIjk = st.autoSwitchedDecodeOld != null && "ijk".equals(st.autoSwitchedDecodeKey);
         boolean autoExo = st.autoSwitchedDecodeOld != null && "exo".equals(st.autoSwitchedDecodeKey);
         try {
-            if (playerCfg.optInt("ijkSet", 0) == 0 && !autoIjk) {
-                playerCfg.put("ijk", KV.get(HawkConfig.IJK_CODEC, "硬解码")); // i18n: keep
-            }
             if (playerCfg.optInt("exoSet", 0) == 0 && !autoExo) {
                 playerCfg.put("exo", KV.get(HawkConfig.EXO_DECODE, "硬解码")); // i18n: keep
             }
@@ -726,7 +719,7 @@ public class PlaybackController {
     }
 
     /**
-     * 自动切"硬解→软解"的回滚(与 restoreAutoSwitchedPlayer 同语义):把 cfg.ijk 还原成用户设置的值(只改内存)。
+     * 自动切"硬解→软解"的回滚(与 restoreAutoSwitchedPlayer 同语义):把 cfg.exo 还原成用户设置的值(只改内存)。
      *
      * <p>⚠️ 判定只看 {@code autoSwitchedDecodeOld}(确有"自动软解"可回滚),**不能**看
      * {@code hasAutoSwitchedDecode} —— 后者同时兼任"用户显式选过解码 ⇒ 本次播放不再自动回退"的**阻断标记**
@@ -750,18 +743,6 @@ public class PlaybackController {
         }
     }
 
-    /** 当前实际生效的播放内核(1=IJK / 2=EXO):按存活内核实例判断(与 currentTrackInfo 同款取法), 拿不到时回落 cfg.pl */
-    private int liveKernel() {
-        try {
-            AbstractPlayer live = (view == null) ? null : view.mediaPlayer();
-            if (live instanceof IjkMediaPlayer) return 1;
-            if (live instanceof ExoPlayer) return 2;
-        } catch (Throwable ignored) {
-            LOG.d("PlaybackController", "live kernel probe failed, fallback cfg.pl");
-        }
-        return playerCfg == null ? 2 : playerCfg.optInt("pl", 2);
-    }
-
     private int exoLastErrorKind() {
         try {
             AbstractPlayer live = (view == null) ? null : view.mediaPlayer();
@@ -775,26 +756,22 @@ public class PlaybackController {
     /**
      * 起播失败的"硬解→软解"回退(每次播放最多触发一次,软解态在本次会话内持续)。
      *
-     * <p>为什么必须做在**内核内部**而不是靠阶梯里的"切内核到 EXO":设备硬解不了的格式(HEVC 10bit/高 profile、
-     * 老设备 AV1 等)最有效的兜底是软解 —— IJK 自带 ffmpeg 软解;EXO 走系统软件解码器(c2.android.*)。
-     * 而阶梯里的"切内核"另一侧同样是 MediaCodec 硬解,命中率低。
+     * <p>为什么必须做在**内核内部**而不是靠阶梯里的"换线路":设备硬解不了的格式(HEVC 10bit/高 profile、
+     * 老设备 AV1 等)最有效的兜底是软解 —— EXO 走系统软件解码器(c2.android.*),命中率远高于换一路硬解源。
      *
-     * <p>两个内核共用本方法,改动的是各自的解码键:IJK 改 {@code cfg.ijk},EXO 改 {@code cfg.exo}
-     * (EXO 侧由 PlayerHelper 下发到 media3 的视频解码选择器,见 ExoPlayer.EXO_VIDEO_CODEC_SELECTOR)。
+     * <p>改动的是 {@code cfg.exo}(由 PlayerHelper 下发到 media3 的视频解码选择器,
+     * 见 ExoPlayer.EXO_VIDEO_CODEC_SELECTOR)。
      *
-     * <p>与"自动切内核"同语义:只改本次会话的内存配置({@code playerCfg}),**不落播放记录**
+     * <p>只改本次会话的内存配置({@code playerCfg}),**不落播放记录**
      * (落库侧由 {@link #playerCfgForPersist()} 兜底剔除),换线时由 {@link #restoreAutoSwitchedDecode()} 回滚,
-     * 用户显式点解码按钮时由 {@link #setAllowDecodeFallback(boolean)} 作废。换集不还原(会话内持续用软解,
-     * 与自动切内核一致),但阻断标记会随 {@link #beginNewPlay()} 复位,即新一集仍可获得一次回退机会。
+     * 用户显式点解码按钮时由 {@link #setAllowDecodeFallback(boolean)} 作废。换集不还原(会话内持续用软解),
+     * 但阻断标记会随 {@link #beginNewPlay()} 复位,即新一集仍可获得一次回退机会。
      */
     private boolean trySoftDecodeFallback() {
         if (st.hasAutoSwitchedDecode || playerCfg == null) return false;
-        // 生效内核按**存活内核**判断:cfg.pl 与实际内核可能不一致 —— DASH 源会强制 EXO
-        // (goPlayUrl → applyPlayerConfigToView(2))、rtmp 会在 MyVideoView.setUrl 里强制 IJK,
-        // 按 cfg.pl 判定会把"软解"写到另一侧的键上,回退等于没生效
-        int kernel = liveKernel();
-        if (kernel != 1 && kernel != 2) return false;                        // 只有 IJK / EXO 内核才有软解路径
-        String decodeKey = (kernel == 1) ? "ijk" : "exo";
+        // 外部播放器(pl 10~14)没有内核内软解路径,不适用
+        if (playerCfg.optInt("pl", 2) >= 10) return false;
+        final String decodeKey = "exo";
         if (!"硬解码".equals(playerCfg.optString(decodeKey, ""))) return false; // i18n: keep —— 已经是软解,不再回退
         if (TextUtils.isEmpty(webPlayUrl)) return false;                      // 没拿到可播地址(解析/嗅探失败)不适用
         String oldDecode = playerCfg.optString(decodeKey, "");
@@ -803,7 +780,7 @@ public class PlaybackController {
         } catch (Throwable th) {
             return false;
         }
-        LOG.i("echo-autoRetry hard->soft decode: kernel=" + kernel + " " + webPlayUrl);
+        LOG.i("echo-autoRetry hard->soft decode: " + webPlayUrl);
         st.autoSwitchedDecodeOld = oldDecode;
         st.autoSwitchedDecodeKey = decodeKey;
         st.hasAutoSwitchedDecode = true;
@@ -1436,12 +1413,8 @@ public class PlaybackController {
             CacheManager.delete(MD5.string2MD5(subtitleCacheKey()), 0);
         } else {
             inheritProgressIfNeeded();
-            try {
-                int playerType = playerCfg().getInt("pl");
-                if (view != null) view.setSubtitleViewVisible(playerType == 1);
-            } catch (JSONException e) {
-                LOG.e("PlaybackController", e);
-            }
+            // 外挂字幕视图先复位为隐藏,真有字幕再由字幕决策链路(applyDefaultSubtitle/setSubtitlePath)显示
+            if (view != null) view.setSubtitleViewVisible(false);
         }
 
         if (Jianpian.isJpUrl(vs.url)) {// 荐片地址特殊判断
@@ -1894,9 +1867,7 @@ public class PlaybackController {
         if (view == null) return null;
         try {
             AbstractPlayer mediaPlayer = view.mediaPlayer();
-            if (mediaPlayer instanceof IjkMediaPlayer) {
-                return ((IjkMediaPlayer) mediaPlayer).getTrackInfo();
-            } else if (mediaPlayer instanceof ExoPlayer) {
+            if (mediaPlayer instanceof ExoPlayer) {
                 return ((ExoPlayer) mediaPlayer).getTrackInfo();
             }
         } catch (Throwable ignored) {

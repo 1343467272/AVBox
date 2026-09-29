@@ -69,7 +69,7 @@ public class ExoPlayer extends ExoMediaPlayer {
      * EXO 解码方式(硬解/软解)的进程级下发位(2026-09-17)。
      *
      * <p>为什么是静态位而不是实例字段:选择器实例活在**视频渲染器**里,而渲染器随播放器实例创建;
-     * 换集/换线走复用路径不重建渲染器(与 IJK 的 codec 固化同一类问题)。选择器在**查询时**读本静态位,
+     * 换集/换线走复用路径不重建渲染器。选择器在**查询时**读本静态位,
      * 于是只要解码器是新建的,就会用上最新值 —— 无须重建播放器。
      *
      * <p>⚠️ 但 media3 会在格式兼容时**跨 period 复用同一 MediaCodec**(renderer disable 只 flush 不 release,
@@ -199,7 +199,7 @@ public class ExoPlayer extends ExoMediaPlayer {
      * (MediaFormat.KEY_TUNNELED_PLAYBACK),并非音频 offload(offload 路径在本机被系统
      * getPlaybackOffloadSupport=0 挡死,永远不生效);隧道要求视频直出 Surface,TextureView 走 GPU 合成
      * 不可隧道,故非_SurfaceView_渲染时不启用(设置层双向联动见 SettingsPage,fongmi 同款)。
-     * 仅 EXO 内核会走到本类,内核被自动切换为 IJK(含自动重试/rtmp 强制)后本类不再实例化 = 自动降级;
+     * 内核只剩 EXO,本类恒为播放内核;
      * 设备 codec 不支持 FEATURE_TunneledPlayback 时 media3 静默回退普通渲染,无副作用。
      * 参数在播放器创建时读取,设置改动于下次播放生效。
      */
@@ -221,6 +221,13 @@ public class ExoPlayer extends ExoMediaPlayer {
     public void setDataSource(String path, Map<String, String> headers) {
         defaultSubtitleTrackSelected = false;
         defaultSubtitleTrackSelectionClosed = false;
+        // librtmp 要求直播流地址末尾带 " live=1"(media3 的 RtmpDataSource 原样透传 URL,不会补),
+        // 缺了会被当作点播流,读到流尾即结束(直播必现)
+        boolean isRtmp = path != null && path.startsWith("rtmp://");
+        if (isRtmp && KV.get(HawkConfig.PLAYER_IS_LIVE, false) && !path.contains("live=1")) {
+            path = path + " live=1";
+            LOG.i("echo-rtmp-live-flag: " + path);
+        }
         super.setDataSource(path, headers);
         // 磁盘缓存数据源:
         // ① 预载过的下一集 → 必走:读预缓存(PreCacheHelper)写盘数据,免网络冷启动;
@@ -231,9 +238,10 @@ public class ExoPlayer extends ExoMediaPlayer {
         // 本地代理 URL 跳过磁盘缓存(2026-09-13):CacheDataSource 与 App 内代理(网盘 spider 自建/
         // M3U8 净化/DASH)的区间读取语义不兼容 —— 实测夸克 4K mp4 源需跳读文件尾 moov 时抛
         // ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE 致 EXO 无法起播(关掉边播缓存即可正常播放)。
-        if (PlayerHelper.isLocalProxyUrl(path)) {
+        // rtmp 同理跳过:librtmp 只支持顺序读,长连接直播套 CacheDataSource 会持续写盘且无法区间读
+        if (PlayerHelper.isLocalProxyUrl(path) || isRtmp) {
             if (preloadTarget || playCache) {
-                LOG.i("echo-play-cache-skip-local-proxy: " + path);
+                LOG.i((isRtmp ? "echo-play-cache-skip-rtmp: " : "echo-play-cache-skip-local-proxy: ") + path);
             }
             preloadTarget = false;
             playCache = false;

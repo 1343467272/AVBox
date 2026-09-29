@@ -922,7 +922,7 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
      * 页面内的搬运,本方法只负责"页面 ⇄ 服务"的搬运;两处都先判 parent 再 addView,幂等且不会重复挂载。
      *
      * <p>搬运会触发 SurfaceView 的 surfaceDestroyed/surfaceCreated,dkplayer 既有链路会 setDisplay(null)
-     * 再重挂;IJK/Exo 侧安全性结论见 MEMORY.md「IJK 异步 release × Surface 回调」与播放服务化 Spec §2.3/R1。
+     * 再重挂;Exo 侧安全性结论见播放服务化 Spec §2.3/R1。
      *
      * @param host 页面侧显示宿主(插到 index 0:宿主内的弹幕/覆盖层都在其之上)
      */

@@ -98,13 +98,13 @@ public interface PlaybackViewBridge {
     /** 盖一层黑帧(复用播放器换集时避免上一集画面残留) */
     void clearVideoFrame();
 
-    /** 外挂字幕视图显隐(内核 pl==1 时可见) */
+    /** 外挂字幕视图显隐(起播前复位为隐藏,需要时由字幕决策链路再显示) */
     void setSubtitleViewVisible(boolean visible);
 
     /** 让页面复位"新一次播放开始"的侧写标记(exitingPreview) */
     void onNewPlayStarted();
 
-    /** 把播放器配置下发到 dkplayer(kernel&gt;0 时强制该内核;既有 PlayerHelper.updateCfg) */
+    /** 把播放器配置下发到 dkplayer(内核只剩 EXO,forceKernel 不再改变结果;既有 PlayerHelper.updateCfg) */
     void applyPlayerConfigToView(int forceKernel);
 
     /** 纯音频 URL 起播时改用 TextureView 渲染 */

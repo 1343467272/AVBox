@@ -7,7 +7,6 @@ import com.github.tvbox.osc.util.thunder.Thunder;
 
 import org.json.JSONArray;
 import org.json.JSONException;
-import org.json.JSONObject;
 
 /**
  * 播放器切换 / URL 工具 / 旁路资源停止 用例
@@ -15,34 +14,15 @@ import org.json.JSONObject;
  */
 public final class PlayerSwitchUseCase {
 
-    /** 播放器类型变化后由控制层刷新 UI 配置并通知宿主 */
-    public interface SwitchCallback {
-        void onPlayerConfigChanged();
-    }
-
     private PlayerSwitchUseCase() {
     }
 
     /**
-     * EXO(1)/IJK(2) 互切：返回 true 表示跳过（当前类型不支持或切换失败）。
+     * 自动重试的"换内核"阶梯:内核只剩 EXO,没有可切的目标 —— 恒返回 true(跳过),
+     * 让上层阶梯继续走换线路。
      */
-    public static boolean switchPlayer(JSONObject playerConfig, SwitchCallback callback) {
-        try {
-            int playerType = playerConfig.getInt("pl");
-            int p_type = (playerType == 1) ? playerType + 1 : (playerType == 2) ? playerType - 1 : playerType;
-            if (p_type != playerType) {
-                LOG.i("echo-switchPlayer: " + playerType + " -> " + p_type);
-                playerConfig.put("pl", p_type);
-                callback.onPlayerConfigChanged();
-            } else {
-                LOG.i("echo-switchPlayer: skip unsupported playerType=" + playerType);
-                return true;
-            }
-        } catch (Exception e) {
-            LOG.i("echo-switchPlayer error: " + e.getMessage());
-            return true;
-        }
-        return false;
+    public static boolean switchPlayer() {
+        return true;
     }
 
     public static String encodeUrl(String url) {

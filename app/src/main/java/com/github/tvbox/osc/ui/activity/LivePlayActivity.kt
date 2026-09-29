@@ -121,7 +121,6 @@ class LivePlayActivity : BaseActivity() {
     internal var currentLiveChannelIndex: Int by VmVar(LivePlayViewModel::currentLiveChannelIndex)
     internal var currentLiveLookBackIndex = -1
     private var currentLiveChangeSourceTimes = 0
-    private var allowLiveSwitchPlayer = true
     private var currentLiveChannelItem: LiveChannelItem? = null
     private var pendingLiveRefreshChannelName: String? = null
     private var pendingLiveRefreshSourceIndex = -1
@@ -275,8 +274,6 @@ class LivePlayActivity : BaseActivity() {
         overlayVisible = false
         overlay.stopTimeshiftTicker()
         overlay.hideSwitchChannelSnapshot()
-        // 与 playChannel 同款对齐(2026-09-17):接管路径可能紧跟在点播会话之后,别让 rtmp 频道用残留值
-        videoView.setEffectiveIjkCodec(livePlayerManager.effectiveIjkCodecName())
         videoView.setUrl(item.url, liveChannelHeader())
         videoView.start()
         overlay.showResolutionAfterChannelSwitch()
@@ -331,7 +328,6 @@ class LivePlayActivity : BaseActivity() {
             VideoView.STATE_PREPARED, VideoView.STATE_BUFFERED, VideoView.STATE_PLAYING -> {
                 overlay.onPlaybackStarted()
                 currentLiveChangeSourceTimes = 0
-                allowLiveSwitchPlayer = true
             }
             VideoView.STATE_ERROR, VideoView.STATE_PLAYBACK_COMPLETED -> {
                 overlay.hideSwitchChannelSnapshot()
@@ -404,7 +400,6 @@ class LivePlayActivity : BaseActivity() {
         }
         val showPreviousFrame = currentLiveChannelItem != null && mVideoView?.isPlaying == true
         val previousLivePlayerType = livePlayerManager.livePlayerType
-        allowLiveSwitchPlayer = true
         if (!changeSource) {
             currentChannelGroupIndex = channelGroupIndex
             currentLiveChannelIndex = liveChannelIndex
@@ -423,14 +418,11 @@ class LivePlayActivity : BaseActivity() {
         overlay.updateChannelInfoUi()
         val videoView = mVideoView
         if (videoView != null) {
-            // 有效 IJK 解码值对齐(2026-09-17):点播由 PlayerHelper.updateCfg 在每次起播前下发,直播切台不走它 ——
-            // 这里显式对齐成"直播配置 → 全局",避免 rtmp 频道(强制 IJK)误用上一段点播会话的残留值
-            videoView.setEffectiveIjkCodec(livePlayerManager.effectiveIjkCodecName())
             // EXO 解码方式变更标记(2026-09-17):复用内核不会重选解码器,切台必须重建 ——
             // 与点播侧 PlayContainer.startVideoPlayback 同款;标记只在"EXO 解码值确实变了"时才被置上
             val rebuildKernel = videoView.consumeKernelRebuildRequired()
             val reusePlayer = !rebuildKernel && canReusePlayer(previousLivePlayerType)
-            val keepExoFrame = reusePlayer && previousLivePlayerType == 2
+            val keepExoFrame = reusePlayer
             if (showPreviousFrame && !keepExoFrame) {
                 overlay.showSwitchChannelSnapshot()
             } else {
@@ -481,9 +473,6 @@ class LivePlayActivity : BaseActivity() {
     }
 
     private val mConnectTimeoutChangeSourceRun = Runnable {
-        if (switchLivePlayerAndReplay()) {
-            return@Runnable
-        }
         currentLiveChangeSourceTimes++
         if (currentLiveChannelItem?.sourceNum == currentLiveChangeSourceTimes) {
             currentLiveChangeSourceTimes = 0
@@ -492,25 +481,6 @@ class LivePlayActivity : BaseActivity() {
         } else {
             playNextSource()
         }
-    }
-
-    private fun switchLivePlayerAndReplay(): Boolean {
-        val videoView = mVideoView
-        val item = currentLiveChannelItem ?: return false
-        if (!allowLiveSwitchPlayer || videoView == null) {
-            return false
-        }
-        mHandler.removeCallbacks(mConnectTimeoutChangeSourceRun)
-        releasePlayerKernel()
-        if (!livePlayerManager.switchLivePlayer(videoView)) {
-            allowLiveSwitchPlayer = false
-            return false
-        }
-        allowLiveSwitchPlayer = false
-        val retryUrl = if (isSHIYI && !TextUtils.isEmpty(playUrl)) playUrl!! else item.url
-        videoView.setUrl(retryUrl, liveChannelHeader())
-        videoView.start()
-        return true
     }
 
     /** 上/下一台:索引计算在 LiveChannelNavigator,这里只注入当前状态(跨组开关 + 密码可见性) */
@@ -724,7 +694,6 @@ class LivePlayActivity : BaseActivity() {
         pendingLiveRefreshSourceIndex = sourceIndex
         currentLiveLookBackIndex = -1
         currentLiveChangeSourceTimes = 0
-        allowLiveSwitchPlayer = true
         channelGroupPasswordConfirmed.clear()
         mHandler.removeCallbacks(mConnectTimeoutChangeSourceRun)
         epgController.cancelPending()

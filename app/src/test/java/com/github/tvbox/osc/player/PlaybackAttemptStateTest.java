@@ -49,4 +49,12 @@ public class PlaybackAttemptStateTest {
         st.beginSession();
         assertTrue(st.hasRetriedSameUrlOnBoot);
     }
+
+    @Test
+    public void preloadedResultFlag_clearedByBeginNewPlay() {
+        PlaybackAttemptState st = new PlaybackAttemptState();
+        st.usedPreloadedResult = true;
+        st.beginNewPlay();
+        assertFalse(st.usedPreloadedResult);
+    }
 }

@@ -14,6 +14,7 @@ import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.MD5;
 import com.github.tvbox.osc.util.PlayerHelper;
+import com.github.tvbox.osc.util.Preconnect;
 import com.github.tvbox.osc.util.WatchProgressStore;
 import com.github.tvbox.osc.util.thunder.Jianpian;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
@@ -22,6 +23,9 @@ import com.github.tvbox.osc.util.KV;
 import org.json.JSONObject;
 
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -35,7 +39,6 @@ public final class PreloadCoordinator {
     /** 持续缓冲多久才让路(取消预载+清数据):短暂缓冲(拖动/瞬断)不停预载,否则每次拖动都从头重下 */
     private static final long BUFFERING_YIELD_MS = 4000L;
     private static final long BUFFERING_COOLDOWN_MS = 5_000L;
-    private static final long CACHE_TTL_MS = 60_000L;
     private static final String PRELOAD_KEY_SUFFIX = "-preload";
 
     public static final class Snapshot {
@@ -63,6 +66,16 @@ public final class PreloadCoordinator {
         }
     }
 
+    private static final class CachedEntry {
+        final JSONObject info;
+        final long at;
+
+        CachedEntry(JSONObject info, long at) {
+            this.info = info;
+            this.at = at;
+        }
+    }
+
     private final SourceViewModel sourceViewModel;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final AtomicBoolean evaluatePending = new AtomicBoolean(false);
@@ -74,9 +87,8 @@ public final class PreloadCoordinator {
     private long bufferingCooldownUntil;
     private boolean observing;
     private boolean replayReadyPending;
-    private JSONObject cachedInfo;
-    private String cachedKey;
-    private long cachedAt;
+    /** 预解析直链缓存池:键 = progressKey(含源/片/线路/集名),消费即删;TTL 与容量见 PreloadCachePolicy */
+    private final LinkedHashMap<String, CachedEntry> cache = new LinkedHashMap<>();
 
     /** 缓冲持续到阈值才执行的让路:取消预载并清数据(短暂缓冲不执行,见 onMainPlayerBuffering) */
     private final Runnable bufferingYield = () -> {
@@ -268,35 +280,53 @@ public final class PreloadCoordinator {
         }
         preloadedKey = snapshot.nextKey;
         LOG.i("echo-preload-resolve-ok: " + url);
+        Preconnect.warm(url, headers);
         try {
             info.put("proKey", snapshot.nextKey);
             info.put("subtKey", snapshot.nextSubtitleKey);
         } catch (Throwable ignored) {
             LOG.d("PreloadCoordinator", "mark preload result keys failed");
         }
-        cachedInfo = info;
-        cachedKey = snapshot.nextKey;
-        cachedAt = System.currentTimeMillis();
+        putCache(snapshot.nextKey, info);
         PreloadManagerHolder.preload(snapshot.context, url, headers, startPos);
     }
 
+    /** 取用并移除某集的预解析结果;开关关闭/未命中/过期都返回 null,由调用方走正常取流 */
     public JSONObject consumeResult(String realKey) {
-        if (cachedInfo == null || cachedKey == null) return null;
-        if (!cachedKey.equals(realKey)) return null;
-        if (System.currentTimeMillis() - cachedAt > CACHE_TTL_MS) {
-            LOG.i("echo-preload-cache-expired: " + realKey);
-            clearCache();
+        if (realKey == null) return null;
+        if (!PreloadManagerHolder.enabled()) {
+            // 开关已关:池里旧结果不再复用,否则"关了还在省解析"与开关语义不符
+            if (!cache.isEmpty()) cache.clear();
             return null;
         }
-        JSONObject result = cachedInfo;
-        clearCache();
-        LOG.i("echo-preload-cache-hit: " + realKey);
-        return result;
+        CachedEntry entry = cache.remove(realKey);
+        if (entry == null) return null;
+        if (PreloadCachePolicy.isExpired(System.currentTimeMillis(), entry.at)) {
+            LOG.i("echo-preload-cache-expired: " + realKey);
+            return null;
+        }
+        LOG.i("echo-preload-cache-hit: " + realKey + " size=" + cache.size());
+        return entry.info;
     }
 
     private void clearCache() {
-        cachedInfo = null;
-        cachedKey = null;
+        cache.clear();
+    }
+
+    /** 写入一条预解析结果:顺带清过期项、超容量按插入序淘汰最旧(池很小,直接遍历比定时器简单) */
+    private void putCache(String key, JSONObject info) {
+        long now = System.currentTimeMillis();
+        Iterator<Map.Entry<String, CachedEntry>> entries = cache.entrySet().iterator();
+        while (entries.hasNext()) {
+            if (PreloadCachePolicy.isExpired(now, entries.next().getValue().at)) entries.remove();
+        }
+        cache.put(key, new CachedEntry(info, now));
+        Iterator<String> keys = cache.keySet().iterator();
+        while (PreloadCachePolicy.sizeExceeded(cache.size()) && keys.hasNext()) {
+            keys.next();
+            keys.remove();
+        }
+        LOG.i("echo-preload-cache-put: " + key + " size=" + cache.size());
     }
 
     private void gaveUp(Snapshot snapshot) {

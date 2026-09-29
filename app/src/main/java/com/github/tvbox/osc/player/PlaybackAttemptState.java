@@ -26,6 +26,9 @@ final class PlaybackAttemptState {
     /** "起播后错误"自动重播是否已用过(每轮一次) */
     boolean hasRetriedAfterStart = false;
 
+    /** 本次起播用的是预解析缓存结果(直链可能已过期):失败时允许一次"丢弃并重新取流" */
+    boolean usedPreloadedResult = false;
+
     boolean hasRetriedSameUrlOnBoot = false;
 
     boolean playbackStarted = false;
@@ -87,6 +90,7 @@ final class PlaybackAttemptState {
         hasAutoSwitchedDecode = false;
         hasRetriedAfterStart = false;
         hasRetriedSameUrlOnBoot = false;
+        usedPreloadedResult = false;
     }
 
     /** 用户自救(重播/切解析/切内核/切解码)后:允许再兜一次底 */

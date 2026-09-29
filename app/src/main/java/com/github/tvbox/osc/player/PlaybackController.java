@@ -833,7 +833,24 @@ public class PlaybackController {
      *
      * @return true = 已发起重试;false = 无路可走(调用方负责提示与收尾)
      */
+    /**
+     * 命中预解析缓存的起播失败兜底(直链可能已过期):丢弃该结果并立即重新取流同集一次。
+     * 没有这一步会先走重播/换线阶梯(含 20s 起播超时),比不预解析更慢。
+     */
+    private boolean retryWithFreshResolve(String reason) {
+        if (!st.usedPreloadedResult) return false;
+        st.usedPreloadedResult = false;
+        LOG.i("echo-preload-stale: re-resolve current episode (" + reason + ")");
+        st.playbackStarted = false;
+        stopParse();
+        initParseLoadFound();
+        if (view != null) view.releasePlayer();
+        play(false);
+        return true;
+    }
+
     public boolean autoRetry() {
+        if (retryWithFreshResolve("autoRetry")) return true;
         long currentTime = System.currentTimeMillis();
         if (currentTime - st.lastRetryTime > 60_000) {
             LOG.i("echo-reset-autoRetryCount");
@@ -940,6 +957,7 @@ public class PlaybackController {
     // -------------------- 超时/失败处理 --------------------
 
     public void handleResolvePlayUrlTimeout() {
+        if (retryWithFreshResolve("resolveTimeout")) return;
         LOG.i("echo-resolvePlayUrl timeout, try next line");
         cancelPlayRequest();
         stopParse();
@@ -1451,6 +1469,8 @@ public class PlaybackController {
         if (preloadCoordinator != null) {
             JSONObject preResult = preloadCoordinator.consumeResult(progressKey());
             if (preResult != null) {
+                // 直链可能已过期:标记来源,失败时走 retryWithFreshResolve 重取一次
+                st.usedPreloadedResult = true;
                 deliverPlayResult(preResult);
                 return;
             }

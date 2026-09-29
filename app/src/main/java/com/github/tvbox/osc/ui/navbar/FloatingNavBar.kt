@@ -36,7 +36,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -298,15 +297,6 @@ fun FloatingNavBar(
             } else {
                 null
             }
-
-        // 冷启动后第一次按压是这些方法首次执行(ART 现场编译),实测会让开头十几帧各掉 1-2 个 vsync;
-        // 等首帧画完再用极小幅度预热一遍,避免把这笔成本压在用户第一次点击上
-        LaunchedEffect(dampedDragAnimation, interactiveHighlight) {
-            withFrameNanos { }
-            withFrameNanos { }
-            dampedDragAnimation.warmUp()
-            interactiveHighlight?.warmUp()
-        }
 
         NavContainer(
             axis = axis,

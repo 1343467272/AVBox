@@ -4,7 +4,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -91,14 +90,6 @@ class InteractiveHighlight(
             }
             drawContent()
         }
-
-    // 预热按压高光:进度只到 0.01,视觉不可见,但着色器与绘制路径会真的执行一次
-    fun warmUp() {
-        animationScope.launch {
-            pressProgressAnimation.animateTo(PRESS_WARMUP_PROGRESS, tween(PRESS_WARMUP_MS))
-            pressProgressAnimation.animateTo(0f, tween(PRESS_WARMUP_MS))
-        }
-    }
 
     // 键必须是 this(实例身份):同 DampedDragAnimation.modifier,实例重建后手势必须跟着重启
     val gestureModifier: Modifier =

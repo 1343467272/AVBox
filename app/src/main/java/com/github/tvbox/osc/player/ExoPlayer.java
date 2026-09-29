@@ -1,10 +1,15 @@
 package com.github.tvbox.osc.player;
 
 import android.content.Context;
+import android.graphics.Rect;
+import android.os.Handler;
 import android.os.Looper;
+import android.view.Surface;
+import android.view.SurfaceHolder;
 
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.base.App;
+import com.github.tvbox.osc.player.effect.PictureEffects;
 import com.github.tvbox.osc.util.TrackMemory;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.LOG;
@@ -12,13 +17,18 @@ import com.github.tvbox.osc.util.KV;
 import com.github.tvbox.osc.util.LanguageManager;
 import com.github.tvbox.osc.util.PlayerHelper;
 import androidx.media3.common.C;
+import androidx.media3.common.ColorInfo;
+import androidx.media3.common.Effect;
 import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackGroup;
 import androidx.media3.common.Tracks;
+import androidx.media3.common.VideoFrameProcessor;
+import androidx.media3.common.VideoSize;
 import androidx.media3.common.text.Cue;
 import androidx.media3.common.text.CueGroup;
+import androidx.media3.common.util.Size;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.Renderer;
@@ -55,6 +65,14 @@ public class ExoPlayer extends ExoMediaPlayer {
     private boolean defaultSubtitleTrackSelectionClosed;
     /** 渲染器工厂创建的视频渲染器(用于关闭帧率匹配,见 disableFrameRateMatching) */
     private final ArrayList<Renderer> capturedVideoRenderers = new ArrayList<>();
+    /** 效果管线是否已开通:开通后视频帧走 VideoSink,内核不再上报视频尺寸,须自行补报(见 reportVideoSizeFromTracks) */
+    private volatile boolean videoEffectsOpen;
+    /** 本实例是否下发隧道模式(与效果管线互斥,见 prepareAsync) */
+    private boolean tunnelingEnabled;
+    /** 本集选中的视频轨是 HDR:效果链退化为纯拷贝(见 VideoAdjustShaderProgram),面板据此给原因 */
+    private volatile boolean pictureHdrSource;
+    /** media3 的 Player 有线程校验,效果与重绘信令一律落主线程 */
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     /** 点播磁盘缓存标记(第二期「边播边缓存」,由 MyVideoView 注入;直播页恒 false) */
     private boolean useDiskCache;
 
@@ -65,21 +83,6 @@ public class ExoPlayer extends ExoMediaPlayer {
         this.contentKey = key == null ? "" : key;
     }
 
-    /**
-     * EXO 解码方式(硬解/软解)的进程级下发位(2026-09-17)。
-     *
-     * <p>为什么是静态位而不是实例字段:选择器实例活在**视频渲染器**里,而渲染器随播放器实例创建;
-     * 换集/换线走复用路径不重建渲染器。选择器在**查询时**读本静态位,
-     * 于是只要解码器是新建的,就会用上最新值 —— 无须重建播放器。
-     *
-     * <p>⚠️ 但 media3 会在格式兼容时**跨 period 复用同一 MediaCodec**(renderer disable 只 flush 不 release,
-     * 复用评估见 MediaCodecVideoRenderer.canReuseCodec),此时选择器不会再被查询 —— 光改静态位,
-     * 换集仍然沿用旧解码器。故 {@code PlayerHelper.updateCfg} 在检测到值变化且当前活着 EXO 内核时,
-     * 会给 VideoView 打"必须重建内核"标记(MyVideoView.requireKernelRebuild),起播处据此走非复用路径。
-     *
-     * <p>写入点只有一个:{@code PlayerHelper.updateCfg}(每次起播前由 applyPlayerConfigToView 调用),
-     * 推的是"本剧配置 exo 键 → 缺省回落全局 EXO_DECODE"的有效值。
-     */
     private static volatile boolean preferSoftwareDecode = false;
 
     /** 下发 EXO 解码方式:true = 软解(系统软件解码器优先) */
@@ -92,15 +95,6 @@ public class ExoPlayer extends ExoMediaPlayer {
         return preferSoftwareDecode;
     }
 
-    /**
-     * 视频渲染器专用解码选择器:软解 = softwareOnly 解码器(c2.android.*)优先,硬解 = media3 默认顺序。
-     *
-     * <p>两点刻意的取舍:
-     * ① 只注入视频渲染器(见 SubtitleOffsetRenderersFactory.buildVideoRenderers)—— 音频保持
-     *    MediaCodec 优先 + ffmpeg 兜底(MODE_ON),不因"视频软解"顺带降级音频解码;
-     * ② PREFER_SOFTWARE 是**排序**不是过滤:设备没有该编码的软件解码器时自动回落硬解,
-     *    不会因软解不可用而起播失败。
-     */
     private static final MediaCodecSelector EXO_VIDEO_CODEC_SELECTOR =
             (mimeType, requiresSecureDecoder, requiresTunnelingDecoder) ->
                     (preferSoftwareDecode ? MediaCodecSelector.PREFER_SOFTWARE : MediaCodecSelector.DEFAULT)
@@ -125,9 +119,6 @@ public class ExoPlayer extends ExoMediaPlayer {
 
     public ExoPlayer(Context context) {
         super(context);
-        // 缓冲倍数(2026-09-12,照搬 fongmi ExoUtil.buildLoadControl):
-        // 蓄水目标 min/max = 官方默认 50s × 用户倍数;起播(2.5s)/再缓冲(5s)阈值保持默认不乘,
-        // 保证大缓冲只影响"播起来后攒多少水"而不拖慢起播;下次新建播放器实例时生效
         int bufferTimes = KV.get(HawkConfig.BUFFER_TIMES, HawkConfig.BUFFER_TIMES_DEFAULT);
         bufferTimes = Math.max(1, Math.min(10, bufferTimes));
         setLoadControl(new DefaultLoadControl.Builder()
@@ -143,9 +134,6 @@ public class ExoPlayer extends ExoMediaPlayer {
 
     @Override
     public void initPlayer() {
-        // 预载对齐(2026-09-12):预载开关开启时,播放器与 DefaultPreloadManager 共享同一播放线程,
-        // 满足 PreloadMediaSource 的 looper 硬校验(见 PreloadManagerHolder.preloadLooper);
-        // 开关关闭时不注入,播放线程保持 media3 默认(创建线程),与历史行为完全一致
         if (PreloadManagerHolder.enabled()) {
             setPlaybackLooper(PreloadManagerHolder.preloadLooper());
         }
@@ -156,12 +144,21 @@ public class ExoPlayer extends ExoMediaPlayer {
             @Override
             public void onTracksChanged(Tracks tracks) {
                 loadDefaultSubtitleTrackBeforeReady();
+                reportVideoSizeFromTracks(tracks);
             }
 
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 if (playbackState == Player.STATE_READY) {
                     defaultSubtitleTrackSelectionClosed = true;
+                }
+            }
+
+            @Override
+            public void onVideoSizeChanged(VideoSize videoSize) {
+                if (videoEffectsOpen && videoSize.width > 0 && videoSize.height > 0) {
+                    videoEffectsOpen = false;
+                    LOG.i("echo-picture-effects inactive: kernel reported video size");
                 }
             }
 
@@ -193,23 +190,21 @@ public class ExoPlayer extends ExoMediaPlayer {
         LOG.i("echo-exo-cues-listener-ready");
     }
 
-    /**
-     * 隧道模式(MediaCodec tunneled playback)与 AAC 优先(2026-09-11,对齐 fongmi 实现):
-     * 隧道 = DefaultTrackSelector.Parameters.setTunnelingEnabled —— 视频/音频经硬件 AV 同步直通渲染
-     * (MediaFormat.KEY_TUNNELED_PLAYBACK),并非音频 offload(offload 路径在本机被系统
-     * getPlaybackOffloadSupport=0 挡死,永远不生效);隧道要求视频直出 Surface,TextureView 走 GPU 合成
-     * 不可隧道,故非_SurfaceView_渲染时不启用(设置层双向联动见 SettingsPage,fongmi 同款)。
-     * 内核只剩 EXO,本类恒为播放内核;
-     * 设备 codec 不支持 FEATURE_TunneledPlayback 时 media3 静默回退普通渲染,无副作用。
-     * 参数在播放器创建时读取,设置改动于下次播放生效。
-     */
+    /** 起播前开通画质效果管线:media3 只在渲染器首次 enable(≈ 本次 prepare)时按当时的效果列表建 VideoSink,晚于 prepare 下发则本集不生效 */
+    @Override
+    public void prepareAsync() {
+        PictureEffects.INSTANCE.onPrepare(this, tunnelingEnabled);
+        super.prepareAsync();
+    }
+
     private void applyPlaybackParameters() {
         if (mInternalPlayer == null || trackSelector == null) return;
         boolean tunnel = KV.get(HawkConfig.PLAY_TUNNEL, false);
         boolean preferAac = KV.get(HawkConfig.PLAY_PREFER_AAC, false);
         boolean surfaceRender = KV.get(HawkConfig.PLAY_RENDER, 1) == 1;
         DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters();
-        builder.setTunnelingEnabled(tunnel && surfaceRender);
+        tunnelingEnabled = tunnel && surfaceRender;
+        builder.setTunnelingEnabled(tunnelingEnabled);
         if (preferAac) {
             builder.setPreferredAudioMimeTypes(MimeTypes.AUDIO_AAC);
         }
@@ -229,16 +224,9 @@ public class ExoPlayer extends ExoMediaPlayer {
             LOG.i("echo-rtmp-live-flag: " + path);
         }
         super.setDataSource(path, headers);
-        // 磁盘缓存数据源:
-        // ① 预载过的下一集 → 必走:读预缓存(PreCacheHelper)写盘数据,免网络冷启动;
-        // ② 普通点播(MyVideoView 点播标记 + 设置「边播边缓存」) → 边播边缓存,回拖/重看/弱网读盘命中;
-        // 直播页未打点播标记恒不走;未命中部分照常走网络
         boolean preloadTarget = PreloadManagerHolder.isPreloadTargetUrl(path, headers);
         boolean playCache = useDiskCache && KV.get(HawkConfig.PLAY_CACHE, false);
-        // 本地代理 URL 跳过磁盘缓存(2026-09-13):CacheDataSource 与 App 内代理(网盘 spider 自建/
-        // M3U8 净化/DASH)的区间读取语义不兼容 —— 实测夸克 4K mp4 源需跳读文件尾 moov 时抛
-        // ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE 致 EXO 无法起播(关掉边播缓存即可正常播放)。
-        // rtmp 同理跳过:librtmp 只支持顺序读,长连接直播套 CacheDataSource 会持续写盘且无法区间读
+        
         if (PlayerHelper.isLocalProxyUrl(path) || isRtmp) {
             if (preloadTarget || playCache) {
                 LOG.i((isRtmp ? "echo-play-cache-skip-rtmp: " : "echo-play-cache-skip-local-proxy: ") + path);
@@ -261,6 +249,106 @@ public class ExoPlayer extends ExoMediaPlayer {
     /** 点播磁盘缓存标记(第二期「边播边缓存」;由 MyVideoView 注入,直播页恒 false) */
     public void setUseDiskCache(boolean enabled) {
         useDiskCache = enabled;
+    }
+
+    /** 挂/换显示面。裸 Surface(本项目直接 setVideoSurface)不走自动路径,**必须自己补发** MSG_SET_VIDEO_OUTPUT_RESOLUTION,否则效果管线每帧被丢弃(黑屏) */
+    @Override
+    public void setDisplay(SurfaceHolder holder) {
+        super.setDisplay(holder);
+        if (holder == null) return;
+        Surface surface = holder.getSurface();
+        if (surface == null || !surface.isValid()) return;
+        Rect frame = holder.getSurfaceFrame();
+        if (frame != null) notifyVideoOutputResolution(frame.width(), frame.height());
+    }
+
+    /**
+     * 输出分辨率信令(纹理渲染路径没有 SurfaceHolder,由 {@link MyVideoView} 按渲染视图尺寸推同一份)。
+     * 本地不去重:media3 按"同一显示面 + 同一尺寸"自己短路,而换面必须重发(换面会清掉 VideoSink 输出面信息)。
+     */
+    public void notifyVideoOutputResolution(int width, int height) {
+        if (mInternalPlayer == null || width <= 0 || height <= 0) return;
+        for (Renderer renderer : capturedVideoRenderers) {
+            try {
+                mInternalPlayer.createMessage(renderer)
+                        .setType(Renderer.MSG_SET_VIDEO_OUTPUT_RESOLUTION)
+                        .setPayload(new Size(width, height))
+                        .send();
+            } catch (Throwable th) {
+                LOG.e("ExoPlayer", "echo-picture-output-resolution failed", th);
+            }
+        }
+    }
+
+    /** 下发画质效果(调色)列表,由 {@link PictureEffects} 调用;失败只留痕,不让调色把播放带崩 */
+    public void applyVideoEffects(List<Effect> effects) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(() -> applyVideoEffects(effects));
+            return;
+        }
+        if (mInternalPlayer == null) return;
+        try {
+            mInternalPlayer.setVideoEffects(effects);
+            videoEffectsOpen = true;
+        } catch (Throwable th) {
+            // 缺 media3-effect、非默认渲染器、DRM 等都会在这里抛:画面照常播,只是没有调色
+            videoEffectsOpen = false;
+            LOG.e("ExoPlayer", "echo-picture-effects apply failed", th);
+        }
+    }
+
+    /** 效果链是否真的挂着(apply 失败或非默认渲染器吞掉信令时翻 false),供面板提示"当前不可调色" */
+    public boolean isPictureEffectsActive() {
+        return videoEffectsOpen;
+    }
+
+    /** 本集视频轨是否 HDR(效果退化为纯拷贝,面板据此提示) */
+    public boolean isPictureHdrSource() {
+        return pictureHdrSource;
+    }
+
+    /** 暂停态调参后重绘当前帧(media3 的 VideoFrameProcessor#REDRAW 信令):没有新帧流过管线时看不到变化 */
+    public void redrawVideoEffects() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(this::redrawVideoEffects);
+            return;
+        }
+        if (mInternalPlayer == null || !videoEffectsOpen) return;
+        try {
+            mInternalPlayer.setVideoEffects(VideoFrameProcessor.REDRAW);
+        } catch (Throwable th) {
+            LOG.e("ExoPlayer", "echo-picture-effects redraw failed", th);
+        }
+    }
+
+    private void reportVideoSizeFromTracks(Tracks tracks) {
+        if (!videoEffectsOpen || mPlayerEventListener == null || tracks == null) return;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_VIDEO || !group.isSelected()) continue;
+            for (int i = 0; i < group.length; i++) {
+                if (!group.isTrackSelected(i)) continue;
+                Format format = group.getTrackFormat(i);
+                if (format.width <= 0 || format.height <= 0) return;
+                int width = format.width;
+                int height = format.height;
+                if (format.rotationDegrees == 90 || format.rotationDegrees == 270) {
+                    int rotated = width;
+                    width = height;
+                    height = rotated;
+                }
+                pictureHdrSource = ColorInfo.isTransferHdr(format.colorInfo);
+                LOG.i("echo-picture-size: " + width + "x" + height + " rotation=" + format.rotationDegrees
+                        + " hdr=" + pictureHdrSource);
+                mPlayerEventListener.onVideoSizeChanged(width, height);
+                return;
+            }
+        }
+    }
+
+    @Override
+    public void release() {
+        PictureEffects.INSTANCE.onPlayerReleased(this);
+        super.release();
     }
 
     private void disableFrameRateMatching() {
@@ -291,12 +379,6 @@ public class ExoPlayer extends ExoMediaPlayer {
                 // 音频硬解优先:MediaCodec 不支持的格式(AC3/DTS 类)才落到 ffmpeg 软解兜底
                 .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setEnableMediaCodecVideoRendererDurationToProgressUs(dynamicScheduling);
-        // 关闭 MediaCodec 异步队列(2026-09-15:由反射改为直接调用)。该方法是 media3 的**公开 API**
-        // (1.11.1 实证 public final,无 @RestrictTo/@UnstableApi/@Deprecated),内部只是
-        // DefaultMediaCodecAdapterFactory.forceDisableAsynchronous() 的实例开关,在 renderer 构建前调用即生效。
-        // 原写法用反射调一个公开方法,唯一效果是把"升级 media3 时编译期报错"降级成"运行期静默失效"
-        // (只少一行日志、异步队列被悄悄恢复)——改直接调用后,升级若该 API 有变,编译期就会暴露。
-        // 日志保留用于真机确认确实走到了;若要恢复异步队列,删掉下面这行即可。
         factory.forceDisableMediaCodecAsynchronousQueueing();
         LOG.i("echo-exo-disable-async-codec-queue");
         LOG.i("echo-exo-video-dynamic-scheduling: " + dynamicScheduling);
@@ -754,8 +836,7 @@ public class ExoPlayer extends ExoMediaPlayer {
                                            androidx.media3.exoplayer.video.VideoRendererEventListener eventListener,
                                            long allowedJoiningTimeMs, ArrayList<Renderer> out) {
             int firstRendererIndex = out.size();
-            // 解码方式注入点(2026-09-17):只换视频渲染器的选择器(EXO_VIDEO_CODEC_SELECTOR 内部
-            // 按静态下发位在软解/硬解之间动态二选一),音频渲染器继续用工厂默认选择器
+            
             super.buildVideoRenderers(context, extensionRendererMode, EXO_VIDEO_CODEC_SELECTOR, enableDecoderFallback,
                     eventHandler, eventListener, allowedJoiningTimeMs, out);
             if (videoRendererSink != null) {

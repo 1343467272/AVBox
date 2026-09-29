@@ -6,6 +6,9 @@ import androidx.compose.runtime.setValue
 import com.github.tvbox.osc.bean.Subtitle
 import com.github.tvbox.osc.bean.VodInfo
 import com.github.tvbox.osc.dlna.CastVideo
+import com.github.tvbox.osc.player.effect.PictureEffectUnavailableReason
+import com.github.tvbox.osc.player.effect.PicturePreset
+import com.github.tvbox.osc.player.effect.PictureProfile
 import xyz.doikki.videoplayer.player.VideoView
 
 /**
@@ -214,6 +217,7 @@ class ParamsSheetState(
     val decode: ParamsChoice,
     val player: ParamsChoice,
     val scale: ParamsChoice,
+    val picture: PictureParamsState,
     /** 已设片头/片尾(mm:ss);空串 = 未设置 */
     val timeStartText: String,
     val timeEndText: String,
@@ -222,6 +226,20 @@ class ParamsSheetState(
     val onResetTime: () -> Unit,
     /** 弹幕搜索入口;订阅源不支持时为 null（该组不显示） */
     val onSearchDanmu: (() -> Unit)?,
+)
+
+/** 画质参数面板状态：值取自 KV，改动即时落库并下发内核；面板只保留拖动中的副本（拖动不重建本对象） */
+class PictureParamsState(
+    val preset: PicturePreset,
+    /** 「自定义」预置下的 8 项滑条值；其余预置不展开滑条 */
+    val tuning: PictureProfile,
+    /** 当前不可调色的原因（面板显示一行说明；None = 可用） */
+    val unavailableReason: PictureEffectUnavailableReason,
+    val onPresetSelected: (PicturePreset) -> Unit,
+    val onTuningChanged: (PictureProfile) -> Unit,
+    val onReset: () -> Unit,
+    /** 按住对比：true = 临时按恒等参数出画（松手复原） */
+    val onCompareChanged: (Boolean) -> Unit,
 )
 
 /** 弹幕设置面板状态（Step 6 替代 View 版 DanmuSettingDialog） */

@@ -3729,3 +3729,57 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **验证**:`.\\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(381 用例 / 0 失败);i18n 卡口 `i18n_gate.py` 归零(ui 0 / 非 ui 0);APK 断言 —— arm64 无 `libijk*`/`libplayer.so`、`librtmp-jni.so` LOAD 对齐 `0x4000`、31 个 dex 里 `tv/danmaku` 命中 0 且 `io/antmedia` 命中 12、APK 79.16MB。
 
 **未做 / 待走查**:①真机 rtmp 实源(直播 + 点播)与 `live=1` 是否必要/有效;②`udp://` 源不回退、m3u8 点播/直播回归、软解切换、内置字幕与轨道、进度恢复;③设置页内核下拉只剩 exo + 外部播放器、直播设置面板解码两项;④老配置(曾选 ijk 内核)启动后显示 EXO 不崩;⑤本机无设备在线未装包、改动未提交。
+
+### 画质参数(调色)接入 + 效果链反复拆建闪退排查(2026-09-30;用户「开始接入功能」→ 走查闪退 → 用户「修好了」/「这个也修复了」)
+
+**接入(依据 `文档/画质参数与调色方案（2026-09-30 讨论稿）.md`)**:新增 `app/src/main/java/com/github/tvbox/osc/player/effect/`(Kotlin):`PictureProfile`(8 参数 + 14 预置表 + 量程/NaN 钳制)、`PictureEffects`(唯一入口:KV 读写 / 首次挂链 / 调参下发 / 按住对比)、`ColorToneAdjustEffect`、`DetailAdjustEffect`、`VideoAdjustShaderProgram`(基类,`useHdr` 直接拒绝)。`ExoPlayer` 接:`prepareAsync` 开通(隧道开启时跳过)、`setDisplay`+`notifyVideoOutputResolution` 补输出分辨率信令、`applyVideoEffects`/`redrawVideoEffects`、`reportVideoSizeFromTracks` 补报尺寸、`release` 摘引用。`MyVideoView.onLayout` 给纹理渲染路径推分辨率。KV 9 键(`HawkConfig.PICTURE_*` + `KVKeySpec` 登记,`KVKeySpecTest` 锁)。依赖 `media3-effect`(与其余 media3 同版本)。面板:`PlayerPicturePanel` 改由控制层驱动(`PlayerUiState.PictureParamsState` + `ComposeVideoController` 接线;拖动中面板只留副本、不重建抽屉)。`LOG.FILE_LOG_PREFIXES` 加 `echo-picture`。新增单测 `PictureProfileTest`(8 例:预置表值、恒等判定、钳制)。
+
+**闪退排查(两次同一签名、14 层嵌套固定)**:`FATAL EXCEPTION: main` 的 `ViewGroup.dispatchWindowVisibilityChanged` NPE(`mChildren` 有 null 洞),栈内零应用帧。用户给出复现步骤 = **选预置/自定义后连续点「按住对比」**。根因:media3 只在效果**列表**变化时拆建整条 GL 链(`GlTextureFrameProcessorChain.configure`;源码 TODO b/528240409 自述重建不等旧帧),而"按住对比"当时用空列表表达无效果 ⇒ 反复拆建 → 播放硬卡死(声音画面一起停)→ 触发"起播后出错"兜底重试(`errorWithRetry → retryAfterStartedError → releasePlayer/addDisplay`,增删播放器子视图)→ 崩在那次 traversal。**修法**:效果列表恒定("无效果"= 参数恒等,恒等参数下着色器是纯拷贝),调参不再下发列表(着色器每帧现读 volatile 参数快照),仅"首次从恒等切到有效果"挂一次链;暂停态补 `VideoFrameProcessor.REDRAW`。**同期排除**:同片源在未接功能的构建上就频繁 `state=6 BUFFERING`(卡顿是源侧);media3 的 `Player.Listener` 走 applicationLooper(主线程),`setPlaybackLooper(预载线程)` 只改内部播放线程。
+
+**既有链路加固(用户点头后)**:`PlayContainer.errorWithRetry` 整段转主线程(内部会增删播放器子视图,原先只把提示文案 `runOnUi`);`PlayUrlResolver` 解析线程池里 4 处 `view.showTip(...)` 改走 `runOnUi`(同文件 toast/loadWebView 本就如此,只这几处漏);该类 KDoc 登记"池内碰视图必须 runOnUi"。核对后**无需**加守卫的:media3 回调、`timeoutHandler`(main)、`goPlayUrl` 的视图动作(本就 runOnUi)。
+
+**验证**:`:app:assembleDebug` + `:app:testDebugUnitTest` 全绿(50 类 / 390 用例 / 0 失败);i18n 三关 0 处;真机 vivo 10AF1J04JX0016G 装机,用户复测"按住对比连点"不再卡死/闪退。BootGuard 侧核对:该崩溃栈全在 `IGNORABLE_FRAME_PREFIXES`(android./java./com.android.internal.)内 ⇒ 不写崩溃标记、不会误禁源。
+
+**未做 / 待办**:①解析类源(json 扩展/聚合/超级解析)起播与失败提示待复测;②HDR 源与隧道开启时的表现待走查(已登记活规范 §7);③那次"卡死后被判成出错"的来源未定位(无 `echo-exo-player-error`);④`retryAfterStartedError` 的兜底重播走 2 参 `playUrl`、不校验代际(既有行为);⑤代码/文档未提交。
+
+### 补:静默失效收口(2026-09-30,用户「开启调色后无法使用隧道模式是吗」→ 选 A「对齐 fongmi 给原因」)
+
+**澄清**:隧道与效果互斥的**依据不是上游 media3 文档**(上游 `setVideoEffects` javadoc 只列 media3-effect 同版本/仅默认 `MediaCodecVideoRenderer`/不支持改时间戳效果/不支持 DRM/prepare 前至少调一次五条),而是机制(隧道要帧直出显示面、效果链要帧过 GL 图) + fongmi 自己 fork 的 media3 判定(`VIDEO_EFFECTS_UNSUPPORTED_TUNNELING` → `error_video_effect_tunnel`)。此前把它说成"官方"有误,已同步到活规范 §6.17。
+
+**同时查出的第二个静默失效点**:本项目自带 ffmpeg 扩展视频渲染器(平台解码器不支持该编码时启用),`MSG_SET_VIDEO_EFFECTS` 落到非 `MediaCodecVideoRenderer` 上被 `BaseRenderer.handleMessage`(空实现)吞掉 —— 不报错、不生效、也无日志。
+
+**实施**:`PictureEffects` 增加 `PictureEffectUnavailableReason`(None / Tunneling / DecoderUnsupported,判定优先级 = 隧道 > 解码器,单测 `PictureEffectUnavailableReasonTest` 3 例)+ `onPrepare(player, tunnelingBlocked)` 取代 `openBeforePrepare`(隧道下记内核引用但不挂链、`push()` 也不动链,参数照常落库);`ExoPlayer` 增加 `isPictureEffectsActive()` 与 `Player.Listener.onVideoSizeChanged`(内核自己报了尺寸 ⇒ 翻掉 `videoEffectsOpen` + `echo-picture-effects inactive` 日志);面板顶部按原因显示一行 `onSurfaceVariant` 提示(文案 `player_picture_unavailable_tunnel` / `player_picture_unavailable_decoder`,三语言)。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` 绿(393 用例 0 失败);i18n 三关 0 处(新增 2 键三语言,已登记无 UNUSED);装机 03:15。**待走查**:隧道开时面板出现提示且画面正常;换成 ffmpeg 渲染器的片(暂无素材)面板出现解码器提示。
+
+### 补:直播不吃画质参数(2026-09-30,用户「不要对直播生效」)
+
+**判据**:引擎模式标记 `PLAYER_IS_LIVE`(**唯一写入点** = `PlaybackEngine.setLiveFlag`,由 `enterLive` / `enterLiveState` / `exitLiveState` / `release` 切换;该处注释明确"模式切换严格早于对应播放的起播")—— 与 `ExoPlayer.setDataSource` 判 rtmp 补 `live=1` 同源,不新增信号。
+
+**实现**:`PictureEffects.onPrepare` 开头读该标记,直播直接早退(日志 `echo-picture-effects skip: live`):不挂效果链、**也不接管内核引用**(`current = null`)⇒ `push()` / `unavailableReason()` 对它自然无效。**为什么这样安全**:直播内核每次起播都是新实例(`enterLive` / `enterLiveState` 都先 `releasePlayer`),不存在"链已挂在同一实例上、又被直播复用"的残留;参数照常落库,下一次点播起播生效。面板只存在于点播页,直播期没有调色入口 ⇒ 无需新文案/新状态。
+
+**口径**:按项目既有的"直播模式 = 直播页"(`PLAYER_IS_LIVE` 就是直播页进出/接管的标记);点播页内播直播流那类 URL 仍算点播,不受本条影响。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` 绿(393 用例 0 失败);无字符串改动,i18n 不动。
+
+### 审查轮:注释精简 + 三条修复(2026-09-30,用户「精简注释,然后根据SKILL.md审查是否有错误遗漏和引入新回归」→「把高和中修复了就用推荐方案」)
+
+**注释精简**:按 SKILL 红线清掉超 2 行/带过程叙事的注释 —— `PictureEffects` 类顶 3→1 行、`activated` 4 行 KDoc→1 行注释、`onPrepare` 11→2 行(去掉日期与"用户要求"),`ExoPlayer.prepareAsync` 3→1 行、`setDisplay` 3→1 行。核对:UI 层 `PlayerPicturePanel`/单测/控制器接线本无注释;新文件无日期/§引用/"照搬"出处。
+
+**审查发现与修复**(严重度 × 来源;全部按"宁可不出效果,也绝不把播放弄挂"的口径修):
+
+1. **高|本次引入 —— HDR 片会"播放出错"**:自写着色器在 `useHdr=true` 时抛 `VideoFrameProcessingException`,链路 `createGlShaderPrograms` → `DefaultVideoFrameProcessor` → `VideoSink.Listener.onError` → 渲染器 `setPendingPlaybackException(ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED)` = 播放出错;而已核实 HDR10(PQ) 输入时 `PlaybackVideoGraphWrapper.registerInput` 取 `outputColorInfo = inputColorInfo`(HDR)⇒ `useHdr=true`,加上预置是全局记忆 ⇒ 选了预置后所有 HDR 片都中招。**修**:`VideoAdjustShaderProgram` 在 HDR 下改用 passthrough 片元着色器并**跳过 uniform 绑定**(`GlProgram.setFloatUniform/setFloatsUniform` 对缺名是 `checkNotNull` 抛错,`DetailAdjustEffect.configure` 的 texel uniform 改走 `setFloatsUniformIfPresent`);新增 `PictureEffectUnavailableReason.Hdr` + 文案 `player_picture_unavailable_hdr`(三语言)。**不选**"在 `onTracksChanged` 撤链"那条:`onTracksChanged` 经 app looper 异步派发,可能晚于 processor 首次 configure。
+2. **中|设计取舍复核 —— "哪怕空列表也开通"= 全部播放都走 GL**:`MediaCodecVideoRenderer.onEnabled` 只判 `videoEffects != null` 就建 VideoSink,而 `setVideoEffects(空列表)` 里是无条件赋值 ⇒ 未用调色的片也失去 SurfaceView 直通。**修(推荐方案 b)**:未启用(`恒等参数 && 从未挂过链`)时**完全不调** `setVideoEffects`,保住直通路径;代价是"本次进程内首次启用调色"需下次起播才生效 ⇒ 新增 `PictureEffectUnavailableReason.RestartRequired` + 文案 `player_picture_unavailable_restart`(面板给"已保存,重新起播后生效";下一集起播会自动带上效果)。已启用过的用户(预置非「原始」)起播即开通,调参仍即时生效。
+3. **中|本次引入 —— "按住对比"可能卡住**:`comparing` 只在 `onCompareChanged(false)` 复位,而 `SheetButton` 的 `detectTapGestures{onPress}` 是 `tryAwaitRelease()` 之后才 `change(false)`,按住期间节点被移出组合会取消协程 ⇒ 卡在恒等态、之后所有片静默不出效果。**修**:`PlayerPicturePanel.PictureParams` 加 `DisposableEffect{onDispose{ onCompareChanged(false) }}`(离开画质页即复位)+ `onPrepare` 里复位。
+4. **低|本次引入(未修,待真机)**:`DecoderUnsupported` 仍是启发式(靠"内核自己上报尺寸"翻 `videoEffectsOpen`),若 media3 某路径仍上报会误报;现加 `hasLook` 门控后只会出现在"确有参数待生效"时。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` 绿(**396 用例**/0 失败,`PictureEffectUnavailableReasonTest` 由 3 例扩到 6 例锁新优先级与 `hasLook` 门控);i18n 三关复跑 0 处;装机 `03:3x`。**未修/待走查**:HDR 片观感(应等同未开调色)、"首次调色需重新起播"的提示是否够清楚、`DecoderUnsupported` 误报。
+
+### 「更多」抽屉补图标 + 动作按钮点击反馈(2026-09-30,用户「给更多弹窗面板加上几个icon图标 .tubiao:画质参数,播放参数,预设,自定义则用项目内已有的铅笔图标。然后给清空和恢复默认增加点击后的激活反馈」)
+
+- **图标**:`.tubiao/播放参数.svg` → `player_ic_params_playback.xml`、`画质参数.svg` → `player_ic_params_picture.xml`、`预设.svg` → `player_ic_params_preset.xml`(沿用既有转换约定:viewport 平移 +960、单 path `#FFFFFFFF`、注释标注来源文件)。**分页胶囊**走 `SegmentOption.iconPainter`(组件本就支持,内容间距用 `ToggleButtonDefaults.IconSpacing`);**画质页「预设」组标题**走 `ParamsGroupHeader(iconRes)`;**「自定义」chip 挂项目既有铅笔 `ic_edit`**(用户点名 ⇒ 打破"chips 不挂图标"的既有约定,活规范已按"唯一例外"改写)。`.tubiao/超分.svg` 本次未要求、未使用。
+- **点击反馈**:`SheetButton` 原本**没有任何按下/涟漪视觉**(只有 `selected` 换色),故新增 `SheetActionButton` = 点击后立即按选中态点亮 500ms(`LaunchedEffect` + `delay`;闪状态用不带 key 的 `remember`,抽屉状态重建后不丢),用于「清空」(片头片尾组)与「恢复默认」(画质页)。
+- **验证**:`:app:assembleDebug` **BUILD SUCCESSFUL**;i18n 三关无变化(未新增文案);`read_lints` 0;装机 `03:38:40`。**观感待用户实机确认**(图标尺寸/间距与 500ms 时长)。
+- **同日追加(用户「短一点的激活反馈100ms」)**:点亮时长 `ACTION_FLASH_MS` 500ms → **100ms**。
+
+**第二轮审查(用户「再审查一遍是否可以收尾」)**:换角度复核修复本身与旁路,并**排除一个假警报** —— 预载不抢 `current`(`PreloadManagerHolder` 用 media3 `DefaultPreloadManager`,MediaSource 级预载,不建 ExoPlayer 实例、不走 `prepareAsync`)。本轮 0 阻断/0 高/0 中,剩余均低或口味:①HDR 片仍会建 GL sink(纯拷贝)⇒ 直通/功耗有损,但撤链有时序风险,保持;②`RestartRequired` 提示只在面板打开时刷新(拖动中不重建抽屉是既有约定);③滑条每 tick 落 8 个 KV 键(与倍速滑块"松手才提交"不一致,但推送本身无重动作,MMKV 为 mmap 快写);④`pictureHdrSource` 在"新视频轨无尺寸"的理论边界可能残留上一集值;⑤`DecoderUnsupported` 仍是启发式。按 SKILL「连续一轮无阻断/高/中即可收尾」⇒ **审查收尾**,余下全部转为真机走查项(不动代码)。

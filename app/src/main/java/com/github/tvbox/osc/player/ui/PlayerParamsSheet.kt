@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -32,8 +33,13 @@ import com.github.tvbox.osc.R
 import com.github.tvbox.osc.player.state.ParamsChoice
 import com.github.tvbox.osc.player.state.ParamsSheetState
 import com.github.tvbox.osc.ui.components.AVBoxBottomSheet
+import com.github.tvbox.osc.ui.components.CapsuleSegmentedButton
 import com.github.tvbox.osc.ui.components.LocalSheetDismissThen
+import com.github.tvbox.osc.ui.components.SegmentOption
+import com.github.tvbox.osc.ui.components.SegmentStyle
 import kotlin.math.roundToInt
+
+private enum class ParamsTab { Playback, Picture }
 
 @Composable
 internal fun PlayerParamsSheet(
@@ -41,10 +47,11 @@ internal fun PlayerParamsSheet(
     slideFromEnd: Boolean,
     onDismiss: () -> Unit,
 ) {
+    var tab by remember { mutableStateOf(ParamsTab.Playback) }
     AVBoxBottomSheet(
         onDismissRequest = onDismiss,
         slideFromEnd = slideFromEnd,
-        title = stringResource(R.string.player_menu_params),
+        title = stringResource(R.string.player_menu_more),
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(
@@ -56,31 +63,60 @@ internal fun PlayerParamsSheet(
                     bottom = playerDim(R.dimen.vs_30),
                 ),
         ) {
-            ParamsChoiceGroup(R.string.player_params_player, sheet.player, R.drawable.player_ic_params_player)
-            ParamsGroupDivider()
-            ParamsChoiceGroup(R.string.settings_play_decode, sheet.decode, R.drawable.player_ic_params_decode)
-            ParamsGroupDivider()
-            ParamsSliderGroup(R.string.player_params_speed, sheet.speed, R.drawable.player_ic_params_speed)
-            ParamsGroupDivider()
-            ParamsTimeGroup(sheet)
-            ParamsGroupDivider()
-            ParamsChoiceGroup(R.string.live_group_scale, sheet.scale, R.drawable.player_ic_params_scale)
-            sheet.onSearchDanmu?.let { onSearch ->
-                Spacer(Modifier.height(playerDim(R.dimen.vs_30)))
-                // 走 dismissThen：先收起本面板再开弹幕搜索，否则两个面板会重叠
-                val dismissThen = LocalSheetDismissThen.current
-                SheetButton(
-                    text = stringResource(R.string.player_menu_search_danmu),
-                    iconRes = R.drawable.player_ic_menu_danmu,
-                    onClick = {
-                        dismissThen {
-                            onSearch()
-                            onDismiss()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+            CapsuleSegmentedButton(
+                options = listOf(
+                    SegmentOption(
+                        label = stringResource(R.string.player_menu_params),
+                        value = ParamsTab.Playback,
+                        iconPainter = painterResource(R.drawable.player_ic_params_playback),
+                    ),
+                    SegmentOption(
+                        label = stringResource(R.string.player_menu_picture),
+                        value = ParamsTab.Picture,
+                        iconPainter = painterResource(R.drawable.player_ic_params_picture),
+                    ),
+                ),
+                selectedValue = tab,
+                onOptionSelected = { tab = it },
+                modifier = Modifier.fillMaxWidth(),
+                style = SegmentStyle.Separated,
+                containerColor = MaterialTheme.colorScheme.surfaceBright,
+            )
+            Spacer(Modifier.height(playerDim(R.dimen.vs_30)))
+            when (tab) {
+                ParamsTab.Playback -> PlaybackParams(sheet, onDismiss)
+                ParamsTab.Picture -> PictureParams(sheet.picture)
             }
+        }
+    }
+}
+
+@Composable
+private fun PlaybackParams(sheet: ParamsSheetState, onDismiss: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        ParamsChoiceGroup(R.string.player_params_player, sheet.player, R.drawable.player_ic_params_player)
+        ParamsGroupDivider()
+        ParamsChoiceGroup(R.string.settings_play_decode, sheet.decode, R.drawable.player_ic_params_decode)
+        ParamsGroupDivider()
+        ParamsSliderGroup(R.string.player_params_speed, sheet.speed, R.drawable.player_ic_params_speed)
+        ParamsGroupDivider()
+        ParamsTimeGroup(sheet)
+        ParamsGroupDivider()
+        ParamsChoiceGroup(R.string.live_group_scale, sheet.scale, R.drawable.player_ic_params_scale)
+        sheet.onSearchDanmu?.let { onSearch ->
+            Spacer(Modifier.height(playerDim(R.dimen.vs_30)))
+            val dismissThen = LocalSheetDismissThen.current
+            SheetButton(
+                text = stringResource(R.string.player_menu_search_danmu),
+                iconRes = R.drawable.player_ic_menu_danmu,
+                onClick = {
+                    dismissThen {
+                        onSearch()
+                        onDismiss()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -108,9 +144,8 @@ private fun ParamsChoiceGroup(
     }
 }
 
-/** 组标题行:组名在左、当前值贴右(倍速滑块组在用) */
 @Composable
-private fun ParamsGroupHeader(
+internal fun ParamsGroupHeader(
     @StringRes labelRes: Int,
     @DrawableRes iconRes: Int? = null,
     valueText: String? = null,
@@ -145,13 +180,12 @@ private fun ParamsGroupHeader(
 }
 
 @Composable
-private fun ParamsGroupDivider() {
+internal fun ParamsGroupDivider() {
     Spacer(Modifier.height(playerDim(R.dimen.vs_15)))
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     Spacer(Modifier.height(playerDim(R.dimen.vs_15)))
 }
 
-/** 档位滑块组:值 = 档位下标(档位间距在轨道上等分,倍速本身非等步长);拖动实时跟随、松手才提交 */
 @Composable
 private fun ParamsSliderGroup(
     @StringRes labelRes: Int,
@@ -195,7 +229,7 @@ private fun ParamsTimeGroup(sheet: ParamsSheetState) {
             onClick = sheet.onSetTimeEnd,
             modifier = Modifier.weight(1f),
         )
-        SheetButton(
+        SheetActionButton(
             text = stringResource(R.string.common_clear),
             iconRes = R.drawable.ic_delete,
             onClick = sheet.onResetTime,

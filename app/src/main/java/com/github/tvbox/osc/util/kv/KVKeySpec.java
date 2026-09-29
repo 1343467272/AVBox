@@ -70,6 +70,8 @@ public final class KVKeySpec implements KVDecoder.TypeRegistry {
         register(HawkConfig.REMOTE_TVBOX, "");
         register(HawkConfig.DANMU_API, "");
         register(HawkConfig.THEME_PALETTE_STYLE, "");
+        // 画质参数(调色)预置名(PicturePreset 枚举名)
+        register(HawkConfig.PICTURE_PRESET, "");
         register(HawkConfig.HOME_HOT, "");
         register(HawkConfig.HOME_HOT_DAY, "");
         // 迅雷伪造设备标识(2026-09-15 由独立 SP `rand_thunder_id` 迁入;调用侧带 "" 默认值,登记用于类型自检)
@@ -135,6 +137,15 @@ public final class KVKeySpec implements KVDecoder.TypeRegistry {
         register(HawkConfig.DANMU_ALPHA, 0f);
         register(HawkConfig.DANMU_SIZE_SCALE, 0f);
         register(HawkConfig.SUBTITLE_EXO_POSITION, 0f);
+        // 画质参数(调色):预置名 + 8 项滑条值
+        register(HawkConfig.PICTURE_SATURATION, 0f);
+        register(HawkConfig.PICTURE_CONTRAST, 0f);
+        register(HawkConfig.PICTURE_BRIGHTNESS, 0f);
+        register(HawkConfig.PICTURE_GAMMA, 0f);
+        register(HawkConfig.PICTURE_HUE, 0f);
+        register(HawkConfig.PICTURE_TEMPERATURE, 0f);
+        register(HawkConfig.PICTURE_SHARPNESS, 0f);
+        register(HawkConfig.PICTURE_SHADOW_LIFT, 0f);
 
         // ---- 集合(元素类型必须显式声明,否则退化为 LinkedTreeMap)----
         register(HawkConfig.SEARCH_HISTORY, new TypeToken<ArrayList<String>>() {

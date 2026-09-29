@@ -164,4 +164,14 @@ public class HawkConfig {
     // 本地源目录授权(SAF OpenDocumentTree,持久授权):ArrayList<String>,每项为目录 tree uri 字符串。
     // 应用读不到源目录时(无「所有文件访问」)靠它让本地服务直接读原目录,源地址得以指向原目录而不复制
     public static final String LOCAL_SOURCE_TREES = "local_source_trees";
+    // 画质参数(调色):预置名 + 「自定义」的 8 项滑条值;内核起播前现读并下发(见 player/effect/PictureEffects)
+    public static final String PICTURE_PRESET = "picture_preset"; //PicturePreset 枚举名,默认 Original(不出效果)
+    public static final String PICTURE_SATURATION = "picture_saturation";
+    public static final String PICTURE_CONTRAST = "picture_contrast";
+    public static final String PICTURE_BRIGHTNESS = "picture_brightness";
+    public static final String PICTURE_GAMMA = "picture_gamma";
+    public static final String PICTURE_HUE = "picture_hue";
+    public static final String PICTURE_TEMPERATURE = "picture_temperature";
+    public static final String PICTURE_SHARPNESS = "picture_sharpness";
+    public static final String PICTURE_SHADOW_LIFT = "picture_shadow_lift";
 }

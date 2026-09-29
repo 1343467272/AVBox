@@ -99,6 +99,29 @@ public class KVKeySpecTest {
                 spec.typeOf(com.github.tvbox.osc.util.HawkConfig.EXO_VIDEO_DYNAMIC_SCHEDULING));
     }
 
+    @Test
+    public void pictureParamKeys_areRegistered() {
+        // 画质参数的每一条都要登记:漏一条即"滑条拖了没反应"(读取侧静默回落默认值)
+        assertEquals(TypeToken.get(String.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.PICTURE_PRESET));
+        assertEquals(TypeToken.get(Float.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.PICTURE_SATURATION));
+        assertEquals(TypeToken.get(Float.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.PICTURE_CONTRAST));
+        assertEquals(TypeToken.get(Float.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.PICTURE_BRIGHTNESS));
+        assertEquals(TypeToken.get(Float.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.PICTURE_GAMMA));
+        assertEquals(TypeToken.get(Float.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.PICTURE_HUE));
+        assertEquals(TypeToken.get(Float.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.PICTURE_TEMPERATURE));
+        assertEquals(TypeToken.get(Float.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.PICTURE_SHARPNESS));
+        assertEquals(TypeToken.get(Float.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.PICTURE_SHADOW_LIFT));
+    }
+
     /**
      * 2026-09-13 修复的回归锁:直播源配置的 header/ua 由 ApiConfig 写入的是 HashMap&lt;String,String&gt;,
      * 一旦登记成 String,读取侧 Gson 会用 String 解析对象原文抛错、被 KV.get(key)(quiet 副本)静默吞成

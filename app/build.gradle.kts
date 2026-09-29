@@ -135,6 +135,8 @@ dependencies {
     implementation(libs.danmaku.flame.master)
 
     implementation(project(":player"))
+    // 画质参数(调色)的着色器效果:ExoPlayer#setVideoEffects 在运行期反射查找效果模块,必须打进包
+    implementation(libs.media3.effect)
     implementation(project(":quickjs"))
     implementation(project(":pyramid"))
 

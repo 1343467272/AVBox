@@ -163,6 +163,37 @@
     <string name="player_params_set_start">Set opening</string>
     <string name="player_params_set_end">Set ending</string>
 
+    <!-- Picture settings panel -->
+    <string name="player_menu_picture">Picture</string>
+    <string name="player_picture_preset">Preset</string>
+    <string name="player_picture_preset_natural">Natural</string>
+    <string name="player_picture_preset_vivid">Vivid</string>
+    <string name="player_picture_preset_clear">Clear</string>
+    <string name="player_picture_preset_bright">Bright</string>
+    <string name="player_picture_preset_cinema">Cinema</string>
+    <string name="player_picture_preset_soft">Soft</string>
+    <string name="player_picture_preset_warm">Warm</string>
+    <string name="player_picture_preset_cool">Cool</string>
+    <string name="player_picture_preset_comfort">Eye care</string>
+    <string name="player_picture_preset_anime">Anime</string>
+    <string name="player_picture_preset_sport">Sport</string>
+    <string name="player_picture_preset_game">Game</string>
+    <string name="player_picture_preset_custom">Custom</string>
+    <string name="player_picture_saturation">Saturation</string>
+    <string name="player_picture_contrast">Contrast</string>
+    <string name="player_picture_brightness">Brightness</string>
+    <string name="player_picture_gamma">Gamma</string>
+    <string name="player_picture_hue">Hue</string>
+    <string name="player_picture_temperature">Temperature</string>
+    <string name="player_picture_sharpness">Sharpness</string>
+    <string name="player_picture_shadow">Shadow lift</string>
+    <string name="player_picture_compare">Hold to compare</string>
+    <string name="player_picture_reset">Reset</string>
+    <string name="player_picture_unavailable_tunnel">Started in tunneling mode: picture adjustment is off until playback restarts without tunneling</string>
+    <string name="player_picture_unavailable_hdr">Picture adjustment is unavailable for HDR sources</string>
+    <string name="player_picture_unavailable_restart">Picture adjustment saved - it takes effect after playback restarts</string>
+    <string name="player_picture_unavailable_decoder">The current decoder doesn\'t support picture adjustment</string>
+
     <!-- Music player page -->
     <string name="music_queue">Queue</string>
     <string name="music_song_index">Track %1$d</string>

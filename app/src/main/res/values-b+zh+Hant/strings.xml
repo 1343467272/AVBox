@@ -163,6 +163,37 @@
     <string name="player_params_set_start">設為片頭</string>
     <string name="player_params_set_end">設為片尾</string>
 
+    <!-- 畫質參數面板 -->
+    <string name="player_menu_picture">畫質參數</string>
+    <string name="player_picture_preset">預設</string>
+    <string name="player_picture_preset_natural">自然</string>
+    <string name="player_picture_preset_vivid">豔麗</string>
+    <string name="player_picture_preset_clear">清晰</string>
+    <string name="player_picture_preset_bright">明亮</string>
+    <string name="player_picture_preset_cinema">影院</string>
+    <string name="player_picture_preset_soft">柔潤</string>
+    <string name="player_picture_preset_warm">暖色</string>
+    <string name="player_picture_preset_cool">冷色</string>
+    <string name="player_picture_preset_comfort">護眼</string>
+    <string name="player_picture_preset_anime">動漫</string>
+    <string name="player_picture_preset_sport">運動</string>
+    <string name="player_picture_preset_game">遊戲</string>
+    <string name="player_picture_preset_custom">自訂</string>
+    <string name="player_picture_saturation">飽和度</string>
+    <string name="player_picture_contrast">對比度</string>
+    <string name="player_picture_brightness">畫面亮度</string>
+    <string name="player_picture_gamma">伽馬</string>
+    <string name="player_picture_hue">色相</string>
+    <string name="player_picture_temperature">色溫</string>
+    <string name="player_picture_sharpness">銳度</string>
+    <string name="player_picture_shadow">暗部提升</string>
+    <string name="player_picture_compare">按住對比</string>
+    <string name="player_picture_reset">恢復預設</string>
+    <string name="player_picture_unavailable_tunnel">隧道模式起播，畫質參數本集不生效；關閉隧道並重新起播後生效</string>
+    <string name="player_picture_unavailable_hdr">HDR 片源不支援畫質參數，目前依原樣輸出</string>
+    <string name="player_picture_unavailable_restart">畫質參數已儲存，重新起播後生效</string>
+    <string name="player_picture_unavailable_decoder">目前解碼方式不支援畫質參數</string>
+
     <!-- 音樂播放頁 -->
     <string name="music_queue">播放佇列</string>
     <string name="music_song_index">第 %1$d 首</string>

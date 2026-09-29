@@ -27,6 +27,8 @@ import com.github.tvbox.osc.event.RefreshEvent
 import com.github.tvbox.osc.player.state.LockVisibility
 import com.github.tvbox.osc.player.state.ParamsChoice
 import com.github.tvbox.osc.player.state.ParamsSheetState
+import com.github.tvbox.osc.player.effect.PictureEffects
+import com.github.tvbox.osc.player.state.PictureParamsState
 import com.github.tvbox.osc.player.state.PlayerActions
 import com.github.tvbox.osc.player.state.PlayerUiState
 import com.github.tvbox.osc.util.GestureHelper
@@ -681,6 +683,21 @@ class ComposeVideoController @JvmOverloads constructor(
                 options = (0..5).map { PlayerHelper.getScaleName(it) },
                 selected = scaleType.coerceIn(0, 5),
                 onSelect = { applyScale(it) },
+            ),
+            picture = PictureParamsState(
+                preset = PictureEffects.preset(),
+                tuning = PictureEffects.custom(),
+                unavailableReason = PictureEffects.unavailableReason(),
+                onPresetSelected = {
+                    PictureEffects.selectPreset(it)
+                    refreshParamsSheet()
+                },
+                onTuningChanged = { PictureEffects.setCustom(it) },
+                onReset = {
+                    PictureEffects.reset()
+                    refreshParamsSheet()
+                },
+                onCompareChanged = { PictureEffects.compare(it) },
             ),
             timeStartText = state.timeStartText,
             timeEndText = state.timeEndText,

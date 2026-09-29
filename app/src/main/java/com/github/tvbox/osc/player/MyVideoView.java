@@ -85,12 +85,6 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
         return mMediaPlayer;
     }
 
-    /**
-     * 标记"本次起播必须重建内核"(2026-09-17,EXO 解码方式变更时由 PlayerHelper.updateCfg 写入)。
-     *
-     * <p>为什么 EXO 必须重建:media3 跨 period 复用同一 MediaCodec(disable 时只 flush 不 release),
-     * 选择器不会再被查询 —— 换集走复用路径时只改选择器的静态下发位不生效,必须让内核重建。
-     */
     public void requireKernelRebuild() {
         mKernelRebuildRequired = true;
     }
@@ -107,30 +101,11 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
         return mRenderView != null && mRenderView.getView() instanceof SurfaceView;
     }
 
-    /**
-     * 纯音频(音乐)渲染热切换:Surface → Texture(2026-09-13)。
-     * SurfaceView 的画面在独立于应用窗口的合成层上(且本渲染视图用 RGBA_8888 可透明格式),
-     * 应用窗口在播放器矩形被"打洞":无视频帧的内容(音乐)全靠空 Surface 垫底呈黑 ——
-     * 退后台任务快照里 Surface 垫底消失,播放器区域只剩窗口底色(多任务卡片变白);
-     * 回前台 Surface 重建前过渡动画还会透视到桌面(闪烁变透明)。
-     * TextureView 画在应用窗口图层内,无帧呈黑、快照与过渡全部正常(实测)。
-     * 纯音频确认后切换零渲染开销、音频不中断;旧 SurfaceView 摘除后 surfaceDestroyed
-     * 异步回调的 setDisplay(null) 落在无视频轨的播放器上是无操作,不影响新 Texture 挂载。
-     */
     public void switchRenderToTexture() {
         setRenderViewFactory(TextureRenderViewFactory.create());
         addDisplay();
     }
 
-    /**
-     * 渲染视图与当前 RenderViewFactory 配置不一致时按工厂重建(2026-09-13 修复)。
-     *
-     * <p>背景(与 [switchRenderToTexture] 配套):纯音频会热切成 TextureView;但换集走 reusePlayer
-     * 路径(fork 的 {@code VideoView.replay(false)} → {@code startPrepare},两个分支都不会调用
-     * addDisplay),而 {@code PlayerHelper.updateCfg} 只改工厂、不重建视图 —— 于是之后有视频的
-     * 集数会继续留在 TextureView 上渲染,与"画面渲染"设置不符。addDisplay() 会移除旧视图并按
-     * 当前工厂新建(即热切换);类型一致(绝大多数场景)时本方法直接返回,零开销、无闪烁。
-     */
     public void ensureRenderViewMatchesConfig() {
         // mRenderView 空 = 尚未挂载(下次 start() 会按工厂创建);
         // mMediaPlayer 空 = 无播放器可挂载 —— addDisplay 内 attachToPlayer(null) 属未定义调用,
@@ -139,6 +114,18 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
         boolean expectedSurface = !(mRenderViewFactory instanceof TextureRenderViewFactory);
         if (expectedSurface == isSurfaceRenderActive()) return;
         addDisplay();
+    }
+
+    /** 纹理渲染路径没有 SurfaceHolder:每次布局按视图尺寸补发输出分辨率信令(漏发或按 changed 跳过 = 效果管线出画异常) */
+    @Override
+    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        super.onLayout(changed, left, top, right, bottom);
+        if (mMediaPlayer instanceof ExoPlayer && mRenderView != null && !isSurfaceRenderActive()) {
+            View renderView = mRenderView.getView();
+            if (renderView != null) {
+                ((ExoPlayer) mMediaPlayer).notifyVideoOutputResolution(renderView.getWidth(), renderView.getHeight());
+            }
+        }
     }
 
     public void setArtwork(String url) {
@@ -191,11 +178,6 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
         showFrameCover();
     }
 
-    /**
-     * 只遮黑、不动内核:页面挂载时用 —— 旧内容停在 PAUSED 时,media3 会在新 Surface 重建时
-     * 把上一帧重渲染出来。不能复用 {@link #clearVideoFrame()}:它内部 stop 内核,
-     * 而"同片接管"要靠内核里留着的内容续播(见 PlayContainer.isSamePlaybackOwned)。
-     */
     public void coverVideoFrame() {
         showFrameCover();
     }
@@ -221,7 +203,6 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
         clearArtwork();
     }
 
-    /** 纯音频没有画面可露:只收黑帧、**保留封面**(海报就是它的背景,播放中不能只剩黑底) */
     public void hideVideoFrameCover() {
         if (frameCover != null) frameCover.setVisibility(GONE);
     }

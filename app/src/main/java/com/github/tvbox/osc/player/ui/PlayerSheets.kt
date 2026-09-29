@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.github.tvbox.osc.R
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -246,6 +247,7 @@ internal fun SheetButton(
     selected: Boolean = false,
     contentPadding: Dp = 0.dp,
     @DrawableRes iconRes: Int? = null,
+    onPressChange: ((Boolean) -> Unit)? = null,
 ) {
     val container = if (selected) {
         MaterialTheme.colorScheme.primaryContainer
@@ -259,7 +261,17 @@ internal fun SheetButton(
     }
     val m = modifier
         .background(container, ItemShape)
-        .pointerInput(onClick) { detectTapGestures(onTap = { onClick() }) }
+        .pointerInput(onClick, onPressChange) {
+            detectTapGestures(
+                onTap = { onClick() },
+                onPress = press@{
+                    val change = onPressChange ?: return@press
+                    change(true)
+                    tryAwaitRelease()
+                    change(false)
+                },
+            )
+        }
         .padding(horizontal = contentPadding)
         .height(playerDim(R.dimen.vs_50))
     Box(modifier = m, contentAlignment = Alignment.Center) {
@@ -283,6 +295,34 @@ internal fun SheetButton(
             )
         }
     }
+}
+
+private const val ACTION_FLASH_MS = 100L
+
+@Composable
+internal fun SheetActionButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    @DrawableRes iconRes: Int? = null,
+) {
+    var flashing by remember { mutableStateOf(false) }
+    LaunchedEffect(flashing) {
+        if (flashing) {
+            delay(ACTION_FLASH_MS)
+            flashing = false
+        }
+    }
+    SheetButton(
+        text = text,
+        iconRes = iconRes,
+        selected = flashing,
+        onClick = {
+            flashing = true
+            onClick()
+        },
+        modifier = modifier,
+    )
 }
 
 /** 左标签行:120mm 右对齐标签(`onSurfaceVariant`)+ 右侧 50mm 高控件区 */

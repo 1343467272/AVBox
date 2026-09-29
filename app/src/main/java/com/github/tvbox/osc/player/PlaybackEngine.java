@@ -16,6 +16,7 @@ import com.github.tvbox.osc.player.usecase.PlayerSwitchUseCase;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.KV;
 import com.github.tvbox.osc.util.LOG;
+import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.WatchProgressStore;
 
 import org.json.JSONObject;
@@ -313,6 +314,10 @@ public final class PlaybackEngine implements PlaybackHostApi {
     private void scheduleIdleRelease() {
         main.removeCallbacks(idleRelease);
         if (released) return;
+        if (PrewarmPolicy.idleReleaseDelayMs(prewarmEnabled(), IDLE_RELEASE_DELAY_MS) == PrewarmPolicy.NO_IDLE_RELEASE) {
+            LOG.i(TAG + " idle release suppressed: kernel prewarm on");
+            return;
+        }
         main.postDelayed(idleRelease, IDLE_RELEASE_DELAY_MS);
     }
 
@@ -455,6 +460,51 @@ public final class PlaybackEngine implements PlaybackHostApi {
         // 内核没了 ⇒ 播放器里不再有"属于某个会话的内容":清掉 D6 的接管依据,
         // 否则"换源停播后重进同一部"会被判成同片接管而跳过取流(内容其实已经没了)
         controller.clearStartedContent();
+    }
+
+    /**
+     * 预热播放内核(建 Exo 实例与渲染视图,不 prepare):开关开启时由启动/回前台/开关确认触发。
+     * 幂等(已有内核直接返回)、异常兜底(失败不影响正常起播)。
+     */
+    public void prewarmKernel() {
+        if (released) return;
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post(this::prewarmKernel);
+            return;
+        }
+        if (videoView.getMediaPlayer() != null) return;
+        try {
+            // 先按全局设置下发解码/渲染/缩放,否则预热实例用的是 VideoView 构造期的默认配置
+            PlayerHelper.updateCfg(videoView, new JSONObject());
+            videoView.prewarmKernel();
+            LOG.i(TAG + " prewarm kernel");
+        } catch (Throwable th) {
+            LOG.e(TAG + " prewarm failed: " + th.getMessage());
+        }
+    }
+
+    /**
+     * 内核预热开关变更:开启 = 取消在途空闲释放并立即预热;关闭 = 不打断在用实例,
+     * 仅补排一次空闲释放(无人持有时)。
+     */
+    public void onPrewarmPreferenceChanged(boolean enabled) {
+        if (released) return;
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post(() -> onPrewarmPreferenceChanged(enabled));
+            return;
+        }
+        if (enabled) {
+            cancelIdleRelease();
+            prewarmKernel();
+            return;
+        }
+        if (PrewarmPolicy.shouldScheduleOnDisable(attachedPage() != null || liveMode)) {
+            scheduleIdleRelease();
+        }
+    }
+
+    private static boolean prewarmEnabled() {
+        return KV.get(HawkConfig.KERNEL_PREWARM, false);
     }
 
     /**

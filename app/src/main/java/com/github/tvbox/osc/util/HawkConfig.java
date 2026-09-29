@@ -53,6 +53,8 @@ public class HawkConfig {
     public static final String PLAY_TUNNEL = "play_tunnel";
     // 音轨优先 AAC(2026-09-11,独立开关):选轨偏好 AAC,提高隧道命中率/规避个别机型 offload 异常
     public static final String PLAY_PREFER_AAC = "play_prefer_aac";
+    // 内核预热:启动后提前创建播放内核并常驻以加快起播;关闭即恢复空闲释放上界
+    public static final String KERNEL_PREWARM = "kernel_prewarm";
     /** Exo 视频渲染器动态调度(隐藏键,不进设置页):时长上报不准的源可能因此丢帧,值只在下次建播放器时读取 */
     public static final String EXO_VIDEO_DYNAMIC_SCHEDULING = "exo_video_dynamic_scheduling";
     public static final boolean EXO_VIDEO_DYNAMIC_SCHEDULING_DEFAULT = true;

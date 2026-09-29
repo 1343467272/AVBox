@@ -210,12 +210,12 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
             setPlayState(STATE_START_ABORT);
             return false;
         }
-        //监听音频焦点改变(只建一次:覆盖引用会留下永不释放的旧 listener,它们仍会响应焦点事件去 pause/start)
+        //监听音频焦点改变
         if (mEnableAudioFocus) {
-            if (mAudioFocusHelper == null) {
-                mAudioFocusHelper = new AudioFocusHelper(this);
+            ensureAudioFocusHelper();
+            if (mAudioFocusHelper != null) {
+                mAudioFocusHelper.onNewPlayback();
             }
-            mAudioFocusHelper.onNewPlayback();
         }
         //读取播放进度
         if (mProgressManager != null) {
@@ -265,6 +265,25 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
         setInitOptions();
         mMediaPlayer.initPlayer();
         setOptions();
+    }
+
+    /**
+     * 预热内核:建内核与渲染视图但不 prepare(须主线程调用)。已有内核时幂等 ——
+     * 预热后首次起播命中 replay 复用,省去内核构造与渲染视图创建两段。
+     */
+    public void prewarmKernel() {
+        if (mMediaPlayer != null) return;
+        // 起播走 replay 不经 startPlay:助手不预建,onPrepared 的判空会让首次会话没有音频焦点
+        ensureAudioFocusHelper();
+        initPlayer();
+        addDisplay();
+    }
+
+    /** 音频焦点监听只建一次(覆盖引用会留下永不释放的旧 listener,它们仍会响应焦点事件去 pause/start) */
+    private void ensureAudioFocusHelper() {
+        if (mEnableAudioFocus && mAudioFocusHelper == null) {
+            mAudioFocusHelper = new AudioFocusHelper(this);
+        }
     }
 
     /**

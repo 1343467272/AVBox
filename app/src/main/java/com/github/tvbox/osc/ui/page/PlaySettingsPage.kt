@@ -9,17 +9,23 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.tvbox.osc.R
+import com.github.tvbox.osc.player.PlaybackService
+import com.github.tvbox.osc.ui.components.AVBoxAlertDialog
 import com.github.tvbox.osc.ui.components.AppTopBarScaffold
+import com.github.tvbox.osc.ui.components.LocalSheetDismiss
+import com.github.tvbox.osc.ui.components.LocalSheetDismissThen
 import com.github.tvbox.osc.ui.components.SettingsCard
 import com.github.tvbox.osc.ui.components.SettingsCardPosition
 import com.github.tvbox.osc.ui.components.SettingsGroup
@@ -40,6 +46,8 @@ private const val DecodeSoft = "软解码" // i18n: keep
 @Composable
 fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewModel()) {
     val state by vm.state
+    val context = LocalContext.current
+    var showPrewarmWarning by remember { mutableStateOf(false) }
     var sliderPreloadDuration by remember(state.preloadDuration) { mutableStateOf(state.preloadDuration) }
     var sliderCacheSize by remember(state.exoCacheSizeMb) { mutableStateOf(state.exoCacheSizeMb) }
 
@@ -134,6 +142,21 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
             SettingsGroup(title = stringResource(R.string.settings_group_play_behavior)) {
                 SettingsCard(SettingsCardPosition.FIRST) {
                     SettingsSwitchRow(
+                        title = stringResource(R.string.settings_play_kernel_prewarm),
+                        subtitle = stringResource(R.string.settings_play_kernel_prewarm_subtitle),
+                        checked = state.kernelPrewarm,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                showPrewarmWarning = true
+                            } else {
+                                vm.put(HawkConfig.KERNEL_PREWARM, false)
+                                PlaybackService.onPrewarmPreferenceChanged(context, false)
+                            }
+                        },
+                    )
+                }
+                SettingsCard(SettingsCardPosition.MIDDLE) {
+                    SettingsSwitchRow(
                         title = stringResource(R.string.settings_play_tunnel),
                         checked = state.playTunnel,
                         onCheckedChange = { checked ->
@@ -215,5 +238,31 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
 
             Spacer(Modifier.height(64.dp))
         }
+    }
+
+    if (showPrewarmWarning) {
+        AVBoxAlertDialog(
+            onDismissRequest = { showPrewarmWarning = false },
+            title = { Text(stringResource(R.string.dialog_kernel_prewarm_title)) },
+            text = { Text(stringResource(R.string.dialog_kernel_prewarm_message)) },
+            dismissButton = {
+                val dismiss = LocalSheetDismiss.current
+                TextButton(onClick = { dismiss() }) {
+                    Text(stringResource(R.string.dialog_kernel_prewarm_cancel))
+                }
+            },
+            confirmButton = {
+                val dismissThen = LocalSheetDismissThen.current
+                TextButton(onClick = {
+                    dismissThen {
+                        vm.put(HawkConfig.KERNEL_PREWARM, true)
+                        PlaybackService.onPrewarmPreferenceChanged(context, true)
+                        showPrewarmWarning = false
+                    }
+                }) {
+                    Text(stringResource(R.string.dialog_kernel_prewarm_confirm))
+                }
+            },
+        )
     }
 }

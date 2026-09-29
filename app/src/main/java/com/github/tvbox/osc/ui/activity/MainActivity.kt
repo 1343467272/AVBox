@@ -7,10 +7,13 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.WindowCompat
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.base.BaseActivity
+import com.github.tvbox.osc.player.PlaybackService
 import com.github.tvbox.osc.ui.page.MainScreen
 import com.github.tvbox.osc.ui.theme.AVBoxTheme
 import com.github.tvbox.osc.ui.theme.AppThemeState
 import com.github.tvbox.osc.util.PermissionHelper
+
+private const val PREWARM_ON_RESUME_DELAY_MS = 2000L
 
 class MainActivity : BaseActivity() {
 
@@ -34,6 +37,7 @@ class MainActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         applyStatusBarAppearance()
+        PlaybackService.prewarm(this, PREWARM_ON_RESUME_DELAY_MS)
     }
 
     override fun init() {

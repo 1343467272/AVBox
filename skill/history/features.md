@@ -3783,3 +3783,19 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 - **同日追加(用户「短一点的激活反馈100ms」)**:点亮时长 `ACTION_FLASH_MS` 500ms → **100ms**。
 
 **第二轮审查(用户「再审查一遍是否可以收尾」)**:换角度复核修复本身与旁路,并**排除一个假警报** —— 预载不抢 `current`(`PreloadManagerHolder` 用 media3 `DefaultPreloadManager`,MediaSource 级预载,不建 ExoPlayer 实例、不走 `prepareAsync`)。本轮 0 阻断/0 高/0 中,剩余均低或口味:①HDR 片仍会建 GL sink(纯拷贝)⇒ 直通/功耗有损,但撤链有时序风险,保持;②`RestartRequired` 提示只在面板打开时刷新(拖动中不重建抽屉是既有约定);③滑条每 tick 落 8 个 KV 键(与倍速滑块"松手才提交"不一致,但推送本身无重动作,MMKV 为 mmap 快写);④`pictureHdrSource` 在"新视频轨无尺寸"的理论边界可能残留上一集值;⑤`DecoderUnsupported` 仍是启发式。按 SKILL「连续一轮无阻断/高/中即可收尾」⇒ **审查收尾**,余下全部转为真机走查项(不动代码)。
+
+### 内核预热开关(2026-09-30,用户「在播放设置页面播放行为这一处卡片增加一个开关(名为内核预热),在隧道模式头上」→ 多轮讨论定稿「接受计划并立即开始」→ 审查「根据SKILL.md审查一下是否有错误遗漏和引入新回归」)
+
+**拍板语义**:开启 = 启动后提前创建播放内核并在使用期间保持常驻以加快起播;关闭 = **不立刻杀**,只降级回 60s 空闲释放;命名取「内核预热」(不用「内核预加载」,避免与项目"预载=内容预载"术语混淆);默认关。
+
+**实现**:`HawkConfig.KERNEL_PREWARM`;`PlaySettingsPage`「播放行为」分组首项开关(隧道模式降为 MIDDLE)+ `AVBoxAlertDialog` 性能警告(取消不落库、确认落库并立即预热);`SettingsState.kernelPrewarm`;fork `VideoView.prewarmKernel()`(initPlayer+addDisplay、不 prepare、幂等);`PlaybackEngine.prewarmKernel()`(主线程、先 `PlayerHelper.updateCfg` 下发全局配置、try-catch)+ `onPrewarmPreferenceChanged()` + `scheduleIdleRelease` 按 `PrewarmPolicy` 抑制;`PlaybackService.prewarm/ensurePrewarmed`(不走 startHost、不拉起宿主服务);`MainActivity.onResume` 延迟 2s 触发(冷启动与回前台自愈同一条路径)。预热深度取"引擎+Exo 实例+RenderView"的依据:复用判据是 `getMediaPlayer() != null` ⇒ 起播走 `replay()`,而 `replay()` 不重建渲染视图。
+
+**审查轮修复(3 项)**:①**高** —— 预热后首次起播走 `replay()` 不经 `startPlay()`,而 `mAudioFocusHelper` 唯一创建点在那里 ⇒ 首次会话全程无音频焦点(`onPrepared` 判空挡住 requestFocus);修法 = 提取 `ensureAudioFocusHelper()`,`prewarmKernel()` 一并预建。②中 —— `ensurePrewarmed` 补 try-catch(对齐 `startHost` 防御)。③中 —— `KVKeySpec` 漏登记 `KERNEL_PREWARM`(项目实践 = 全部开关统一登记)。
+
+**核对结论(无回归)**:`showNetWarning` 因 `VideoViewConfig.Builder.mPlayOnMobileNetwork` 默认 true 且项目未改 ⇒ 恒 false;`PlayContainer:192/1182`、`LivePlayActivity.canReusePlayer`、`DanmuLoadController.isVideoReady` 对「IDLE+内核存在」一律按 IDLE 处理(与从未播放一致);`forceStopSession/onEngineReleased/updateSession/peek()` 对「有引擎无服务实例」判空安全;`setRenderViewFactory` 只换工厂不换视图、`ensureRenderViewMatchesConfig` 类型一致不重建 ⇒ 预热渲染视图不被起播链路丢弃。已知偏差(不修):预热态(IDLE)下 `release()` 受 `isInIdleState()` 守卫不复释放 RenderView(残留至下次 addDisplay 或随引擎 GC,无累积)。
+
+**验证**:`:app:assembleDebug` + `:app:testDebugUnitTest` 绿;新增 `PrewarmPolicyTest`(3 例);i18n 三关(`i18n_align.py` en/Hant 476=476 PASS、zh-rHK 子集 PASS、`i18n_check_keys.py` 无新增 UNUSED);`read_lints` 0。
+
+**未做 / 待走查**:①真机 8 项(开关与弹窗、冷启动 `echo-p2 prewarm kernel` 日志、常驻期无 `idle release`、关闭后 60s 释放、播放中关开关不中断、直播/音乐复用、改渲染/解码后起播、三语言);②"点击→首帧"耗时打点未做 ⇒ 实际提速幅度未证实(内核构造约 50~200ms 量级,起播大头仍在取流/爬虫);③未做低内存设备跳过与 `onTrimMemory` 让位(用户未要求);④`toast_permission_required` 为既有 i18n 死键(非本次引入,未清);⑤代码未提交。
+
+**第二轮审查(用户「再审查一遍,是否可以收尾了」)**:复核上轮 3 项修复自身(`ensureAudioFocusHelper` 与 `startPlay` 原逻辑逐分支等价、预热预建助手的副作用均判空/无泄漏、`ensurePrewarmed` 异常时 `engine` 保持 null 可重试、`KVKeySpec` 登记不影响既有测试)+ 换角度扫需求逐条一致性、SKILL 红线(注释/UI 无注释/i18n/KV 登记)、改动范围(`git status` = 12 改 + 2 新,无越界)。**发现 1 处本次引入的格式问题**:4 个改动文件 + 2 个新文件工作区行尾为 CRLF(`git ls-files --eol` = `i/lf w/crlf`),与项目 LF 标准不一致 —— 已统一转 LF 并复核为 `w/lf`;转换后 i18n 三关 PASS、`assembleDebug` 绿、单测 403/0/0(`FROM-CACHE` 校验输入与全绿执行逐字节等价)。余下 3 项均为低/口味:①`startPlay` 保留注释与 `ensureAudioFocusHelper` KDoc 轻微重复;②开启预热后内核因"换源即停/切内核/外部播放器"被 `releasePlayer()` 释放时不会自动补预热(仅少省一次构造);③`prewarmHandler.removeCallbacksAndMessages(null)` 语义略重(当前仅一种消息)。按 SKILL「连续一轮无阻断/高/中」⇒ **审查收尾**;走查清单补一项:**音频焦点**(预热后首次播放中来电/他应用播放应暂停本应用)。

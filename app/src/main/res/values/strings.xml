@@ -269,6 +269,10 @@
     <string name="live_epg_no_info">暂无节目预告信息</string>
 
     <!-- 对话框 -->
+    <string name="dialog_kernel_prewarm_title">性能警告</string>
+    <string name="dialog_kernel_prewarm_message">开启后，应用会在启动后创建播放内核，并在使用期间保持常驻，此举可加快起播速度。\n\n但会额外占用系统资源，可能导致卡顿、后台被系统回收。</string>
+    <string name="dialog_kernel_prewarm_confirm">确认开启</string>
+    <string name="dialog_kernel_prewarm_cancel">我不开了</string>
     <string name="dialog_api_url_hint">请输入 API 地址</string>
     <string name="dialog_source_disabled_title">该源已被自动停用</string>
     <string name="dialog_source_disabled_message">「%1$s」此前导致应用崩溃，已被自动停用。\n\n若该源已经修好，可以重新启用；否则切换后很可能再次闪退。</string>
@@ -370,6 +374,8 @@
     <string name="settings_play_scale">画面缩放</string>
     <string name="settings_play_decode">解码方式</string>
     <string name="settings_play_tunnel">隧道模式</string>
+    <string name="settings_play_kernel_prewarm">内核预热</string>
+    <string name="settings_play_kernel_prewarm_subtitle">启动后提前创建并常驻，加快起播</string>
     <string name="settings_play_prefer_aac">AAC 优先</string>
     <string name="settings_music_page">音乐播放页</string>
     <string name="settings_music_page_subtitle">识别为纯音频时自动打开</string>

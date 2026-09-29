@@ -269,6 +269,10 @@
     <string name="live_epg_no_info">No program info</string>
 
     <!-- Dialogs -->
+    <string name="dialog_kernel_prewarm_title">Performance Warning</string>
+    <string name="dialog_kernel_prewarm_message">When enabled, the app creates the player engine at startup and keeps it resident, which speeds up playback start-up.\n\nHowever, it occupies extra system resources, which may cause stutter or the app being reclaimed in the background.</string>
+    <string name="dialog_kernel_prewarm_confirm">Enable</string>
+    <string name="dialog_kernel_prewarm_cancel">Not Now</string>
     <string name="dialog_api_url_hint">Enter API URL</string>
     <string name="dialog_source_disabled_title">Source auto-disabled</string>
     <string name="dialog_source_disabled_message">“%1$s” caused the app to crash and has been disabled.\n\nIf it has been fixed, you can re-enable it; otherwise switching to it will likely crash the app again.</string>
@@ -370,6 +374,8 @@
     <string name="settings_play_scale">Video Scaling</string>
     <string name="settings_play_decode">Decoding Mode</string>
     <string name="settings_play_tunnel">Tunnel Mode</string>
+    <string name="settings_play_kernel_prewarm">Player Engine Prewarm</string>
+    <string name="settings_play_kernel_prewarm_subtitle">Pre-create the player engine and keep it resident for faster start-up</string>
     <string name="settings_play_prefer_aac">Prefer AAC</string>
     <string name="settings_music_page">Music Player Page</string>
     <string name="settings_music_page_subtitle">Open automatically for audio-only content</string>

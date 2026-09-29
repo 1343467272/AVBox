@@ -30,6 +30,8 @@ import coil3.request.ImageRequest;
 import coil3.target.Target;
 
 import com.github.tvbox.osc.R;
+import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.KV;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.LanguageManager;
 import com.github.tvbox.osc.util.ScreenUtils;
@@ -78,6 +80,8 @@ public class PlaybackService extends Service {
     private static PlaybackService instance;
     private static PlaybackEngine engine;
     private static WeakReference<PlaybackHostApi> owner;
+    /** 内核预热任务(只捕获 application context,静态 Handler 不泄漏) */
+    private static final Handler prewarmHandler = new Handler(Looper.getMainLooper());
     /**
      * startForegroundService 已发出、服务尚未就绪(onCreate 未跑)。
      * ⚠️ 此窗口内绝不能 stopService:AOSP 竞态 —— create 已派发到进程,onStartCommand 可能
@@ -131,6 +135,45 @@ public class PlaybackService extends Service {
     @Nullable
     public static PlaybackEngine peek() {
         return engine;
+    }
+
+    /**
+     * 内核预热入口(开关关闭时不动):延迟 delayMs 后确保引擎与内核就绪(重复调用只保留最后一次)。
+     * 不走 startHost —— 预热没有播放会话,宿主服务仍由真实播放按原路径拉起。
+     */
+    public static void prewarm(@NonNull Context context, long delayMs) {
+        if (!KV.get(HawkConfig.KERNEL_PREWARM, false)) return;
+        Context app = context.getApplicationContext();
+        prewarmHandler.removeCallbacksAndMessages(null);
+        prewarmHandler.postDelayed(() -> ensurePrewarmed(app), Math.max(0L, delayMs));
+    }
+
+    /** 内核预热开关变更:开启 = 立即预热;关闭 = 交给引擎恢复空闲释放上界(不打断在用实例) */
+    public static void onPrewarmPreferenceChanged(@NonNull Context context, boolean enabled) {
+        Context app = context.getApplicationContext();
+        prewarmHandler.removeCallbacksAndMessages(null);
+        if (!enabled) {
+            PlaybackEngine current = engine;
+            if (current != null) current.onPrewarmPreferenceChanged(false);
+            return;
+        }
+        ensurePrewarmed(app);
+    }
+
+    private static void ensurePrewarmed(Context app) {
+        if (!KV.get(HawkConfig.KERNEL_PREWARM, false)) return;
+        try {
+            PlaybackEngine current = engine;
+            if (current == null) {
+                current = new PlaybackEngine(app);
+                engine = current;
+            }
+            // 走引擎的开关变更入口:cancelIdleRelease 必须执行 —— 否则预热完会被在途的 60s 空闲释放收走
+            current.onPrewarmPreferenceChanged(true);
+        } catch (Throwable th) {
+            // 预热失败不得影响启动与正常起播(起播链路会自行建内核)
+            LOG.e(TAG + " prewarm failed: " + th.getMessage());
+        }
     }
 
     private static void startHost(@NonNull Context app, @Nullable Intent intent) {

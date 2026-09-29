@@ -3813,3 +3813,43 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **验证**:`assembleDebug` + `testDebugUnitTest` 绿(**408 用例**/0 失败;新增 `PreloadCachePolicyTest` 4 例、`PlaybackAttemptStateTest` 补 1 例);改动文件行尾统一 LF;装机 `05:34`。
 
 **未做 / 待走查**:①真机:连续点集出现 `echo-preload-cache-hit`(含 size)、过期直链起播出现 `echo-preload-stale: re-resolve current episode (...)` 且随后正常起播、`echo-preconnect: <host>` 每 host 仅一次;②方案②"选集面板选中即预解析"未做(需防抖 + 只预解析选中项 + 必走 SPIDER_POOL);③preconnect 的握手收益未量化(需对比首字节时间);④代码未提交。
+
+### 暂停态调色误触发「播放出错,自动重试」定位与修复 + 审查轮(2026-09-30,用户「如果在播放影视时暂停,然后点击开启调色,或者长按对比,此时会弹出toast…这是bug吗」→「改为1吧」→「根据SKILL.md审查一下是否有错误遗漏和引入新回归」)
+
+**定位(media3 1.11.1 源码核实)**:根因 = 暂停态调参走 `ExoPlayer.redrawVideoEffects()` 下发 `VideoFrameProcessor.REDRAW`,而 `MediaCodecVideoRenderer.createPlaybackVideoGraphWrapper` 未开 `setEnableReplayableCache(true)`(默认 false,media3 自留 TODO b/391109644)⇒ `DefaultVideoFrameProcessor.redraw()` 对 `frameCache == null` 抛 `UnsupportedOperationException("Replaying when enableReplayableCache is set to false")`;`SingleInputVideoGraph.redraw` → `PlaybackVideoGraphWrapper.DefaultVideoSink.redraw` → `MediaCodecVideoRenderer.handleMessage(MSG_SET_VIDEO_EFFECTS)` 全程无 try,且 `ExoPlayer.setVideoEffects` 只 `sendRendererMessage` ⇒ 异常在**播放线程**抛出、`redrawVideoEffects` 的 try-catch 捕不到 ⇒ 播放 ERROR → `ComposeVideoController.STATE_ERROR → errReplay` → `errorWithRetry`(`isPlaybackStarted` 被 `hasPlaybackProgress(pos>1s)` 兜成 true)→ `retryAfterStartedError` 弹「播放出错,自动重试」+ 同地址重播本集(暂停被打断)。真机日志 8 次同型:`echo-autoRetry retry after started error` → 同帧 `release player kernel` + `goPlayUrl` → 40~500ms 后 `echo-player error ... pos=0 started=true`(解释:`VideoView.setPlayState` 里 `mVideoController.setPlayState` 的 errReplay 同步链先跑完,listeners 遍历才轮到引擎打日志,故 error 行的 pos/kernel 已是重播后的值);播放态调参不发信令所以不复现。
+
+**修复(用户选方案 1)**:删 `PictureEffects.push()` 的暂停态 REDRAW 分支与 `ExoPlayer.redrawVideoEffects()`(+ `VideoFrameProcessor` import);已挂链只写实例参数(着色器每帧现读 volatile,暂停中改的恢复播放后生效)。**已知代价**:暂停时画面不刷新、「按住对比」暂停态无视觉反馈。未采纳:自定义 `MediaCodecVideoRenderer` 子类打开 replayable cache(改动面大 + media3 自述更耗电/算力)。
+
+**审查轮**(严重度 × 来源):①中|本次引入 —— 删除后 `ExoPlayer.java` 留有 3 行"曾提供…已删除…"过程叙事注释,超 SKILL 注释红线,已删(约束只留调用点 `push()` 一处,2 行);②中|本次遗漏 —— 活规范 §6.17 未登记该硬约束、§7 ④"来源未定位"未标已解决,已同步(§6.17 新增"暂停态不得下发 REDRAW"条,§7 ④ 标已定位并在"已作废"清单加讨论稿第 63 行 REDRAW 条);③中|本次引入(格式)—— `PictureEffects.kt` 工作区行尾 `w/crlf`,已转 LF(`git ls-files --eol` 复核 `w/lf`);④低|行为变化 —— 「按住对比」暂停态无反馈属既定代价,已入 §6.17。**无回归核对**:全项目无 `redrawVideoEffects`/REDRAW 有效调用(仅两处说明性注释)、import 已清、`mainHandler`/`videoEffectsOpen`/`Looper` 仍被其它路径使用;正确性依赖的"每帧现读"已核实(`ColorToneAdjustEffect.@Volatile parameters`、`DetailAdjustEffect.@Volatile profile`,`VideoAdjustShaderProgram.drawFrame → bindUniforms` 每帧读);`PictureEffectsRestartPolicyTest` 真值表不含 redraw 维度;无需补单测(非配置/规则/字段取值口径改动)。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` 绿(**408 用例**/0 失败);装机 `05:54:35`(修复包)、`05:58:42`(注释/行尾修正包);`git status` 仅 2 个代码文件 + 2 个文档。**待走查**:暂停态四类调色动作(预设/滑条/按住对比/关面板)不再弹提示、不再重播;恢复播放后参数如期生效。**未做**:讨论稿 `文档/画质参数与调色方案（2026-09-30 讨论稿）.md` 第 63 行 REDRAW 条目已证伪但未回写文件本身(与既有"no-op 传空列表"作废条同批,待用户确认);代码未提交。
+
+### 「更多」面板分页记忆(2026-09-30,用户「能否让播放器界面的更多弹窗面板保留在上一次离开的位置…记忆该怎么保留?」→「方案a,页内记忆」)
+
+**问题**:`PlayerParamsSheet` 的分页 tab 是 UI 局部 `remember`,抽屉一关组合销毁 ⇒ 每次打开都回默认「播放参数」页,用户每次都得手动切回「画质参数」。
+
+**拍板**:用户选**页内记忆**(方案 A),明确不做 KV 持久化(跨启动记住分页不是诉求;退出播放页/换片重进回默认即可)。
+
+**实现**:`ParamsTab` 枚举从 UI 层移到 `player/state/PlayerUiState.kt`(与 `LockVisibility` 同区),新增 `var paramsTab`(页面级);`PlayerParamsSheet` 去掉局部 `remember`+`mutableStateOf`(顺带清 unused import),改收 `tab` + `onTabSelected` 回调;`PlayerOverlay` 接线。
+
+**验证**:`assembleDebug` BUILD SUCCESSFUL(UI 小改按项目约定不跑单测);装机 `06:03:46`。**未做**:滚动位置记忆(内容长度随状态变化,不做);KV 持久化(用户否);代码未提交。
+
+### 画质页「按住对比 / 恢复默认」补图标(2026-09-30,用户「在更多弹窗画质参数面板给按住对比和恢复默认加上icon图标,在.tubiao文件夹」)
+
+**转换**:`.tubiao/按住对比.svg` → `player_ic_params_compare.xml`、`.tubiao/恢复默认.svg` → `player_ic_params_reset.xml`(沿用既有约定:viewport 平移 +960、单 path `#FFFFFFFF`、注释标注来源文件;命名归 `player_ic_params_*`,与画质页既有 `player_ic_params_preset` 一致)。
+
+**接线**:`PlayerPicturePanel` —— `HoldCompareButton` 的 `SheetButton` 与「恢复默认」的 `SheetActionButton` 各加 `iconRes`(两个组件本就支持该参数,未改组件)。
+
+**验证**:`read_lints` 0;`assembleDebug` BUILD SUCCESSFUL(UI 小改不跑单测);装机 `06:07:35`;新增/改动文件行尾统一 LF(同目录既有 drawable 的 CRLF 是既有状态,未动)。**待走查**:图标+文字在半宽按钮内的观感(横竖屏)。代码未提交。
+
+### 收藏页布局(三列/双列) + 偏好设置新增一项(2026-09-30,用户「目前收藏页面是双列布局是吗,能否实现三列布局,在偏好设置页面语言的下方新增加一项收藏页布局,一起组成分组卡片圆角32dp,点击后出现弹出式菜单,里面有两个选项,从上往下依次是三列布局,双列布局,默认为三列布局」)
+
+**现状**:收藏页列数 = `WindowSize.gridColumns(availableWidth, minColumns = 2)`(按宽度算、下限 2)⇒ 手机档恒双列。
+
+**实现**:①`HawkConfig.COLLECT_COLUMNS = "collect_columns"`(默认 3)+ `KVKeySpec` int 段登记 + `KVKeySpecTest.collectColumns_isRegistered` 锁登记;②`SettingsState.collectColumns` + `loadState()` 读 KV;③偏好设置页语言分组改为两张卡(`FIRST`/`LAST`,去掉原先语言卡显式 `RoundedCornerShape(22.dp)` ⇒ 用 `shapeFor` 默认:外角 32dp、相邻角 4dp),新增 `CollectColumnsRow`(`SettingsOptionMenuRow`,选项自上而下 = 三列/双列,`valueText` 显示当前项),选中即 `vm.put` + 广播事件;④`RefreshEvent.TYPE_COLLECT_LAYOUT_CHANGE = 23`(按类注释"新增事件用新编号"),`CollectViewModel.columns` StateFlow + 事件里重读 KV,收藏页 `minColumns = columns` ⇒ **设置页改完返回收藏页立即换列数,不必重进**。
+
+**口径**:列数仍走 `WindowSize.gridColumns` 的"下限"语义(大屏/平板继续按宽度自适应,设置只抬下限),与收藏页既有实现一致;手机档 360dp 下三列卡宽约 101dp。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` 绿(**409 用例**/0 失败,新增 1 条);i18n 三关 PASS(en/Hant 479=479、HK 子集 EXTRA=0)、`i18n_check_keys.py` 仅既有死键 `toast_permission_required`;装机 `06:14:08`。**未做/待走查**:分组标题仍沿用「语言」(两项同组但标题语义偏窄,若需改「界面/外观」再加 key);平板/横屏下三列观感;代码未提交。
+
+**同日追加(用户「将语言改为语言与布局」)**:分组标题改用新 key `settings_group_language_layout`(语言与布局 / `Language &amp; Layout` / 語言與佈局;HK 复用繁体),**行标题仍用 `settings_language`(语言)——两者必须分开**,合并会把语言选择行的标题也改掉。i18n 三关 PASS(480=480)、`assembleDebug` 绿、装机 `06:15:41`。

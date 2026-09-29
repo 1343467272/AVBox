@@ -21,7 +21,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -32,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.player.state.ParamsChoice
 import com.github.tvbox.osc.player.state.ParamsSheetState
+import com.github.tvbox.osc.player.state.ParamsTab
 import com.github.tvbox.osc.ui.components.AVBoxBottomSheet
 import com.github.tvbox.osc.ui.components.CapsuleSegmentedButton
 import com.github.tvbox.osc.ui.components.LocalSheetDismissThen
@@ -39,15 +39,14 @@ import com.github.tvbox.osc.ui.components.SegmentOption
 import com.github.tvbox.osc.ui.components.SegmentStyle
 import kotlin.math.roundToInt
 
-private enum class ParamsTab { Playback, Picture }
-
 @Composable
 internal fun PlayerParamsSheet(
     sheet: ParamsSheetState,
+    tab: ParamsTab,
+    onTabSelected: (ParamsTab) -> Unit,
     slideFromEnd: Boolean,
     onDismiss: () -> Unit,
 ) {
-    var tab by remember { mutableStateOf(ParamsTab.Playback) }
     AVBoxBottomSheet(
         onDismissRequest = onDismiss,
         slideFromEnd = slideFromEnd,
@@ -77,7 +76,7 @@ internal fun PlayerParamsSheet(
                     ),
                 ),
                 selectedValue = tab,
-                onOptionSelected = { tab = it },
+                onOptionSelected = onTabSelected,
                 modifier = Modifier.fillMaxWidth(),
                 style = SegmentStyle.Separated,
                 containerColor = MaterialTheme.colorScheme.surfaceBright,

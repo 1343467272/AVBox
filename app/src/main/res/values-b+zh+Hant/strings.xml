@@ -3,7 +3,11 @@
 
     <!-- 設定:語言(語言名稱保留各語言自稱) -->
     <string name="settings_language">語言</string>
+    <string name="settings_group_language_layout">語言與佈局</string>
     <string name="settings_language_subtitle">切換應用程式的介面語言</string>
+    <string name="settings_collect_columns">收藏頁佈局</string>
+    <string name="settings_collect_columns_three">三列佈局</string>
+    <string name="settings_collect_columns_two">雙列佈局</string>
     <string name="settings_language_system">跟隨系統</string>
     <string name="settings_language_zh_hans">简体中文</string>
     <string name="settings_language_en">English</string>

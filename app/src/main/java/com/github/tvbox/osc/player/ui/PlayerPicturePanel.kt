@@ -148,6 +148,7 @@ internal fun PictureParams(state: PictureParamsState) {
             SheetActionButton(
                 text = stringResource(R.string.player_picture_reset),
                 onClick = state.onReset,
+                iconRes = R.drawable.player_ic_params_reset,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -183,6 +184,7 @@ private fun HoldCompareButton(state: PictureParamsState, modifier: Modifier = Mo
             pressed = it
             state.onCompareChanged(it)
         },
+        iconRes = R.drawable.player_ic_params_compare,
         modifier = modifier,
     )
 }

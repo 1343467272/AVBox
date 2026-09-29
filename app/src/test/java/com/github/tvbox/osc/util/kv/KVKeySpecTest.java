@@ -100,6 +100,13 @@ public class KVKeySpecTest {
     }
 
     @Test
+    public void collectColumns_isRegistered() {
+        // 收藏页布局(2026-09-30 新增):漏登记即"选了三列还是双列"(读取侧静默回落默认值)
+        assertEquals(TypeToken.get(Integer.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.COLLECT_COLUMNS));
+    }
+
+    @Test
     public void pictureParamKeys_areRegistered() {
         // 画质参数的每一条都要登记:漏一条即"滑条拖了没反应"(读取侧静默回落默认值)
         assertEquals(TypeToken.get(String.class).getType(),

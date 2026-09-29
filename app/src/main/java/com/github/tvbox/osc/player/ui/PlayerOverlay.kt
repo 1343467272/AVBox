@@ -93,6 +93,8 @@ fun PlayerOverlay(
         state.paramsSheet?.let { sheet ->
             PlayerParamsSheet(
                 sheet = sheet,
+                tab = state.paramsTab,
+                onTabSelected = { state.paramsTab = it },
                 slideFromEnd = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE,
                 onDismiss = { state.paramsSheet = null },
             )

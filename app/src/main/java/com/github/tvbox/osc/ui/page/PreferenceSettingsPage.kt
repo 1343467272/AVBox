@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -75,9 +74,18 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
         ) {
             Spacer(Modifier.height(topPad + 8.dp))
 
-            SettingsGroup(title = stringResource(R.string.settings_language)) {
-                SettingsCard(SettingsCardPosition.SINGLE, shape = RoundedCornerShape(22.dp)) {
+            SettingsGroup(title = stringResource(R.string.settings_group_language_layout)) {
+                SettingsCard(SettingsCardPosition.FIRST) {
                     LanguageRow()
+                }
+                SettingsCard(SettingsCardPosition.LAST) {
+                    CollectColumnsRow(
+                        columns = state.collectColumns,
+                        onSelect = { columns ->
+                            vm.put(HawkConfig.COLLECT_COLUMNS, columns)
+                            EventBus.getDefault().post(RefreshEvent(RefreshEvent.TYPE_COLLECT_LAYOUT_CHANGE))
+                        },
+                    )
                 }
             }
 
@@ -226,6 +234,22 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
             },
         )
     }
+}
+
+@Composable
+private fun CollectColumnsRow(columns: Int, onSelect: (Int) -> Unit) {
+    val options = listOf(
+        stringResource(R.string.settings_collect_columns_three),
+        stringResource(R.string.settings_collect_columns_two),
+    )
+    val selectedIndex = if (columns == 3) 0 else 1
+    SettingsOptionMenuRow(
+        title = stringResource(R.string.settings_collect_columns),
+        valueText = options[selectedIndex],
+        options = options,
+        selectedIndex = selectedIndex,
+        onSelect = { idx -> onSelect(if (idx == 0) 3 else 2) },
+    )
 }
 
 /** 语言入口:选中即写 KV(给落盘留出弹窗交互的时间),确认后立即自重启;取消回滚 */

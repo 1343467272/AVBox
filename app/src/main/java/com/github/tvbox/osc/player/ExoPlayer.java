@@ -24,7 +24,6 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackGroup;
 import androidx.media3.common.Tracks;
-import androidx.media3.common.VideoFrameProcessor;
 import androidx.media3.common.VideoSize;
 import androidx.media3.common.text.Cue;
 import androidx.media3.common.text.CueGroup;
@@ -305,20 +304,6 @@ public class ExoPlayer extends ExoMediaPlayer {
     /** 本集视频轨是否 HDR(效果退化为纯拷贝,面板据此提示) */
     public boolean isPictureHdrSource() {
         return pictureHdrSource;
-    }
-
-    /** 暂停态调参后重绘当前帧(media3 的 VideoFrameProcessor#REDRAW 信令):没有新帧流过管线时看不到变化 */
-    public void redrawVideoEffects() {
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            mainHandler.post(this::redrawVideoEffects);
-            return;
-        }
-        if (mInternalPlayer == null || !videoEffectsOpen) return;
-        try {
-            mInternalPlayer.setVideoEffects(VideoFrameProcessor.REDRAW);
-        } catch (Throwable th) {
-            LOG.e("ExoPlayer", "echo-picture-effects redraw failed", th);
-        }
     }
 
     private void reportVideoSizeFromTracks(Tracks tracks) {

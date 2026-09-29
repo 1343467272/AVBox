@@ -111,6 +111,9 @@ class PlayerUiState {
     /** 播放参数抽屉（倍速/解码/片头尾/内核/比例/搜弹幕的统一入口），null = 不显示 */
     var paramsSheet: ParamsSheetState? by mutableStateOf(null)
 
+    /** 「更多」面板停留的分页；页面级记忆：关抽屉再开保留，退出播放页/换片重进回默认（不落 KV） */
+    var paramsTab: ParamsTab by mutableStateOf(ParamsTab.Playback)
+
     // —— 加载/错误遮罩（由 PlayerTipBridge 经页面桥入，见 PlayContainer.onTipStateChanged） ——
     var tipMsg: String by mutableStateOf("")
     var tipLoading: Boolean by mutableStateOf(false)
@@ -189,6 +192,9 @@ class PlayerUiState {
 
 /** 锁屏按钮三态（照搬旧实现 GONE/INVISIBLE/VISIBLE 的区别） */
 enum class LockVisibility { GONE, HIDDEN, SHOWN }
+
+/** 「更多」面板分页：播放参数 / 画质参数 */
+enum class ParamsTab { Playback, Picture }
 
 /**
  * 选择弹窗状态（照搬 SelectDialog.setAdapter 的四参数：tip/数据/默认选中/回调）。

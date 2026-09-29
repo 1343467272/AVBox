@@ -164,18 +164,16 @@ object PictureEffects {
     internal fun restartNeeded(wantEffects: Boolean, opened: Boolean, presetOriginal: Boolean): Boolean =
         if (wantEffects) !opened else (opened && presetOriginal)
 
-    /** 参数变化:本集已挂效果时只改实例参数(着色器每帧现读);本集未挂则先下发一次(链要等重播后的 prepare 才真建) */
+    /** 参数变化:本集已挂效果时只改实例参数(着色器每帧现读,暂停中改的恢复播放后自然生效);本集未挂则先下发一次(链要等重播后的 prepare 才真建) */
     private fun push() {
         val player = current?.get() ?: return
         val profile = applied()
         colorTone.setProfile(profile)
         detail.setProfile(profile)
         if (tunneling) return
-        if (openedThisSession) {
-            // 暂停态没有新帧流过管线:要一次重绘才看得到变化
-            if (!player.isPlaying) player.redrawVideoEffects()
-            return
-        }
+        // 已挂链:只改实例参数,不下发任何信令 —— 暂停态重绘(REDRAW)在 media3 未开 replayable cache 时
+        // 必抛 UnsupportedOperationException(播放线程),会触发「播放出错」兜底重试并重播本集,勿再加回
+        if (openedThisSession) return
         if (profile.isNoOp) return
         player.applyVideoEffects(activeEffects)
     }

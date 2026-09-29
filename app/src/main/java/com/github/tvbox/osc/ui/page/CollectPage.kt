@@ -71,6 +71,8 @@ import com.github.tvbox.osc.event.RefreshEvent
 import com.github.tvbox.osc.ui.WindowSize
 import com.github.tvbox.osc.ui.components.AppTopBarScaffold
 import com.github.tvbox.osc.ui.components.LoadStateBox
+import com.github.tvbox.osc.util.HawkConfig
+import com.github.tvbox.osc.util.KV
 import com.github.tvbox.osc.util.SubscribeList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,6 +86,9 @@ import org.greenrobot.eventbus.ThreadMode
 class CollectViewModel : ViewModel() {
     val loading = MutableStateFlow(true)
     val items = MutableStateFlow<List<VodCollect>>(emptyList())
+
+    /** 收藏页栅格列数(设置页「收藏页布局」;默认 3) */
+    val columns = MutableStateFlow(KV.get(HawkConfig.COLLECT_COLUMNS, 3))
 
     /** 站点不在当前订阅的收藏源 key(收藏不落站名,可用性只能按当前订阅现判,切订阅后要重算) */
     val unavailableKeys = MutableStateFlow<Set<String>>(emptySet())
@@ -146,6 +151,8 @@ class CollectViewModel : ViewModel() {
             refresh(scrollToTop = true)
         } else if (event.type == RefreshEvent.TYPE_API_URL_CHANGE) {
             viewModelScope.launch(Dispatchers.IO) { recomputeUnavailableNow() }
+        } else if (event.type == RefreshEvent.TYPE_COLLECT_LAYOUT_CHANGE) {
+            columns.value = KV.get(HawkConfig.COLLECT_COLUMNS, 3)
         }
     }
 
@@ -182,6 +189,7 @@ fun CollectPage(
     val loading by vm.loading.collectAsState()
     val placementAnim by vm.placementAnim.collectAsState()
     val unavailableKeys by vm.unavailableKeys.collectAsState()
+    val columns by vm.columns.collectAsState()
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<VodCollect?>(null) }
@@ -296,7 +304,7 @@ fun CollectPage(
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         val gridColumns = WindowSize.gridColumns(
                             availableWidthDp = (maxWidth - 32.dp - navStart).value.toInt(),
-                            minColumns = 2,
+                            minColumns = columns,
                         )
                         LazyVerticalGrid(
                             state = listState,

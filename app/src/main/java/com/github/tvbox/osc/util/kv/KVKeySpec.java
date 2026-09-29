@@ -103,6 +103,7 @@ public final class KVKeySpec implements KVDecoder.TypeRegistry {
         register(HawkConfig.THEME_SEED, 0);
         register(HawkConfig.LIQUID_GLASS_BLUR, 0);
         register(HawkConfig.LIQUID_GLASS_DISTORTION, 0);
+        register(HawkConfig.COLLECT_COLUMNS, 0);
 
         // ---- boolean ----
         register(HawkConfig.PLAYER_IS_LIVE, false);

@@ -3801,3 +3801,15 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **第二轮审查(用户「再审查一遍,是否可以收尾了」)**:复核上轮 3 项修复自身(`ensureAudioFocusHelper` 与 `startPlay` 原逻辑逐分支等价、预热预建助手的副作用均判空/无泄漏、`ensurePrewarmed` 异常时 `engine` 保持 null 可重试、`KVKeySpec` 登记不影响既有测试)+ 换角度扫需求逐条一致性、SKILL 红线(注释/UI 无注释/i18n/KV 登记)、改动范围(`git status` = 12 改 + 2 新,无越界)。**发现 1 处本次引入的格式问题**:4 个改动文件 + 2 个新文件工作区行尾为 CRLF(`git ls-files --eol` = `i/lf w/crlf`),与项目 LF 标准不一致 —— 已统一转 LF 并复核为 `w/lf`;转换后 i18n 三关 PASS、`assembleDebug` 绿、单测 403/0/0(`FROM-CACHE` 校验输入与全绿执行逐字节等价)。余下 3 项均为低/口味:①`startPlay` 保留注释与 `ensureAudioFocusHelper` KDoc 轻微重复;②开启预热后内核因"换源即停/切内核/外部播放器"被 `releasePlayer()` 释放时不会自动补预热(仅少省一次构造);③`prewarmHandler.removeCallbacksAndMessages(null)` 语义略重(当前仅一种消息)。按 SKILL「连续一轮无阻断/高/中」⇒ **审查收尾**;走查清单补一项:**音频焦点**(预热后首次播放中来电/他应用播放应暂停本应用)。
 
 **补:提交与真机日志走查(2026-09-30,用户「好吧就这样,提交到远程仓库」)**:已提交 `73451cc`(`feat(player): add kernel prewarm setting with resident engine policy`,14 文件 +249/-4)并推送 `origin/main`。真机(iQOO Neo10)日志走查 4 项通过:①关闭后 60s 降级释放(`idle release: no host for 60s` → `engine release` → `self-released`);②确认开启即刻预热(`engine create` → 内核构造 → `prewarm kernel`,链路完整);③回前台预热幂等(无重复构造);④开启期间常驻不释放。**实测:预热整链路仅 ~12ms**(引擎构造 5ms + 内核 initPlayer/RenderView 7ms)⇒ 预热对起播的加速量级有限,要明显提速需做"详情页进入即预解析直链"。**未验证**(用户收尾未补测):起播命中复用(判据 = 起播前后无新 `echo-exo-low-memory-load-control`)、退出播放页的 `idle release suppressed` 日志、杀进程真冷启动预热。
+
+### 预解析直链缓存池化 + 连接预热(2026-09-30,用户「先做1和3」并点名三条风险)
+
+**背景**:上轮"详情页预解析"调研发现 —— ①详情页已自动预览起播待看集(该集直链本就已解析,无法再提前);②真正缺口是"非待看集零缓存 + 既有直链缓存只有 60s 单槽";③播放数据源(`ItvClient`)与 `defaultClient` 共享连接池、但仓库无 preconnect 代码。据此用户拍板先做①缓存池化、③preconnect。
+
+**实现**:①`PreloadCoordinator` 单槽(`cachedInfo/cachedKey/cachedAt`,60s)→ 多键缓存池:新增 `PreloadCachePolicy`(TTL 180s、容量 5)、`putCache` 写入时清过期+按插入序淘汰、`consumeResult` 按键取用即删、开关关闭时不命中并清池;`invalidate()` 维持既有"不清池"语义(键含源/片/线路/集名,不会串内容),`dropPreloadData()` 仍只管媒体预载数据。②新增 `util/Preconnect.kt`:`ItvClient` 对直链 host 发一次 HEAD 把 TCP+TLS 放回连接池(host 去重、跟踪上限 64、跳过本地代理/非 http、失败静默),接入点 = 预解析成功(`echo-preload-resolve-ok`)之后。③**风险 1 兜底**:新增 `PlaybackAttemptState.usedPreloadedResult`(命中缓存置位 / `beginNewPlay` 复位)+ `PlaybackController.retryWithFreshResolve()`:在 `autoRetry()` 与 `handleResolvePlayUrlTimeout()` 入口拦截"用缓存结果起播失败" ⇒ 丢弃该键并立即重新取流同集一次,不再先走同址重播/换线/20s 超时阶梯。
+
+**风险条款落实**:直链失效 = ③;爬虫调用频率 = 本次不新增预解析触发点(仅复用既有 evaluate 流程)+ preconnect 按 host 去重;默认值 = 全部随既有「下一集预载」开关(默认关,关闭时 `consumeResult` 直接返回 null)。
+
+**验证**:`assembleDebug` + `testDebugUnitTest` 绿(**408 用例**/0 失败;新增 `PreloadCachePolicyTest` 4 例、`PlaybackAttemptStateTest` 补 1 例);改动文件行尾统一 LF;装机 `05:34`。
+
+**未做 / 待走查**:①真机:连续点集出现 `echo-preload-cache-hit`(含 size)、过期直链起播出现 `echo-preload-stale: re-resolve current episode (...)` 且随后正常起播、`echo-preconnect: <host>` 每 host 仅一次;②方案②"选集面板选中即预解析"未做(需防抖 + 只预解析选中项 + 必走 SPIDER_POOL);③preconnect 的握手收益未量化(需对比首字节时间);④代码未提交。

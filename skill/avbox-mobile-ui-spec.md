@@ -555,6 +555,12 @@
 - ⚠️ **直播不吃画质参数(2026-09-30 用户要求)**:判据 = 引擎模式标记 `PLAYER_IS_LIVE`(唯一写入点 `PlaybackEngine.setLiveFlag`,严格早于起播)。`PictureEffects.onPrepare` 直播早退 —— 不挂链、**也不接管内核引用**(`current = null`)⇒ 实时调参与不可用原因对它都不生效;直播内核每次起播都是新实例(`enterLive`/`enterLiveState` 先 `releasePlayer`),链不会残留。参数照常落库,下一次点播起播生效。
 - **已作废**:讨论稿 `文档/画质参数与调色方案（2026-09-30 讨论稿）.md` 里"no-op 传空列表"一条(理由见本节第一条与"空列表同样会建 VideoSink"那条)。
 
+### 6.18 预载/预解析直链缓存与连接预热(2026-09-30)
+
+- ⚠️ **命中预解析缓存起播失败必须走"重取流"兜底,不能先走重播/换线阶梯**:`PlaybackController.play()` 命中 `PreloadCoordinator.consumeResult` 时置 `PlaybackAttemptState.usedPreloadedResult`;失败由 `retryWithFreshResolve()`(挂在 `autoRetry()` 与 `handleResolvePlayUrlTimeout()` 入口)丢弃该键并立即重新 `getPlay` 同集一次。直链可能已过期,少了这一步会先经历同址重播/换线/20s 起播超时 —— 比不预解析更慢。改动 `play()` 的命中分支或失败阶梯时必须保留该通路(`usedPreloadedResult` 由 `beginNewPlay()` 复位)。
+- ⚠️ **直链缓存只对"playerContent 直接返回直链"的源有效**:爬虫(type3)/扩展接口(type4)有效;`parse=1`/`jx=1`(WebView 嗅探、解析接口)、本地代理、`tvbox-xg:`、开 m3u8 净化的 m3u8 一律不入池(判据 = `PreloadCoordinator.handlePreloadResult`)。缓存池口径(TTL 180s、容量 5、消费即删、开关关闭不命中)在 `PreloadCachePolicy`。
+- ⚠️ **连接预热只对走 `ItvClient` 的播放数据源有效**:`Preconnect.warm` 对直链 host 发一次 HEAD(host 去重、失败静默),连接与播放侧同池(`OkGoHelper`);WebView 嗅探路径走系统网络栈,预热无效;`OkGoHelper.reloadDns()` 重建连接池后预热连接失效(host 去重表不重发,已知偏差)。
+
 ## 7. 未决 / 待细化清单
 
 - **画质调色待走查(2026-09-30)**:①HDR 源已改为退化为纯拷贝(不生效但不影响播放),观感与 `player_picture_unavailable_hdr` 提示待真机;②「隧道模式」开时面板是否正确显示不可用提示、画面是否照常(隧道与效果的互斥收口见 §6.17);③解析类源(json 扩展 / 聚合 / 超级解析)的起播与失败提示(既有链路加固落在这条路上);④那次"卡死后被判成出错"的来源未定位(日志无 `echo-exo-player-error`,media3 错误码缺失)。

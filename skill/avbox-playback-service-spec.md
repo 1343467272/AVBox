@@ -46,7 +46,7 @@
 | 播放调度 | 与视图/控制器同处 `PlayContainer`(取流/解析/嗅探/换线/换源/预载/弹幕调度/字幕/投屏/进度) | 服务侧 `PlayerManager` | **要拆** |
 | 视图 | `MyVideoView`(自带内核 + render + 状态机)放在页面 `view_play_container.xml` 里 | 官方 `androidx.media3.ui.PlayerView`(纯视图) | **保留 dkplayer**(见 D1) |
 | 控制器 | `ComposeVideoController`(BaseVideoController + Compose 覆盖层 + 字幕/歌词视图) | 原生 View 控制层 | 页面持有(见 D2) |
-| 内核抽象 | dkplayer `AbstractPlayer`(Exo/IJK 双内核) | media3 `Player` | 决定了**不能**用 media3 `MediaSession`/`MediaLibraryService`(D5) |
+| 内核抽象 | dkplayer `AbstractPlayer`(现仅 Exo 内核;IJK 已于 2026-09-29 移除) | media3 `Player` | 决定了**不能**用 media3 `MediaSession`/`MediaLibraryService`(D5) |
 | 通知/会话 | `MusicPlaybackService`(仅通知壳,owner = `WeakReference<PlayContainer>`) | 服务自带 `MediaLibraryService` + `MediaSession` | 并入新服务 |
 | 多页面 | 每页一套(详情页可叠加;直播页独立 `MyVideoView`) | 所有播放页共享一个服务 | 目标一致 |
 | 页面挂摘 | 无(页面=播放器) | `setPlayer(player)` / `setPlayer(null)` | **要新建协议** |
@@ -181,7 +181,7 @@
 
 | 风险 | 说明 | 缓解 |
 |---|---|---|
-| R1 跨窗口 View 搬运 | `mPlayerContainer` 在 Activity/服务间搬运会触发 Surface 销毁重建 | dkplayer 已有全屏搬运先例(自证可行);IJK/Exo 的 `setDisplay(null)` 安全性已有二进制级结论;P2 先只为点播开,真机压测 §4-10 |
+| R1 跨窗口 View 搬运 | `mPlayerContainer` 在 Activity/服务间搬运会触发 Surface 销毁重建 | dkplayer 已有全屏搬运先例(自证可行);内核的 `setDisplay(null)` 安全性已有二进制级结论;P2 先只为点播开,真机压测 §4-10 |
 | R2 Compose 控制器上下文 | 控制器依赖页面 owners/主题 | 控制器留页面(D2);detach 强制摘除,防止服务持页面 View |
 | R3 泄漏 | 服务持有页面 View(弹幕/控制器)、页面持有服务 | `unbindController()/setDanmuView(null)` 必做;`PageHost` 用弱引用;P2 出口做 hprof 抽查 |
 | R4 谁在播(A/B 叠加) | 旧语义"每页一套、各播各的",新语义共享一个播放器 | D6 `playbackKey` 归属判定;详情页进入前显式判断"同片续播 vs 换片重播" |

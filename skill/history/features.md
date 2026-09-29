@@ -3713,3 +3713,19 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **未做**:①`PlaybackProgress.flush()` 的 MMKV 读改写仍在调用线程(历史页快照紧接着读它,异步化会读到旧百分比);②`DefaultSubtitleEngine` 的字幕缓存写、`DetailViewModel.toggleCollect` 的收藏写仍在主线程(不在播放热路径,属 2026-09-28 主线程审计判定的"有意保留");③没做真机帧率量化。
 
 **验证**:`.\\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(49 类 / 381 用例 / 0 失败);已装机。**未真机走查**,待走查:①退出播放器 → 立刻重进同一集:续播位置正确(不能从头);②重播 / 音乐页单曲循环:确实从头起播(不被旧进度顶回);③换集 / 换源:历史页进度条与续播点仍正常;④删单条历史 / 清空历史:刚删的片不被迟到的回写救回。
+
+### 移除 ijk 内核、rtmp 改由 media3 承接(2026-09-29,用户「本项目的ijk播放器是否可以移除」→ 拍板「放弃 rtmps:// 源」+「rtmp 接上 / rtp 与 rtmps 一起放弃 / 一次做完」)
+
+**改动(71 项:65 代码改删 + 1 新增 AAR + 4 份 skill 活规范同步 + 本条目)**:
+
+**① rtmp 接线(先做)**:`:player` 新增 `api(libs.media3.datasource.rtmp)`;`app/build.gradle.kts` 全局 `configurations.configureEach { exclude(io.antmedia:rtmp-client) }`,改用 `app/libs/LibRtmp-Client-for-Android-v3.2.0.m2.aar`(JitPack 同名 fork,`librtmp-jni.so` 实测 LOAD 对齐 `0x4000`;官方那份是 `0x1000`)。`ExoPlayer.setDataSource` 对**直播** rtmp 追加 librtmp 要求的 `" live=1"`(日志 `echo-rtmp-live-flag`),rtmp 与本地代理 URL 一样跳过磁盘缓存(日志 `echo-play-cache-skip-rtmp`)。
+
+**② 删除**:`player/.../tv/danmaku/ijk/**`(19 文件)、`player/.../xyz/doikki/videoplayer/ijk/**`(2)、`app/.../player/IjkMediaPlayer.java`、bean `IJKCode`、三件套 so(`libijkffmpeg` 12MB / `libijksdl` 470KB / `libplayer` 412KB)、`proguard-rules.pro` 的 keep、`player` 模块 `values/strings.xml`(app_name=ijkPlayer)、KV `ijk_codec`/`ijk_cache_play`/`live_play_type`(含 `KVKeySpec` 注册)、`default_config.json` 的 `ijk` 段、四语言 `player_ijk`/`settings_ijk_cache_play`/`live_decoder_ijk_hw|sw`、`ControlManager` 的 `IjkMediaPlayer.setDotPort` 一行。
+
+**③ 收敛到单内核**:`PlayerHelper` 只剩 Exo 工厂 + `EXO_DECODE` 下发(`applyExoDecode` 去掉 playerType 入参,`applyRtmpSchemeOverride`/`init()`/`applyIjkCodecToLivePlayer` 整体删除);`MyVideoView` 去掉 rtmp 强制工厂 / 有效解码名 / configuredFactory 状态;`PlayContainer` 与 `PlaybackController` 的 `instanceof IjkMediaPlayer` 分支全部单路(`liveKernel()` 删除、`trySoftDecodeFallback` 固定写 `cfg.exo`、`setSubtitleViewVisible` 的 `pl==1` 判据改为无条件复位);`PlayerSwitchUseCase.switchPlayer()` 恒返回 true(自动重试阶梯的"换内核"档位作废,直接进换线路);死方法 `onIjkClicked`、`PlayerUiState.ijkBtnVisible/trackBtnVisible` 删除;直播「播放解码」档位语义由 `ijk硬/ijk软/exo` 改为 **exo 硬解/软解**(`LivePlayerManager.getLivePlayerType()` 返 0/1、`ApiConfig.initLiveSettings` 用 `player_decode_hard/soft` 拼项),连接超时的"先切内核"步骤删除(直接换源);老配置 `pl` 的 0/1 在 `App.initParams` 与 `PlaybackController.initPlayerCfg` 归一到 2。
+
+**已知代价(改前拍板接受)**:`rtmps://`(librtmp 未编 SSL)与裸 `rtp://`(media3 无该 scheme)不再支持,`udp://` 仍支持;librtmp 用**系统 DNS**,不吃 OkHttp 的 DoH/hosts,只能靠 DoH 解析的 rtmp 源会解析失败(旧 ijk 侧有 `setDotPort`)。
+
+**验证**:`.\\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest` 通过(381 用例 / 0 失败);i18n 卡口 `i18n_gate.py` 归零(ui 0 / 非 ui 0);APK 断言 —— arm64 无 `libijk*`/`libplayer.so`、`librtmp-jni.so` LOAD 对齐 `0x4000`、31 个 dex 里 `tv/danmaku` 命中 0 且 `io/antmedia` 命中 12、APK 79.16MB。
+
+**未做 / 待走查**:①真机 rtmp 实源(直播 + 点播)与 `live=1` 是否必要/有效;②`udp://` 源不回退、m3u8 点播/直播回归、软解切换、内置字幕与轨道、进度恢复;③设置页内核下拉只剩 exo + 外部播放器、直播设置面板解码两项;④老配置(曾选 ijk 内核)启动后显示 EXO 不崩;⑤本机无设备在线未装包、改动未提交。

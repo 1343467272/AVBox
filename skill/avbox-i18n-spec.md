@@ -66,7 +66,7 @@
 
 | # | 位置 | 中文值 | 性质 |
 |---|---|---|---|
-| R1 | `"硬解码"` / `"软解码"` 全仓出现 35 次(硬 26 / 软 9),集中在 `bean/LivePlayerManager`、`player/PlaybackController`、`player/controller/ComposeVideoController`、`ui/page/PlaySettingsPage` | `硬解码` / `软解码` | **KV 持久化值**(`HawkConfig.IJK_CODEC` / `EXO_DECODE`)+ 播放配置 JSON 值 + 逻辑判据(`equals("硬解码")` / 切解码写回)。显示可翻译,**值一律不动** |
+| R1 | `"硬解码"` / `"软解码"` 取值点已收窄(2026-09-29 IJK 内核移除后:KV 只剩 `EXO_DECODE`、播放配置只剩 `exo`),仍集中在 `bean/LivePlayerManager`、`player/PlaybackController`、`player/controller/ComposeVideoController`、`ui/page/PlaySettingsPage` | `硬解码` / `软解码` | **KV 持久化值**(`HawkConfig.EXO_DECODE`)+ 播放配置 JSON 值 + 逻辑判据(`equals("硬解码")` / 切解码写回)。显示可翻译,**值一律不动** |
 | R2 | `viewmodel/SortLoader.java:135` | `name.endsWith("搜")` | 站点命名约定(数据规则),不能翻译 |
 | R3 | `ui/activity/LiveEpgParser.kt:155` | `contains("未提供")` / `contains("暂无")` | EPG 文本内容判据(数据规则) |
 | R4 | `util/FileUtils.java:536` | `contains("模板.js")` | 本地文件名约定 |
@@ -76,7 +76,7 @@
 | R8 | `viewmodel/DetailLoader.java:174`（`createPushDetail`） | `"推送"` / `"播放$" + url` / `InfoBean("播放")` | 合成 Movie 的结构化数据(type / 线路 flag / `名字$地址` 格式),进历史与播放链路 ⇒ 值不动(第 1 步实测发现) |
 | R9 | `viewmodel/SourceHelper.java:44`（常量定义）+ 5 个 Loader 的 9 处引用（`DetailLoader`1 / `ListLoader`3 / `PlayLoader`1 / `SearchLoader`2 / `SortLoader`2；另 `SearchLoader.java:131` 是仅进日志的变体文案） | `IllegalStateException("网络请求错误")`（9 处引用 + 1 处日志变体；`player/PlayUrlResolver.java:332` 另有 1 处同文案字面量） | 只经 `convertResponse → onError → LOG.i` 进日志,无 UI 出口 ⇒ 不翻 |
 | R10 | `ui/page/HistoryPage.kt` | `Regex("(\\d+)\\s*[集期]")` | 匹配源数据(片名/备注)里的集数标记,不是 UI 文案 |
-| R11 | `api/ApiConfig.defaultIJKADS` | ijk 分组的 `"硬解码"` / `"软解码"` | R1 的另一处落点:该 JSON 是 KV 值与 `getIJKCodec(name)` 的比较键 ⇒ 值不动 |
+| R11 | ~~`api/ApiConfig.defaultIJKADS`~~(已作废) | ijk 分组的 `"硬解码"` / `"软解码"` | **已作废(2026-09-29:IJK 内核移除,`default_config.json` 的 `ijk` 段、`IJKCode` 与 `getIJKCodec`/`getCurrentIJKCode` 一并删除)** |
 | R12 | `ui/activity/DetailViewModel.kt` | `SOURCE_EMPTY_MSG = "数据列表"` | 源返回 msg 的"非错误"哨兵值(数据规则)⇒ 不翻 |
 | R13 | `ui/activity/DetailViewModel.kt` | `Regex("(?i)(?:ep|第|e|[\\-\\.\\s])\\s?(\\d{1,4})")` | 从源侧标题里抽集数,关键词是数据规则 ⇒ 不翻 |
 
@@ -289,7 +289,7 @@ Android 13+ 的「系统设置 → 应用 → 语言」需要 `res/xml/locales_c
 
 **B. 红线校验**
 
-- 四种语言下 KV `ijk_codec` / `exo_decode` 与播放配置 JSON 的 `ijk` / `exo` 字段仍是 `硬解码` / `软解码` 字面量;
+- 四种语言下 KV `exo_decode` 与播放配置 JSON 的 `exo` 字段仍是 `硬解码` / `软解码` 字面量(2026-09-29 IJK 内核移除,原 `ijk_codec` / `ijk` 字段已随之下线);
 - 切语言前后 R2–R5 行为不变(搜索源识别 / EPG 空态 / 模板.js 判定 / 歌词识别)。
 
 **C. 语言机制**

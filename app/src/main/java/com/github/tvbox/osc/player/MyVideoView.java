@@ -19,6 +19,7 @@ import master.flame.danmaku.danmaku.model.DanmakuTimer;
 import master.flame.danmaku.ui.widget.DanmakuView;
 import xyz.doikki.videoplayer.player.AbstractPlayer;
 import xyz.doikki.videoplayer.player.VideoView;
+import xyz.doikki.videoplayer.render.TextureRenderView;
 import xyz.doikki.videoplayer.render.TextureRenderViewFactory;
 
 public class MyVideoView extends VideoView implements DrawHandler.Callback {
@@ -116,16 +117,39 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
         addDisplay();
     }
 
-    /** 纹理渲染路径没有 SurfaceHolder:每次布局按视图尺寸补发输出分辨率信令(漏发或按 changed 跳过 = 效果管线出画异常) */
+    /** 纹理渲染路径没有 SurfaceHolder:补发输出分辨率信令的时机靠这里挂钩(交面之后),漏挂 = 效果链拿不到输出面 */
+    @Override
+    protected void addDisplay() {
+        super.addDisplay();
+        if (mRenderView instanceof TextureRenderView) {
+            ((TextureRenderView) mRenderView).setOnSurfaceReadyListener(this::pushRenderOutputResolution);
+        }
+    }
+
+    /** 纹理渲染路径没有 SurfaceHolder:交面后与每次布局都补发(漏发 = 效果管线出画异常) */
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
-        if (mMediaPlayer instanceof ExoPlayer && mRenderView != null && !isSurfaceRenderActive()) {
-            View renderView = mRenderView.getView();
-            if (renderView != null) {
-                ((ExoPlayer) mMediaPlayer).notifyVideoOutputResolution(renderView.getWidth(), renderView.getHeight());
-            }
+        pushRenderOutputResolution();
+    }
+
+    /** 视频尺寸就绪必须当帧补发(不能等下一次布局),输出面尺寸就取它 */
+    @Override
+    public void onVideoSizeChanged(int videoWidth, int videoHeight) {
+        super.onVideoSizeChanged(videoWidth, videoHeight);
+        pushRenderOutputResolution();
+    }
+
+    /** 纹理路径只推视频原生尺寸(推视图尺寸会被管线等比适应进画布 = 丢「铺满/裁剪」;取流前不下发) */
+    private void pushRenderOutputResolution() {
+        if (!(mMediaPlayer instanceof ExoPlayer) || mRenderView == null || isSurfaceRenderActive()) return;
+        int width = mVideoSize[0];
+        int height = mVideoSize[1];
+        if (width <= 0 || height <= 0) return;
+        if (mRenderView instanceof TextureRenderView) {
+            ((TextureRenderView) mRenderView).setOutputSize(width, height);
         }
+        ((ExoPlayer) mMediaPlayer).notifyVideoOutputResolution(width, height);
     }
 
     public void setArtwork(String url) {

@@ -3913,3 +3913,87 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **已知代价 / 风险**:①media3 自述缓存"更耗电更耗算力" —— 只作用于挂了效果链的会话(`videoEffects != null` 时才建 wrapper),不调色的用户不受影响;②自建渲染器与上游工厂存在**对账关系**,升级 media3 必须回来比 `createMediaCodecVideoRenderer` 的构建设置(该类 KDoc 已写死这句);③`redraw()` 内部 `flush(false)` 不重置位置,且只在未播放时发,播放中不受影响。
 
 **验证**:`:app:assembleDebug` BUILD SUCCESSFUL;`:app:testDebugUnitTest` **56 类 / 419 用例 / 0 失败**(新增 `RedrawPolicyTest` 2 例);新增文件行尾 LF。**未真机验证** —— 走查清单见活规范 §6.17 的"画质调色待走查"⑤:①开调色 + 暂停 + 退出全屏回竖屏详情页(或转屏),画面应保持正确;②暂停态拖滑条/按住对比应立即看到变化;两者先看日志 `echo-exo-video-renderer: replayable cache on` 是否打印。**未做**:该缓存对功耗/发热的影响未实测;fongmi 那条"暂停响应调色"是否还叠加了 mpv 内核行为未甄别(它有两套效果实现)。
+
+### 纹理渲染路径开调色黑屏有声 → 输出分辨率信令与「交面」时序错位(2026-09-30,用户「我注意到使用textureview渲染时,如果开启调色,此时画面会变成黑屏,但是有声音。这是什么原因导致的?」→「方案a开始修复,修完编译和单测通过就行了,别自作主张下一步」→ 审查轮 →「12做了」)
+
+**根因(源码证据链,media3 1.11.1 + AOSP TextureView)**:开调色后视频帧改走 VideoSink(GL 效果链),`MediaCodecVideoRenderer.configureVideoSink()` 的 `displaySurface != null && !outputResolution.equals(Size.UNKNOWN)` 两个条件缺一不可,否则 sink 没有输出面 ⇒ **每帧被丢弃**(黑屏有声,即活规范 §6.17 记录的那条症状);而 `setOutput()` 换面时**不会**给已存在的 VideoSink 重设输出面(只在面被清空时 `clearOutputSurfaceInfo()`),官方 `setVideoEffects` javadoc 也明写"直接给 Surface 时必须在 `setVideoSurface` **之后**补发",官方 `setVideoTextureView` 的自动路径同样是"先交面再发尺寸"。本项目两条渲染路径都走 doikki 裸 Surface(都必须自己补发),但补发点不对称:SurfaceView 在 `ExoPlayer.setDisplay()` 覆写里紧跟 `super.setDisplay(holder)` ⇒ 顺序正确;纹理路径唯一补发点是 `MyVideoView.onLayout()`,而 AOSP `TextureView.draw()` → `getTextureLayer()` 才创建 SurfaceTexture 并回调 `onSurfaceTextureAvailable` ⇒ **尺寸信令总是早于交面**,且纹理路径没有"换面重发"钩子(SurfaceView 有 `surfaceCreated/Changed`)。⇒ 一旦"面在 VideoSink 建成之后才交上去"或"sink 存活期间换面",sink 就再也拿不到输出面,不触发新布局不会自愈。
+
+**实现(方案 A,用户选定)**:①`player/.../render/TextureRenderView.java` 新增 `mSurfaceReadyListener` + `setOnSurfaceReadyListener(Runnable)`,在 `attachToPlayer`(有现成面)与 `onSurfaceTextureAvailable`(新建面)的 `setSurface` **之后**调 `notifySurfaceReady()`;②`MyVideoView` 覆写 `addDisplay()` 给新 `TextureRenderView` 挂 `this::pushRenderOutputResolution`,并把原 `onLayout` 里的补发抽成同一方法(守卫逐条照抄未动)。时序保证:两条信令投给同一 playback looper,`MSG_SET_VIDEO_OUTPUT` 先于补发的 `MSG_SEND_MESSAGE`;换面时 `setVideoOutputInternal` 还会阻塞等面落地 ⇒ 不会踩 `checkNotNull(displaySurface)` 的 NPE。**顺带覆盖的既有缺陷**:`surfaceSize` 已是 (0,0)(此前发生过 `setVideoSurface(null)`)时,`maybeNotifySurfaceSizeChanged` 会给裸 Surface 发 `Size(-1,-1)`,而渲染器只拒 0、放行 -1 ⇒ 会污染 `outputResolution`;现在补发紧随交面、最后一个值必是真尺寸。
+
+**审查轮(SKILL.md 两轴)**:无 阻断/高/中 级「本次引入」;低 2 条 —— `addDisplay()` 覆写引入与 fork 的镜像维护面、回调是 `Runnable` 不带尺寸(依赖 AOSP `getTextureLayer()` 里 `setDefaultBufferSize(getWidth(), getHeight())` 的"视图宽高 = 缓冲尺寸"现状);口味 1 条(注释复述方法名,已精简)。挂钩完整性:`mRenderView` 全仓唯一创建点 = `VideoView.addDisplay():312`(grep 确认),纹理路径全部交面入口已覆盖,`VideoView.resume()` 里唯一的 `setDisplay(holder)` 只在 `renderView instanceof SurfaceView` 分支 ⇒ 无第三条漏网路径。
+
+**验证**:`:app:assembleDebug` BUILD SUCCESSFUL(1m 9s);`:app:testDebugUnitTest` **56 类 / 419 用例 / 0 失败**;工作区仅这两个文件改动,APK(10:25:09)晚于源码(10:23:5x)。**未真机验证** —— 走查清单见活规范 §7。**未做**:第二嫌疑(同日 `ReplayableCacheVideoRenderer`/`setEnableReplayableCache(true)` 提交)未排除,判据 = SurfaceView 下开调色是否也黑;修复无 JVM 单测覆盖(纯视图回调时序);代码未提交。
+
+### 纹理渲染 + 开调色画面拉伸/放大裁切 → 输出 EGL 面尺寸被定死(2026-09-30,用户「还有bug，textureView 下开调色，此时画面会被拉伸的很奇怪 如图所示」+ 两张真机截图 →「a」)
+
+**现象**:全屏 = 横向拉伸;详情页预览框 = 放大裁切(只剩画面一小块);SurfaceView 无此问题。**与上一修的关系**:不是那次引入 —— 黑屏时帧全被丢弃、几何问题被掩盖,上一修让画面出来才暴露这一层。
+
+**根因(media3 1.11.1 `FinalShaderProgramWrapper` 源码)**:①最终缩放是 `Presentation.createForWidthAndHeight(outputW, outputH, LAYOUT_SCALE_TO_FIT)`(等比适应,**不是**拉伸),每帧再 `GlUtil.focusEglSurface(..., outputW, outputH)` 设视口;②输出 EGL 面(= SurfaceTexture 的 buffer)**惰性建一次**(`ensureConfigured` 只在 `outputEglSurface == null` 时创建),`setOutputSurfaceInfoInternal` **只在 Surface 对象变化或变 null 时 `destroyOutputEglSurface()`** —— 宽高变了只置 `outputSurfaceInfoChanged`(重建 shader program),**不重建 EGL 面**;③TextureView 每次 swap 会更新 `SurfaceTexture` 的变换矩阵、而视图一直用 `setDefaultBufferSize(视图宽高)`(推断,非源码原句)。⇒ 首帧之后推送尺寸再变,buffer 尺寸与"内容按新尺寸渲染 / 按新视图显示"错位 ⇒ 拉伸 / 裁切。SurfaceView 免疫是因为它的 buffer 几何由系统随视图尺寸维护(`setBuffersGeometry`),SurfaceTexture 的生产侧尺寸没人维护;media3 官方 `setVideoTextureView` 也推视图尺寸却不踩坑,是因其宿主 PlayerView 换全屏通常连视图一起重建(= 换 Surface 对象 ⇒ EGL 面被重建),而本项目是同一个 TextureView 原地改尺寸(详情页预览 ↔ 全屏共用一个容器)。
+
+**实现(方案 A,用户选定)**:`MyVideoView.pushRenderOutputResolution()` 改推 `mVideoSize`(视频原生尺寸,含 90/270 度交换后的显示尺寸)而非渲染视图宽高;尺寸未知(取流前 `mVideoSize = {0,0}`)时不下发。显示几何交回渲染视图 + `MeasureHelper` ⇒ `画面比例` 行为与未开调色时一致;`Presentation` 输入输出同尺寸 = 1:1 不重采样;buffer 尺寸 = 视频分辨率(与未开调色时同口径)。SurfaceView 路径仍推 `SurfaceHolder.getSurfaceFrame()`(其 buffer 由系统维护,改推视频尺寸反而会错位),靠 `isSurfaceRenderActive()` 分流。副产物:纹理路径的"几何变化重绘"不再触发(几何已与视图解耦,`RedrawPolicy.shouldRedrawOnGeometry` 对该路径成为死路),此前那条"暂停 + 退出全屏错位"由此根治(不再依赖重绘补帧)。
+
+**审查轮(SKILL.md 两轴)**:0 个 阻断/高/中「本次引入」。低 1 条 —— 残留:视频分辨率**中途变化**(多码率源切换)时尺寸仍会变 ⇒ 仍会错位,修法 = 尺寸变化时交一个新 `Surface` 对象(同一 `SurfaceTexture`)逼 media3 重建 EGL 面,未实施;说明 1 条 —— 高分辨率源下 buffer 内存随之变大(与未开调色时同口径)。挂钩完整性:纹理路径"交面"(attachToPlayer 有现成面 / onSurfaceTextureAvailable 新建面)与"尺寸就绪"(视频尺寸上报 → `requestLayout` → `onLayout`)两处都已覆盖。
+
+**验证**:`:app:assembleDebug` BUILD SUCCESSFUL(24s,APK 已重写 10:38:12);`:app:testDebugUnitTest` **56 类 / 419 用例 / 0 失败**。**未真机验证** —— 走查清单见活规范 §7。**未做**:残留的多码率切换未修;代码未提交。
+
+### 补:方案 A 证伪(改推视频原生尺寸 = 黑屏)→ 回滚 + 方案 B(几何变化换面重建 EGL 面)(2026-09-30,用户「现在TextureView + 开调色又变回黑屏有声音了」)
+
+**证伪**:上一轮的方案 A(纹理路径改推 `mVideoSize` 视频原生尺寸)真机复测**又变回黑屏有声**。两条叠加原因:①推送尺寸必须与**实际 buffer 尺寸**同口径 —— 纹理路径的 buffer 由 SurfaceTexture 侧(视图尺寸)决定,推视频尺寸等于让"视口尺寸 ≠ buffer 尺寸"永久错配;②A 让补发依赖 `mVideoSize`,而它在取流前是 `{0,0}`(`setUrl`/`release` 都会清零)⇒ 起播窗口里可能一条信令都发不出去 ⇒ VideoSink 无输出面 ⇒ 每帧被丢弃 ⇒ 黑屏。
+
+**修法(方案 B,已实施)**:①回滚 A,`MyVideoView.pushRenderOutputResolution()` 恢复推渲染视图宽高;②`TextureRenderView` 新增 `refreshSurface()`:换一个新 `Surface` 对象包同一个 `SurfaceTexture`(旧的等 `mMediaPlayer.setSurface(new)` 返回后再 `release()` —— 换面时该调用会阻塞等消息落地,故旧面此刻已不被内核引用);③`MyVideoView` 记 `lastOutputWidth/Height`,推送尺寸**真的变了**且**非首次下发**时先 `refreshSurface()` 再补尺寸 ⇒ media3 走 `destroyOutputEglSurface()` → 按当前窗口尺寸重建输出 EGL 面 ⇒ buffer / 视口 / 视图三者重新一致。首次下发不换面(此时 EGL 面还没建,也避开起播期交面时序)。**为什么能治**:EGL 面只在 Surface 对象变化时重建(源码事实),而 SurfaceTexture 的默认缓冲尺寸随视图尺寸更新(`setDefaultBufferSize`)⇒ 新面天然拿到新几何。副产物:多码率源中途换分辨率会因 letterbox 尺寸变化走同一通路,上一轮登记的残留自动覆盖。
+
+**审查轮(SKILL.md 两轴)**:0 个 阻断/高/中。说明 2 条 —— ①`previous.release()` 的安全性依赖 `setSurface` 的换面阻塞语义(media3 `setVideoOutputInternal` 在替换时带 timeout 等待,返回后内核已切到新面);②每次几何变化都会拆建一次 EGL 面,理论上有 1 帧级抖动(最后一帧 buffer 仍留在 SurfaceTexture 上,不会黑闪)。
+
+**验证**:`:app:assembleDebug` BUILD SUCCESSFUL(20s);`:app:testDebugUnitTest` **56 类 / 419 用例 / 0 失败**;APK 已重写 10:44:09。**未真机验证** —— 走查清单见活规范 §7。**未做**:代码未提交;SurfaceView 侧同类几何问题未实测(其 buffer 由系统维护,理论上免疫)。
+
+### 补:fongmi 对照 + 诊断埋点(2026-09-30,用户「现在使用t渲染后开启调色还是会拉伸画面,看看fongmi是怎么做的」)
+
+**fongmi 怎么做的(读 `示例文件/TV-fongmi` 的结论)**:①它用**官方 `androidx.media3.ui.PlayerView`** 托管显示面 —— 主布局 `app:surface_type="none"` + fork 的 `playerView.setRender(PlayerSetting.getRender())`(`RENDER_SURFACE=0`/`RENDER_TEXTURE=1`,只在 `configurePlayerView()` 调一次);app 层除 `setPlayer/setRender/getSubtitleView` 外**完全不碰显示面**(全仓 `setVideoSurfaceView`/`setVideoTextureView` 零命中 ⇒ 走官方自动交面路径)。②效果侧与我们同源:同名 `ColorToneAdjustEffect`/`DetailAdjustEffect`/`VideoAdjustShaderProgram`(着色器基类逐行一致,唯一差别 = HDR 直接抛异常,而我们退化为 passthrough),控制器只有一句 `player.setVideoEffects(effects)`;也没有"按渲染方式禁效果"的规则(错误文案只有 decode/DRM/tunnel/DV)。③**关键差异在视图生命周期**:官方路径 `onSurfaceTextureDestroyed` 里 `setVideoOutputInternal(null)` 且**返回 true**(面随视图销毁),重新可用时 `onSurfaceTextureAvailable` → `setSurfaceTextureInternal(...)` 建**新 Surface** ⇒ 输出 EGL 面被重建 ⇒ 几何自然正确;而 fongmi 的全屏/切页走视图摘挂(挂 Dialog/新页面),天然触发这轮循环。**本项目 `TextureRenderView.onSurfaceTextureDestroyed` 故意返回 false 复用同一个 SurfaceTexture**(跨页搬运不黑窗的既定手段),容器又是原地改尺寸(详情页预览↔全屏同一个容器)⇒ 永远不重建面 ⇒ 几何错位。**结论:fongmi 没做特别的事,是它的视图生命周期替它重建了面,这一步得我们自己补。**
+
+**现状**:方案 B(几何变化时换一个新 `Surface` 对象包同一 SurfaceTexture)真机**仍未解决拉伸**(用户 10:45 复测)。源码侧已核:`Surface` 未重写 `equals`(引用比较,AOSP 确认)、`FinalShaderProgramWrapper` 只在"面对象变了或变 null"时 `destroyOutputEglSurface()`(1.11.1 与 main 双版本核对)⇒ B 的换面**理论上应触发重建**,说明机制里仍有未验证环节 ⇒ 停止盲改。
+
+**本轮动作**:加诊断埋点 `echo-picture-geom` —— `MyVideoView.pushRenderOutputResolution` 在几何变化时打印 `view=WxH video=WxH texture=bool refresh=bool`,`TextureRenderView.refreshSurface()` 改返回 boolean(是否真的换面),等真机日志定位。
+
+**验证**:BUILD SUCCESSFUL(20s);**56 类 / 419 用例 / 0 失败**;APK 10:50:38。**未做**:代码未提交。
+
+### 补:真机日志定位根因 → 最终修法(推视频原生尺寸 + 取流前退回视图尺寸 + 换面)(2026-09-30,用户「我操作完了,抓日志看看吧」)
+
+**证据(真机 `preload_debug.log`,B 版构建,`run-as cat` 只读抓取)**:
+```
+10:52:02.712 echo-picture-geom: view=1260x709  video=0x0 texture=true refresh=false
+10:52:08.593 echo-picture-geom: view=2800x1260 video=0x0 texture=true refresh=true
+10:52:08.918 echo-picture-size: 1920x1080 rotation=0 hdr=false
+```
+⇒ ①两次几何推送(含切全屏)时 `mVideoSize` 都是 `0x0`,视频尺寸在 0.3s 后才上报 ⇒ **方案 A 第一版(只推视频尺寸)在取流窗口里一条信令都发不出 ⇒ VideoSink 无输出面 ⇒ 黑屏**;②B 的换面**确实执行**(`refresh=true`),但推的是视图尺寸 2800x1260(2.22:1),而管线把 16:9 视频**等比适应**进这个输出面(`LAYOUT_SCALE_TO_FIT`,不会拉伸)⇒ 用户看到的"拉伸很奇怪"实为**「铺满/裁剪」语义被管线吃掉**;③视频尺寸上报后视图尺寸未变(无第三条 geom 行)⇒ 铺满模式下视图就是容器尺寸。
+
+**最终修法**:`MyVideoView.pushRenderOutputResolution()` 改为**有视频尺寸就推视频尺寸、取流前退回视图尺寸**(两者都保证 VideoSink 有输出面,不再出现"整条信令被跳过");新增 `onVideoSizeChanged` 覆写作为"尺寸就绪"的**直接触发点**(不再依赖下一次布局——A 版正因缺这个而黑);推送尺寸真的变了且非首次时先 `refreshSurface()` 换面。⇒ 管线 1:1 出画、缩放交回显示侧,**`画面比例` 行为与未开调色一致**。埋点 `echo-picture-geom` 保留(`out=/video=/texture=/refresh=`)。
+
+**验证**:BUILD SUCCESSFUL(20s);**56 类 / 419 用例 / 0 失败**;APK 10:55:17。**未真机验证** —— 待用户复测「铺满/裁剪」是否恢复、全屏/小窗几何是否正常。**未做**:代码未提交。
+
+### 补:第二次抓日志 → 几何在两种状态间翻转 + 输出缓冲尺寸口径定稿(2026-09-30,用户「TextureView开启调色后画面还是很奇怪,图二则是正常的」+ 两张截图)
+
+**截图读法**:图一(开调色)= 16:9 视频被**加左右黑边等比适应**进 2.22:1 全屏;图二(关调色)= **铺满**。⇒ 差异 = 管线的 `LAYOUT_SCALE_TO_FIT` 吃掉了「铺满」语义。
+
+**日志证据(新版构建,`echo-picture-geom` 带 out=)**:
+```
+10:56:34.881 out=1920x1080 video=1920x1080 refresh=true   ← 正确态
+10:56:37.905 out=2800x1260 video=0x0        refresh=true   ← setUrl 清零 mVideoSize 后回退视图尺寸 ⇒ 等比适应
+10:56:39.767 out=1920x1080 video=1920x1080 refresh=true   ← 又回正确态
+```
+⇒ ①`release player kernel` + `goPlayUrl`(每次全屏/预览切换都会重启播放)让 `mVideoSize` 归零 ⇒ 兜底逻辑推视图尺寸 ⇒ **每次起播都有一段"等比适应"窗口,且两种尺寸来回换面 ⇒ 画面几何翻转**;②「取流前推视图尺寸」这个兜底本身就是错的(它让管线按视图画布等比适应)。
+
+**定稿修法**:①`MyVideoView.pushRenderOutputResolution` **只推视频原生尺寸**,取流前**什么都不推**(此时还没有帧,VideoSink 没输出面也看不到黑屏);②`TextureRenderView` 新增 `setOutputSize(w,h)` = `SurfaceTexture.setDefaultBufferSize(视频宽高)` + `refreshSurface()` —— 让**输出缓冲 = 视频尺寸**(输出 EGL 面创建时取窗口默认尺寸),于是管线 1:1 出画、**显示侧按视图几何拉伸**(未开调色时解码帧就是视频尺寸、同样由显示侧拉伸)⇒ 两条路径的「铺满/裁剪/适应」语义一致;③TextureView 自己会在 `onSizeChanged`/建层时把默认缓冲尺寸改回视图尺寸 ⇒ 覆写 `onSizeChanged` 改回来 + 交面时(`onSurfaceTextureAvailable`)补一次;④尺寸变化换面(EGL 面只在面对象变化/清面时重建)。
+
+**验证**:BUILD SUCCESSFUL(20s);**56 类 / 419 用例 / 0 失败**;APK 11:00:42。**未真机验证**。**未做**:代码未提交。
+
+### 补:真机复测通过(2026-09-30 11:02,用户「修好了,我这里肉眼看着没问题,抓日志看看」)
+
+**日志核对(`echo-picture-geom`)**:新版会话只留一条 —— `11:01:42.723 out=1920x1080 video=1920x1080 texture=true`,**没有视图尺寸兜底、没有 `2800x1260 ↔ 1920x1080` 翻转、没有多余换面**(上一版同一场景有 5 条、含两次回退视图尺寸)。第二次起播(11:01:45)视频尺寸重报后不再产生新行 = 推送尺寸未变(去重生效)且输出缓冲仍是视频尺寸 ⇒ 几何正确,与用户肉眼结论一致。
+
+**同期发现(既有,与本次改动无关,登记待观察)**:`11:01:21.774 echo-exo-player-error: code=ERROR_CODE_TIMEOUT | cause[0]=ExoTimeoutException: Player release timed out.` 全日志仅 1 次,发生在旧会话收尾/重启窗口。release 超时 = 播放线程未在超时内响应,而本项目把播放线程设为**预载 looper**(`setPlaybackLooper(PreloadManagerHolder.preloadLooper())`)⇒ 预载占住该线程即会命中,属既有风险;本次改动只新增轻量信令(不阻塞),未观察到与它相关。**未处理**。
+
+**未做**:切集 / 暂停调参 / 多码率源中途换分辨率的走查;代码未提交。
+
+### 补:删除几何诊断埋点(2026-09-30 11:04,用户「把日志代码删除掉」)
+
+删掉 `MyVideoView.pushRenderOutputResolution` 里的 `echo-picture-geom` 日志行与配套的 `lastOutputWidth/Height` 字段、`util.LOG` import(该文件内 LOG 仅此一处用);同时修掉 `onVideoSizeChanged` 上那条已过期的注释(它还写着"取流前只能推视图尺寸")。**验证**:BUILD SUCCESSFUL(19s);**56 类 / 419 用例 / 0 失败**;APK 11:05:46。功能逻辑一字未动(上一轮真机已通过)。**未做**:代码未提交。

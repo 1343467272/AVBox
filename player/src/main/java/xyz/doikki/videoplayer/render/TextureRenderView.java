@@ -22,8 +22,55 @@ public class TextureRenderView extends TextureView implements IRenderView, Textu
     private AbstractPlayer mMediaPlayer;
     private Surface mSurface;
 
+    /** 交面之后的回调:效果链要求"先交面、后补输出尺寸",而纹理路径的面只在绘制阶段才出现 */
+    @Nullable
+    private Runnable mSurfaceReadyListener;
+
+    /** 输出面尺寸(视频原生尺寸):效果链按它出画,显示侧再按视图缩放,与未开调色时一致 */
+    private int mOutputWidth;
+    private int mOutputHeight;
+
     public TextureRenderView(Context context) {
         super(context);
+    }
+
+    public void setOnSurfaceReadyListener(@Nullable Runnable listener) {
+        mSurfaceReadyListener = listener;
+    }
+
+    /** 输出尺寸变化:改默认缓冲尺寸(否则管线按视图尺寸出画)并换面(否则输出 EGL 面仍按旧尺寸出画) */
+    public void setOutputSize(int width, int height) {
+        if (width <= 0 || height <= 0) return;
+        if (width == mOutputWidth && height == mOutputHeight) return;
+        mOutputWidth = width;
+        mOutputHeight = height;
+        applyOutputBufferSize();
+        refreshSurface();
+    }
+
+    /** TextureView 自己会把默认缓冲尺寸改成视图尺寸(onSizeChanged / 建层时),这里改回输出尺寸 */
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        applyOutputBufferSize();
+    }
+
+    private void applyOutputBufferSize() {
+        if (mSurfaceTexture == null || mOutputWidth <= 0 || mOutputHeight <= 0) return;
+        mSurfaceTexture.setDefaultBufferSize(mOutputWidth, mOutputHeight);
+    }
+
+    /** 换一个新 Surface(同一个 SurfaceTexture):输出 EGL 面只在交面/清面时才重建,尺寸变了不重建 */
+    public boolean refreshSurface() {
+        if (mSurfaceTexture == null || mMediaPlayer == null) return false;
+        Surface previous = mSurface;
+        mSurface = new Surface(mSurfaceTexture);
+        mMediaPlayer.setSurface(mSurface);
+        if (previous != null) {
+            previous.release();
+        }
+        notifySurfaceReady();
+        return true;
     }
 
     {
@@ -36,6 +83,7 @@ public class TextureRenderView extends TextureView implements IRenderView, Textu
         this.mMediaPlayer = player;
         if (mSurface != null) {
             player.setSurface(mSurface);
+            notifySurfaceReady();
         }
     }
 
@@ -91,9 +139,17 @@ public class TextureRenderView extends TextureView implements IRenderView, Textu
         } else {
             mSurfaceTexture = surfaceTexture;
             mSurface = new Surface(surfaceTexture);
+            applyOutputBufferSize();
             if (mMediaPlayer != null) {
                 mMediaPlayer.setSurface(mSurface);
+                notifySurfaceReady();
             }
+        }
+    }
+
+    private void notifySurfaceReady() {
+        if (mSurfaceReadyListener != null) {
+            mSurfaceReadyListener.run();
         }
     }
 

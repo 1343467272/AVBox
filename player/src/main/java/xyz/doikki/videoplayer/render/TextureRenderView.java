@@ -60,17 +60,26 @@ public class TextureRenderView extends TextureView implements IRenderView, Textu
         mSurfaceTexture.setDefaultBufferSize(mOutputWidth, mOutputHeight);
     }
 
+    /** 上一代 Surface:必须等输出 EGL 面切走之后再 release,先放会让 EGL 卡在已释放的 BufferQueue 上 */
+    @Nullable
+    private Surface mRetiredSurface;
+
     /** 换一个新 Surface(同一个 SurfaceTexture):输出 EGL 面只在交面/清面时才重建,尺寸变了不重建 */
     public boolean refreshSurface() {
         if (mSurfaceTexture == null || mMediaPlayer == null) return false;
-        Surface previous = mSurface;
+        releaseRetiredSurface();
+        mRetiredSurface = mSurface;
         mSurface = new Surface(mSurfaceTexture);
         mMediaPlayer.setSurface(mSurface);
-        if (previous != null) {
-            previous.release();
-        }
         notifySurfaceReady();
         return true;
+    }
+
+    private void releaseRetiredSurface() {
+        if (mRetiredSurface != null) {
+            mRetiredSurface.release();
+            mRetiredSurface = null;
+        }
     }
 
     {
@@ -119,6 +128,7 @@ public class TextureRenderView extends TextureView implements IRenderView, Textu
 
     @Override
     public void release() {
+        releaseRetiredSurface();
         if (mSurface != null)
             mSurface.release();
 

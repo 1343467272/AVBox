@@ -3997,3 +3997,74 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 ### 补:删除几何诊断埋点(2026-09-30 11:04,用户「把日志代码删除掉」)
 
 删掉 `MyVideoView.pushRenderOutputResolution` 里的 `echo-picture-geom` 日志行与配套的 `lastOutputWidth/Height` 字段、`util.LOG` import(该文件内 LOG 仅此一处用);同时修掉 `onVideoSizeChanged` 上那条已过期的注释(它还写着"取流前只能推视图尺寸")。**验证**:BUILD SUCCESSFUL(19s);**56 类 / 419 用例 / 0 失败**;APK 11:05:46。功能逻辑一字未动(上一轮真机已通过)。**未做**:代码未提交。
+
+### 补:排查"渲染器释放超时"(2026-09-30 11:09,用户「查一查这个问题」)
+
+**现象**:`11:01:21.774 echo-exo-player-error: code=ERROR_CODE_TIMEOUT, msg=Unexpected runtime error | cause[0]=ExoTimeoutException: Player release timed out.`,全日志仅 1 次。
+
+**上下文(日志)**:`11:00:56` 播放页销毁(detach,内核预开不释放)→ `11:01:20.659 host onDestroy` → `11:01:20.662 engine release` → `11:01:21.774` 报错 → `11:01:35` 引擎重建成功。⇒ 发生在**退出播放页销毁引擎**时,不在播放/换集路径。
+
+**机制(media3 1.11.1 源码)**:`ExoPlayerImpl.release()` 里 `if (!internalPlayer.release())` ⇒ 源码注释「**One of the renderers timed out releasing its resources**」⇒ 发 `EVENT_PLAYER_ERROR` + `ERROR_CODE_TIMEOUT` + `ExoTimeoutException(TIMEOUT_OPERATION_RELEASE)`(文案 "Player release timed out.")。超时常量:`DEFAULT_RELEASE_TIMEOUT_MS = 500`、`DEFAULT_DETACH_SURFACE_TIMEOUT_MS = 2000`。⇒ 不是"播放线程被占满"这类泛化结论,而是**某个渲染器释放资源超过 500ms**。
+
+**归属**:①与当天的调色改动无关(调色代码只在"视频尺寸变化"时跑,当时是释放路径);②**但同日改动里有一处同类隐患顺手修了**:`TextureRenderView.refreshSurface()` 原本"交新面后立刻 release 旧面",而输出 EGL 面此时仍引用旧面 ⇒ media3 注释明确警告这会让 EGL 卡在已释放的 BufferQueue 上 ⇒ 改为**旧面延后一代 release**(`mRetiredSurface`),视图 `release()` 里兜底。
+
+**影响 / 频率**:media3 放弃等待后照常走完释放,引擎随后重建成功,未观察到功能受损;1 次/整天(同日有数十次引擎释放)。风险 = 渲染器线程可能短暂滞留(编解码器/GL 资源)。**可能成因(未证实)**:设备侧 `MediaCodec.release()` 偶发慢;同日开启的 `setEnableReplayableCache(true)` 让 GL 侧释放变重;播放线程 = **预载 looper**,预载占住时会顶到超时。**未做**:未调 `releaseTimeoutMs`(调大只会让主线程阻塞更久)。
+
+**验证**:BUILD SUCCESSFUL(9s);**56 类 / 419 用例 / 0 失败**;APK 11:11:18。**未做**:代码未提交(本次仅 `TextureRenderView` 一处)。
+
+### 渲染方式切换改为"重建内核"生效(2026-09-30 11:25,用户选重量方案)
+
+**问题(用户两次提问)**:设置页切 SurfaceView / TextureView 后不立刻生效,"大概得等 60 秒或退出应用重进"。
+
+**根因**:`VideoView.setRenderViewFactory` 只赋值工厂字段,渲染视图只在 `addDisplay()` 创建;复用内核的起播走 `replay()`(不重建视图)⇒ 设置改了也一直停在旧渲染视图。60s = `PlaybackEngine.IDLE_RELEASE_DELAY_MS`(摘页面空闲释放内核 ⇒ 下次 IDLE 起播才重建);预热开启时连这条都没有,只能重启应用。
+
+**两方案取舍**:①轻量 = 设置改动后 `ensureRenderViewMatchesConfig()` 热切换面(不重启播放器、不重缓冲);②重量 = 照调色面板 `restartForPictureIfNeeded()` 走 `replay(false)`(释放内核 + 重新起播 + 重新缓冲,**不重解析**)。**用户选②**。
+
+**落点(不新增"设置页→引擎"通路,复用解码方式变更那套既有链路)**:
+1. `MyVideoView.isRenderTypeApplied(int renderType)`:1=Surface;`mRenderView == null` 视为已就绪(未挂载时下次起播本就按工厂新建)。
+2. `PlayContainerViewBridge.startVideoPlayback`:判 `MyVideoView.isRenderFactoryApplied()`(**工厂口径**,此刻工厂已被 `updateCfg` 与纯音频预判 `useTextureRenderForAudio` 更新),不符 ⇒ `requireKernelRebuild()`,由紧随的 `consumeKernelRebuildRequired()` 消费成非复用路径(覆盖"起播/换集")。
+3. `PlayContainer.alignInstanceConfigOnTakeover`:渲染判断与解码判断合并 —— 任一不符即 `scheduler.beginNewPlay()` + `controlListener.replay(false)`,返回 true 让调用方不再 resume(覆盖"D6 同片接管",即用户实际的"退出播放页→再进同一集"路径)。
+
+**落点三次调整(都是自查两轴时发现的回归,逐次收窄)**:
+- v1 写在 `PlayerHelper.updateCfg`:被 `MusicPlayerActivity` 共用 ⇒ 音乐会话的视图恒为热切后的 Texture,设置是 Surface 时**每次换歌都重建内核**。改掉。
+- v2 改到 `PlayContainerViewBridge.applyPlayerConfigToView` + `isConfirmedAudioOnly()` 豁免:仍有一处 —— 判断发生在 `useTextureRenderForAudio()` **之前**,工厂还是设置值,而"音频后缀 URL 实际是视频"(`looksLikeAudioUrl` 误判)时 `isConfirmedAudioOnly()` 为 false ⇒ **每次换集都重建**。
+- v3(定稿)挪到 `startVideoPlayback`(即 `useTextureRenderForAudio` 之后),判据换成**工厂口径** `isRenderFactoryApplied()`:工厂=Texture 且视图=Texture ⇒ 一致 ⇒ 不再重建;该口径天然吸收音频兜底,不再需要 `isConfirmedAudioOnly()`(接管期那处仍需,因为那里工厂尚未更新,只能用设置口径)。
+- `PlayerHelper` 最终一字未动(与 HEAD 一致,`git status` 可验)。另:`echo-render-changed` 前缀已登记进 `LOG.FILE_LOG_PREFIXES`(`fileLog` 是 `startsWith` 匹配,漏登记则真机文件日志看不到)。
+
+**链路自洽性核对**:`replay(false)` 先 `releasePlayerKernel()` 再 `goPlayUrl(webPlayUrl, webHeaderMap)` ⇒ 起播时 `getMediaPlayer() == null` ⇒ `reusePlayer=false` ⇒ `videoView.start()` 走 IDLE → `startPlay()` → `addDisplay()` 用新工厂建视图 ✓;`goPlayUrl` 内部 `applyPlayerConfigToView` → `updateCfg` 因内核已空不再标记(无双重释放)。位置不丢:`startPlay()` 里 `mProgressManager.getSavedProgress()` 从落盘进度恢复(与解码变更重播同一行为)。无页面(headless)起播不消费该标记,那条路仍由首帧 `STATE_PLAYING → ensureRenderViewMatchesConfig()` 轻量热切兜底;外部播放器(`pl >= 10`)在 `alignInstanceConfigOnTakeover` 提前 return,不会对第三方起重建。
+
+**验证**:BUILD SUCCESSFUL(1m 22s);**56 类 / 419 用例 / 0 失败**。**未真机验证**(需用户走查:设置页切渲染 → 退出播放页 → 重进同一集,应立刻换渲染方式并重新缓冲;以及播放中换集)。**未做**:代码未提交。
+
+#### 真机验证结果(2026-09-30 11:40~11:49,同一轮走查)
+
+- **改动生效** ✓:`11:40:27.761 attach` → `.014 take over same playback` → `.017 echo-render-changed: rebuild kernel on takeover` → `.017 release player kernel` → `.046 goPlayUrl:<与切换前完全相同的地址>` → `.062 echo-exo-tunnel-prefs: surfaceRender=false` → `.616 state=2 playing`。**0.9 秒完成**,该段无任何 ERROR。
+- **改动无误报** ✓:影视切集、音乐换歌、重播全程**零** `echo-render-changed`(全日志仅 11:40:28 那一条真·渲染变更)。
+- **代价观察**:重建时媒体会话被短暂拆除再建(`stopSession ownerMatch=false` + `notification 1001 removed` → 0.6s 后 `wake lock acquired`),通知栏会闪一下 —— 重量方案的固有代价。
+
+### 修复:选集面板点集不设复用意图导致每次重建内核(2026-09-30 11:50)
+
+**问题(真机取证)**:影视切集有时 `release player kernel`、有时没有。日志对比定位到入口差异 —— 「下一集」按钮切集**无** release(复用生效),而从**选集面板点集****有** release(重建)。
+
+**根因**:复用意图 `setReusePlayerOnSwitch(true)` 只在 `PlayContainer.playNext`(:1261)/`playPrevious`(:1278)设置;选集面板点集走的是另一条路 —— `DetailEpisodes.onClick → DetailViewModel.onEpisodeClick → requestPlay() → DetailActivity.playCurrent() → container.setData(session)`,而 `setData` 的换集分支(:1137-1143)直接 `playViaScheduler(false)`,**从不设该意图** ⇒ `PlaybackController.play()` 里 `reusePlayer=false` ⇒ 走 `releasePlayer()` 重建。
+
+**修法**:`PlayContainer.setData` 换集分支补"同片同线路"判断 —— 新增 `isSameVodEpisodeSwitch(session)`,比较 `scheduler.startedPlaybackKey()` 与 `session.playbackKey()` 的前缀(去掉最后一段 `playIndex`);相同才补 `setReusePlayerOnSwitch(true)`。换片 / 换线路(含切剧集分组 `onFlagClick`)前缀不同 ⇒ 仍走重建(复用会把上一线路的解码器与轨道状态带过来)。
+- ⚠️ **判断必须在 `engine.setData(session)` 之前**:`PlaybackController.setData` 会清 `startedPlaybackKey`。
+
+**验证**:BUILD SUCCESSFUL(21s);**56 类 / 419 用例 / 0 失败**。**未真机验证**(走查:选集面板点另一集,应只有 `echo-goPlayUrl`、无 `release player kernel`;换片/切分组仍应重建)。**未做**:代码未提交。
+
+### 探针实测:复用机制一切正常(2026-09-30 11:57~12:00)
+
+**背景**:修复选集面板后,曾怀疑"音乐换歌复用意图失效"(依据是 11:41:53 一次 `release player kernel`,且静态分析找不到清零点)。加临时探针(`PlaybackController.play()` 消费前打 `intent(reuse,release) -> reuse` + `startedKey`;`MusicPlayerActivity.playAt` 打 `probe set`)实测两轮:
+
+| 场景 | 探针结果 | release |
+|---|---|---|
+| 影视页 + 选集面板切集(11:56:52 / 11:56:58) | `intent(reuse=true) -> reuse=true` | **0** ✓ |
+| 影视页 + 选集面板切集(11:53:04 / 11:53:57) | (无探针,看日志) | **0** ✓ |
+| 音乐页切歌(11:59:49 `playAt index=8` / 11:59:52 `index=9`) | `probe set` + `intent(reuse=true) -> reuse=true` | **0** ✓ |
+| 首次起播(11:56:49,新会话) | `intent(reuse=false) -> reuse=false` | 1(正确) |
+
+**⇒ "音乐换歌每次重建内核"证伪** —— 复用机制一直正常,11:41:53 那次是孤立事件、无法复现(其前有"退出音乐页 → 重进接管"的时序),代价 160ms,不再追。
+
+**判读教训**:中途我曾把 11:56 影视页的探针数据当成"音乐换歌"来判读,并据此推出"复用意图失效"的错误结论 —— 根因是**没先确认用户操作的页面**(用户 11:59 澄清"我是在影视播放页面切歌的")。**教训:真机日志判读前先确认操作场景(哪个页面、哪个入口),否则整条推理链会建在错误前提上。**
+
+**收尾**:两条临时探针已删除,`PlaybackController.java` 与 `MusicPlayerActivity.kt` 均回到 HEAD(`git diff` 为空可验);重新构建干净包。**未做**:代码未提交。

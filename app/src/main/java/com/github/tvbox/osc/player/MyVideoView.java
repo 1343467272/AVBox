@@ -102,6 +102,22 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
         return mRenderView != null && mRenderView.getView() instanceof SurfaceView;
     }
 
+    /** 当前挂载的渲染视图是否已是目标渲染方式(1=Surface);未挂载时算已就绪 —— 下次起播本就按工厂新建 */
+    public boolean isRenderTypeApplied(int renderType) {
+        if (mRenderView == null) return true;
+        return (renderType == 1) == isSurfaceRenderActive();
+    }
+
+    /**
+     * 当前视图是否已按「本次起播要用的渲染方式」建好 —— 口径是**工厂**(已被 updateCfg 与纯音频预判
+     * `useTextureRenderForAudio` 更新过),故音频兜底改工厂不会被误判成"设置没生效"而反复重建。
+     */
+    public boolean isRenderFactoryApplied() {
+        if (mRenderView == null) return true;
+        boolean factoryTexture = mRenderViewFactory instanceof TextureRenderViewFactory;
+        return factoryTexture == !isSurfaceRenderActive();
+    }
+
     public void switchRenderToTexture() {
         setRenderViewFactory(TextureRenderViewFactory.create());
         addDisplay();

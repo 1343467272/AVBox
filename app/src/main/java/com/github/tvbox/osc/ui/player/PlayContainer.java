@@ -1134,13 +1134,26 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
             if (mVideoView != null && !mVideoView.isPlaying()) mVideoView.start();
             return;
         }
+        // 同片同线路换集(选集面板点集走的就是这条):内核可复用,省一次重建;换片/换线路仍走重建
+        boolean sameVodSwitch = isSameVodEpisodeSwitch(session);
         engine.setData(session);
         syncSessionVod();
         mController.setPlayerConfig(scheduler.playerCfg());
         scheduler.clearTriedLines();
         scheduler.setUserPickedLine(session.userPickedLine());
         ownedPlaybackKey = session.playbackKey();
+        if (sameVodSwitch) scheduler.setReusePlayerOnSwitch(true);
         playViaScheduler(false);
+    }
+
+    /** 引擎里已起播的是不是同一部片的同一线路(只是换集) —— 归属键前两段(源|片id)相同、线路相同即可 */
+    private boolean isSameVodEpisodeSwitch(PlaybackSession session) {
+        if (scheduler == null || mVideoView == null || mVideoView.getMediaPlayer() == null) return false;
+        String started = scheduler.startedPlaybackKey();
+        if (TextUtils.isEmpty(started)) return false;
+        String key = session.playbackKey();
+        int cut = key.lastIndexOf('|');
+        return cut > 0 && started.startsWith(key.substring(0, cut + 1));
     }
 
     void playViaScheduler(boolean reset) {
@@ -1149,8 +1162,9 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
     }
 
     /**
-     * D6 同片接管时对齐实例级配置:缩放直接下发;解码必须重建内核才生效(media3 不给复用内核重选解码器),
-     * 此处改走既有"切解码重播"链路并返回 true,调用方不要再 resume。
+     * D6 同片接管时对齐实例级配置:缩放直接下发;渲染方式与解码方式都必须重建内核才生效
+     * (复用内核不重建渲染视图,media3 也不给复用内核重选解码器),此处改走既有"重播"链路
+     * 并返回 true,调用方不要再 resume。
      */
     private boolean alignInstanceConfigOnTakeover() {
         if (mVideoView == null || scheduler == null) return false;
@@ -1159,8 +1173,13 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         mVideoView.setScreenScaleType(cfg.optInt("sc", 0));
         // 外部播放器由 goPlayUrl 交给第三方,内核重建/重播不由这里发起(与 trySoftDecodeFallback 同一判据)
         if (cfg.optInt("pl", 2) >= 10) return false;
-        if (PlayerHelper.isExoDecodeApplied(cfg)) return false;
-        LOG.i("echo-exo-decode-changed: rebuild kernel on takeover");
+        // 纯音频会话最终总会热切 Texture(见 ensureAudioOnlyRender),按用户设置重建只会白断一次声音
+        boolean renderChanged = !scheduler.isConfirmedAudioOnly()
+                && !mVideoView.isRenderTypeApplied(cfg.optInt("pr", 1));
+        boolean decodeChanged = !PlayerHelper.isExoDecodeApplied(cfg);
+        if (!renderChanged && !decodeChanged) return false;
+        LOG.i(renderChanged ? "echo-render-changed: rebuild kernel on takeover"
+                : "echo-exo-decode-changed: rebuild kernel on takeover");
         // 重建后按配置值重新起播一次:重试阶梯(含自动软解额度)随之复位,起播失败时仍能自动回退
         scheduler.beginNewPlay();
         controlListener.replay(false);

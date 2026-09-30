@@ -76,7 +76,7 @@ class ComposeVideoController @JvmOverloads constructor(
 
     internal lateinit var state: PlayerUiState
 
-    // initView 由父类构造函数虚调用,属性初始化器要到 super 构造之后才执行 ⇒ 委托必须在 initView 里建(同 ComposeLiveController)
+    // initView 由父类构造函数虚调用:那时属性初始化器还没跑 ⇒ 委托必须在 initView 里建(同 ComposeLiveController)
     internal lateinit var gestures: GestureController
 
     /** mControlWrapper 是父类 protected 字段,手势委托经这里取用(dkplayer 的类型) */

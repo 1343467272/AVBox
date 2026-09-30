@@ -61,7 +61,7 @@ class ComposeLiveController(
     }
 
     // —— 手势引擎字段(照抄 BaseController;必须 lateinit:initView 由父类构造函数虚调用,
-    //    属性初始化器在 super 构造后才执行,带 = null 初始化器的字段会把 initView 的赋值清掉) ——
+    //    那时属性初始化器还没跑 —— 用带初始化器的属性持有会在 initView 里读到 null) ——
     private lateinit var gestureDetector: GestureDetector
     private lateinit var audioManager: AudioManager
     private var streamVolume = 0

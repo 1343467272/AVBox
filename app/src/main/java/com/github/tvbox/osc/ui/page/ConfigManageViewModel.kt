@@ -12,7 +12,9 @@ import com.github.tvbox.osc.util.HistoryHelper
 import com.github.tvbox.osc.util.KV
 import com.github.tvbox.osc.util.LanguageManager
 import com.github.tvbox.osc.util.removeLocalCopy
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -53,6 +55,8 @@ class ConfigManageViewModel : ViewModel() {
     val editTarget = MutableStateFlow<SubscribeSource?>(null)
     val pendingSwitch = MutableStateFlow<PendingSwitch?>(null)
     val toastEvent = MutableStateFlow<String?>(null)
+    /** 副本清理即发即走,不受页面退出(VM cleared)取消 —— 与旧实现的一次性 executor 语义对齐 */
+    private val copyCleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         viewModelScope.launch {
@@ -82,8 +86,12 @@ class ConfigManageViewModel : ViewModel() {
 
     /**
      * 多仓的地址改写由异步 loadConfig 完成(仓地址 → 仓内首条子源),它不产生任何 Compose 状态
-     * 变化 ⇒ 这些"只在进入时读一次"的当前态不会自更新。刷新只走一条:改写点发的
-     * [ApiLineSignal];只重读"当前态"而**不**重读订阅列表 —— 列表的增删改都同步写 KV,
+     * 变化 ⇒ 这几份"只在进入页面时读一次"的当前态不会自更新,换仓入口与"使用中"标记要退出重进才正确。
+     *
+     * <p>刷新只走一条:改写点发的 [ApiLineSignal]。反推"加载什么时候完成"不可靠 —— 点播的完成态
+     * 要等 jar 装载也跑完,那时改写早已结束;也不必再挂 ON_RESUME,因为本页存活期间唯一会改写仓
+     * 关系的只有点播这一路(它必发信号),直播那路只在直播页拉配置时才改写,届时本页早已重建,
+     * 进入时读到的就是新值。只重读"当前态"而**不**重读订阅列表 —— 列表的增删改都同步写 KV,
      * 重读只会与 manageMode 的勾选集错位。
      */
     private fun refreshActiveSnapshot() {
@@ -218,7 +226,7 @@ class ConfigManageViewModel : ViewModel() {
             activeInEitherMode(it) || referencedBySubscribes(it) || referencedByRepo(it)
         }
         if (copyUrls.isNotEmpty()) {
-            viewModelScope.launch(Dispatchers.IO) { copyUrls.forEach { removeLocalCopy(it) } }
+            copyCleanupScope.launch { copyUrls.forEach { removeLocalCopy(it) } }
         }
         if (vod) {
             vodItems.value = remaining

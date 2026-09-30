@@ -1,6 +1,6 @@
 ---
 name: AVBox 渐进式重构 Spec（VM 归一与上帝类收尾专项）
-status: 执行中（2026-10-01：V1–V5 已全部落地并过审查轮【V5 含 1 处阻断级构造期 NPE 修复】；V1–V5 均待真机走查；D1/D2/D3/V6 已拍板；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
+status: 执行中（2026-10-01：V1–V5 已全部落地并过两轮复核【V5 含 1 处阻断级构造期 NPE 修复】；V1–V5 均待真机走查；D1/D2/D3/V6 已拍板；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
 source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveData/StateFlow 各半、viewmodel/ 名不副实）② 上帝类残留（PlaybackController / ComposeVideoController / PlayContainer / ApiConfig）③ VM 持 View 与 static 可变缓存 ④ 业务逻辑写进 Composable。审查结论：四问题全部属实（数字 ±5% 出入见 §2）
 ---
 
@@ -247,6 +247,14 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
   - 顺带用同一份字节码订正了一条既有误述（`143d380`）：Kotlin **不生成**零值属性初始化器（`= null`/`= 0`/`= false`）的 `putfield` —— 所以原实现 `private var gestureDetector: GestureDetector? = null` + `initView` 赋值不会被清掉（这是它一直能工作的原因）；`ComposeLiveController` 注释里"带 = null 初始化器的字段会把 initView 的赋值清掉"不成立，已改为准确表述。
 - 复核确认（无问题）：5 个新文件的搬移完整性（逐块对齐删除行）；`PlaybackTimeouts` 的 101/102/103 与 15s/20s、"先 cancel 再 send"、`armPendingCompletionDrop` 用 `sendEmptyMessage` 而非 delayed；`PlaybackPreload.consumeResult` 的"命中即喂/未命中即 drop"顺序；`GestureController` 的 UP/CANCEL→`speedPlayEnd`、`super.onTouchEvent` 留宿主、`speedOld` 跨类读写；`TrackSelectorDelegate` 的 200ms 代次守卫与 `isSameTrack` static 化；`PlaybackController` 的三个匿名 Callback/Host 与 `PlayContainer.trackSelector` 均只延迟读外部字段（不在构造期做快照）；`PlaybackEngine` 的 `initFetch`/`initPreload`/`releaseFetch` 调用点齐全。
 - 复核登记的既有问题（非本次引入、未改）：① `PlaybackFetch.handlePlayResult` 的 `view` 由"多次字段读"归一为"入口一次局部读"，理论上若 `publishQuality` 的 EventBus 订阅方在同一栈内换 bridge，结果会打到旧 bridge（实际订阅方是 UI 列表刷新、不换 bridge，且全在主线程 ⇒ 不可达）；② `release()` 沿旧实现不置空 `sourceViewModel`，页面销毁后仍可能对旧会话 svm 发 getPlay（旧行为一致）；③ `TrackSelectorDelegate` 每次点击 `new Handler` 不回收、靠代次守卫拦截（与旧一致）。
+
+**第二轮（按 `SKILL.md` 项目规范复核，2026-10-01）**：逐条对账文档地图 / 注释红线 / 通用规范，发现 2 处"本次引入"与 2 处"既有文档失真"，均已修（构建 468 例绿；`read_lints` 0 诊断）：
+
+- 【中｜本次引入】`TrackSelectorDelegate`（`ui/player` 层）随拆分新增了 3 处注释（类 javadoc / `Host.player()` / `invalidatePendingSwitch()`）——违反"UI 层不新增注释"约定，已删（随代码搬来的诊断注释保留）。`ComposeVideoController` 那句"initView 由父类构造器虚调用"属"不写会再踩"的坑注释，按红线保留。
+- 【中｜既有文档】`SKILL.md` 文档地图把播放服务化 spec 标为"**草案,未实施**"，实况是 P0–P5 全部落地（2026-09-14）——"先读这里"的入口失真，已改为落地状态 + 未采集项（§4-6/7 量化埋点与 hprof 复测）。
+- 【中｜既有文档】`avbox-mobile-ui-spec.md` 播放容器一节写"`SourceViewModel` 由容器直接持有"，代码里容器只用 `SubtitleViewModel`（`mActivity` 作 ViewModelStoreOwner 就地取用）——已修。
+- 【低｜既有，登记不修】`PlaybackFetch.handlePlayResult` 约 105 行（即原匿名 Observer 主体，触 `avbox-code-review-spec.md` 的"方法 >100 行"阈值；本次按"只搬位置"未拆，若要拆另立）；`PlaybackTimeouts` 里"与既有 mHandler 的三条定时消息拆开"沿原文搬运（含过程叙事，按同批"注释精简"惯例处理）。
+- 【信息】无新增包级环（`PlaybackFetch`↔`PlaybackController` 为同包类级双向，`GestureController` 同包单向）；`history/` 不补条目 —— V1–V5 的过程记录归 `skill/review/refactor-plan-20261001.md`，符合文档地图对 `skill/review/` 的定义（活规范已同步的只有手势节与 i18n 附录注记）。
 
 **原设计记录（本次执行按上述落地）**：
 

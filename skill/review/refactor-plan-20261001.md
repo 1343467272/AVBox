@@ -1,6 +1,6 @@
 ---
 name: AVBox 渐进式重构 Spec（VM 归一与上帝类收尾专项）
-status: 执行中（2026-10-01：V1/V2 已落地并过审查轮、待走查；D1/D2/V6 已拍板；V3–V5 待做；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
+status: 执行中（2026-10-01：V1/V2/V3 已落地并过审查轮、待走查；D1/D2/D3/V6 已拍板；V4–V5 待做；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
 source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveData/StateFlow 各半、viewmodel/ 名不副实）② 上帝类残留（PlaybackController / ComposeVideoController / PlayContainer / ApiConfig）③ VM 持 View 与 static 可变缓存 ④ 业务逻辑写进 Composable。审查结论：四问题全部属实（数字 ±5% 出入见 §2）
 ---
 
@@ -111,6 +111,21 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 
 ## V3｜static 状态外迁 + `viewmodel/` 包改名（消问题 ①c + ③b）
 
+**执行状态（2026-10-01）**：
+
+- 已落地（2 个本地 commit，未推远程）：`0bbcb5c` 状态外迁；`e082bcf` 包改名。
+- **前置检查（硬约束级）结论**：`com.github.tvbox.osc.viewmodel` 全库只出现在 **16 处 package 声明 + 9 处 import**（其中包外 8 个文件：`DetailViewModel`/`SearchViewModel`/`HomeViewModel`×2/`PartitionListViewModel`/`PlayContainer`/`PlaybackController`/`PreloadCoordinator`/`SubtitleSheets`），**manifest / proguard-rules / KV 值 / 任何字符串与反射面零命中**。spider jar 契约在 `catvod.crawler`/`catvod.bean`,与本包无关 —— 检索后才动手。
+- **外迁（`0bbcb5c`）**：新增 `sourcedata/SourceRuntimeState.java`,`sortCache`/`extendCache`/`clearRuntimeCache()` 整段搬入(含 access-order `LinkedHashMap` 与 `removeEldestEntry` 上限 5),`synchronized (sortCache)` 加锁语义逐字保留(`aa5b132`);`SourceViewModel` 构造器改从它取缓存交给各 Loader(构造器签名未变,零波及其他 Loader),`HomeViewModel:150` 改指 `SourceRuntimeState.clearRuntimeCache()`。**门面因此只剩 7 个通道 + 入口方法**,页面级 VM 不再带 static 可变状态(消问题 ③b)。
+  - **D3 拍板结果:删别名**。`spThreadPool` 全库只有 1 个调用点(门面自己的 `action()`),已改直引 `SourceHelper.SPIDER_POOL`,别名删除;`SPIDER_POOL` 真身留在 `SourceHelper`(包级可见,不做带 `@Deprecated` 的过渡别名)。
+  - 新增 `SourceRuntimeStateTest` 3 例:LRU 上限(第 6 条挤掉最早)、**`get` 也刷新 recency**(access-order 的实证,丢了这一条就退化成插入序)、`clearRuntimeCache` 两条缓存都清空。用例与类同包,直接读写包级字段,不新增任何测试依赖。
+- **改名（`e082bcf`）**：`git mv` 两个目录(主 + 测试,16 文件)+ 原地改写 24 个文件里的包名/import。**不动编码与行尾**(`SearchViewModel.kt` 保持 CRLF,其余 LF;全部无 BOM)。
+  - **纯搬迁证明**:`git diff --cached --stat` 16 个文件全部识别为 rename 且 **0 insertions / 0 deletions**;另按 spec §9 卡口做逐行去空白比对,**24 个文件各自只有 package/import 一行不同**(`SourceRuntimeState*` 两个新文件与 `HEAD` 无差异)。包内 40 个包级成员的可见性一字未改(这是选"改名而非重拆"的唯一理由)。
+  - 验证:`assembleDebug` + `testDebugUnitTest` 全绿(**59 类 / 458 例 / 0 失败**,与 V3.1 同数 —— 改名不带行为);`--rerun-tasks` 复跑确认非缓存结论。
+- 未做:装机走查 —— `adb` 不在 PATH。判据沿用旧 spec 阶段 5:换源后 `sortCache` 清理仍生效(`HomeViewModel.reload()` → 分类与首页推荐应重新取数,不再命中旧源缓存)。
+- 遗留说明:包名叫 `sourcedata` 后,`SourceViewModel`/`SubtitleViewModel` 这两个**真 VM** 也在包内(旧 spec 阶段 5 的同包刻意产物,D1 的前提就是整包原样改名)。V4 会在这两个类上继续做观察侧收口,是否把它们移出该包等 V4/V5 后再评估(D4 同类问题)。
+
+**原设计记录（本次执行按上述落地）**：
+
 - **修改（两步，各自独立 commit）**：
   1. **状态外迁**：新增 `viewmodel/SourceRuntimeState.java`（终名随 D1），收编 `sortCache`/`extendCache`/`clearRuntimeCache()` 与 `spThreadPool` 别名的真实持有者角色（`SPIDER_POOL` 已在 `SourceHelper`，只需改调用点直引后删门面别名）。`SortLoader`/`SourceViewModel` 改为通过它存取；`HomeViewModel:150` 的 `SourceViewModel.clearRuntimeCache()` 调用点改指新家。**保留 `aa5b132` 的 access-order 加锁语义**（`synchronized (sortCache)` + 持锁不做 IO）。
   2. **包改名**（D1 已拍板：`sourcedata`）：`com.github.tvbox.osc.viewmodel` → `com.github.tvbox.osc.sourcedata`，**整包原样改名**，包内 40 个包级成员的可见性语义不变（这是改名而非重拆的唯一理由）。
@@ -159,7 +174,7 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 | --- | --- | --- | --- |
 | D1 | `viewmodel/` 改名去向 | **整包改名 `com.github.tvbox.osc.sourcedata`**（站点取数与解析域；不并入 `data`，Room 域不混淆）。备选：改 `repository`（违反旧 spec"不引入 Repository 层"的表述直觉，弃）；不改名只加 package-info（未"彻底处理"，弃）。**前提 = 整包原样改名，不做包内重拆**（包级可见性 40 成员是同包复用的根基，重拆 = 把包级成员变 public，阶段 5 已验证该代价模式不可取）。 | ✅ 已拍板（2026-10-01）：按建议 |
 | D2 | LiveData 是否全转 StateFlow | **按语言分域 + 单桥接器**（V4）。全库单范式的代价：`sourcedata` 9 个 Java 文件重写（违反旧 spec"不重写 Java→Kotlin"决策）或 Java 写 `StateFlow`（`setValue()` 可用但无语言便利，且 `postValue` 异步主线程语义要手工复刻）。翻案判据：`sourcedata` 包未来整体迁 Kotlin 时一并转。 | ✅ 已拍板（2026-10-01）：按建议 |
-| D3 | `spThreadPool` 公开别名的去留 | `SPIDER_POOL` 真身在 `SourceHelper`；别名服务的是外部调用点（V3 时全库检索）。若外部调用点 ≤3 处改直引后删别名；若多则保留别名并登记为"稳定 API"。 | 执行时定 |
+| D3 | `spThreadPool` 公开别名的去留 | `SPIDER_POOL` 真身在 `SourceHelper`；别名服务的是外部调用点（V3 时全库检索）。若外部调用点 ≤3 处改直引后删别名；若多则保留别名并登记为"稳定 API"。 | ✅ 已拍板（2026-10-01 执行 V3.1 时定）：外部调用点实际只有 1 处（门面自己的 `action()`），已直引 `SourceHelper.SPIDER_POOL` 并删除别名 |
 | D4 | `DetailViewModel` 自身 959 行是否拆 | V2/V3 改完后重估（fallback 换源簇 ~200 行、搜索簇 ~100 行是候选）。**不预设拆分**——它 62 个方法中一半是 VM 本职的事件转发。 | 执行时定 |
 | D5 | V1 的 `ConfigManageViewModel` 作用域 | 独立 Activity 专属（`ConfigManageActivity` 壳 3KB），不共享、不挂载 Application 作用域。 | 定案 |
 

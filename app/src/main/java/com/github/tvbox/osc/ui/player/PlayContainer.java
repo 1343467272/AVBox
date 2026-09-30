@@ -56,7 +56,7 @@ import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.SubtitleHelper;
 import com.github.tvbox.osc.util.TrackMemory;
 import com.github.tvbox.osc.util.KV;
-import com.github.tvbox.osc.viewmodel.SubtitleViewModel;
+import com.github.tvbox.osc.sourcedata.SubtitleViewModel;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.lifecycle.ViewModelStoreOwner;
 import androidx.media3.common.text.Cue;

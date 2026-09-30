@@ -1,4 +1,4 @@
-package com.github.tvbox.osc.viewmodel
+package com.github.tvbox.osc.sourcedata
 
 import androidx.lifecycle.MutableLiveData
 import com.github.tvbox.osc.bean.AbsXml

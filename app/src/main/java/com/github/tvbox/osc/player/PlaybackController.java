@@ -40,7 +40,7 @@ import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.WatchProgressStore;
 import com.github.tvbox.osc.util.thunder.Jianpian;
 import com.github.tvbox.osc.util.thunder.Thunder;
-import com.github.tvbox.osc.viewmodel.SourceViewModel;
+import com.github.tvbox.osc.sourcedata.SourceViewModel;
 
 import org.greenrobot.eventbus.EventBus;
 import org.json.JSONArray;

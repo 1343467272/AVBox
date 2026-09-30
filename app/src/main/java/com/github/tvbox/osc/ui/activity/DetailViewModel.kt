@@ -18,7 +18,7 @@ import com.github.tvbox.osc.util.HistoryHelper
 import com.github.tvbox.osc.util.HistoryWriter
 import com.github.tvbox.osc.util.LOG
 import com.github.tvbox.osc.util.SearchHelper
-import com.github.tvbox.osc.viewmodel.SourceViewModel
+import com.github.tvbox.osc.sourcedata.SourceViewModel
 import com.lzy.okgo.OkGo
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers

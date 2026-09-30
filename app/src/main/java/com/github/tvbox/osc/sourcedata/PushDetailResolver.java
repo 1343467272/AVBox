@@ -1,4 +1,4 @@
-package com.github.tvbox.osc.viewmodel;
+package com.github.tvbox.osc.sourcedata;
 
 import android.text.TextUtils;
 import android.util.Base64;

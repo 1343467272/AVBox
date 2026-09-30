@@ -1,4 +1,4 @@
-package com.github.tvbox.osc.viewmodel
+package com.github.tvbox.osc.sourcedata
 
 import com.github.tvbox.osc.bean.AbsSortXml
 import org.junit.Assert.assertEquals

@@ -1,4 +1,4 @@
-package com.github.tvbox.osc.viewmodel
+package com.github.tvbox.osc.sourcedata
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

@@ -1,4 +1,4 @@
-package com.github.tvbox.osc.viewmodel
+package com.github.tvbox.osc.sourcedata
 
 import com.github.tvbox.osc.util.MD5
 import com.google.gson.Gson

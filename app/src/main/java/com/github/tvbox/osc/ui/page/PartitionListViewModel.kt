@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.github.tvbox.osc.bean.AbsXml
 import com.github.tvbox.osc.bean.Movie
 import com.github.tvbox.osc.bean.MovieSort
-import com.github.tvbox.osc.viewmodel.SourceViewModel
+import com.github.tvbox.osc.sourcedata.SourceViewModel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow

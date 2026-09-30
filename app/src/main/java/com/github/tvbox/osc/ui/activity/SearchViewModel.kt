@@ -13,7 +13,7 @@ import com.github.tvbox.osc.util.LOG
 import com.github.tvbox.osc.util.SearchHelper
 import com.github.tvbox.osc.util.SearchSettings
 import com.github.tvbox.osc.util.UA
-import com.github.tvbox.osc.viewmodel.SourceViewModel
+import com.github.tvbox.osc.sourcedata.SourceViewModel
 import com.lzy.okgo.OkGo
 import com.lzy.okgo.callback.AbsCallback
 import kotlinx.coroutines.Dispatchers

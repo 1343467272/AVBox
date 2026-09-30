@@ -1,4 +1,4 @@
-package com.github.tvbox.osc.viewmodel;
+package com.github.tvbox.osc.sourcedata;
 
 import android.os.Looper;
 import android.util.Base64;

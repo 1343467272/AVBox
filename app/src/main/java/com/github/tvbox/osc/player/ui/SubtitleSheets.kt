@@ -40,7 +40,7 @@ import com.github.tvbox.osc.bean.Subtitle
 import com.github.tvbox.osc.player.state.SubtitleSearchSheetState
 import com.github.tvbox.osc.player.state.SubtitleSheetState
 import com.github.tvbox.osc.util.SubtitleHelper
-import com.github.tvbox.osc.viewmodel.SubtitleViewModel
+import com.github.tvbox.osc.sourcedata.SubtitleViewModel
 
 @Composable
 fun SubtitleSheet(sheet: SubtitleSheetState, onDismiss: () -> Unit) {

@@ -75,7 +75,7 @@
   4. 搜索模式(`MODE_SEARCH`)与搜索结果页(`SearchActivity`)卡片保持「进详情页」不变。
 - **源级策略的由来与切换**:音乐 / 影视 / 网盘在卡片数据里**没有区分字段**(上游 fongmi 同样没有,只认 action / folder / 站点 `indexs`),因此「点卡片先搜索还是直接播放」只能按源定。存储 = KV `source_card_policy`(`HashMap<sourceKey,"detail">`,缺省即搜索,只登记 DETAIL 的源);UI = 「订阅源」sheet 每行右侧的**「搜索 / 详情」标记**(`CardPolicyPill`,点击切换且不改变当前选中源,`DETAIL` 态高亮 primary)。用户当前配置 = 5 个影视源保持搜索,「易听音乐 | 带歌词」「我的云盘 | 我配置」切详情。
 - **性能**:切源后各分区第一页并发加载**限流 2~3**;LazyColumn 分区 key=分类 id,LazyRow 卡片 key=vodId;Coil 行内预加载;分区三态 = 横排灰卡骨架 shimmer / 空态 / 错误+分区级重试。
-- **下拉刷新(2026-09-12 用户要求:「下拉出现圆形加载指示器,松手刷新,48dp」)**:内容流最外层 `LazyColumn` 挂 `Modifier.pullToRefresh`(material3 1.5.0-alpha23 官方下拉刷新,阈值 80dp M3 默认);**松手触发 `HomeViewModel.reload()`**(清运行期缓存 `SourceViewModel.clearRuntimeCache()` + 整页重载,避免 sortCache 命中导致「刷新后推荐没变」)。**指示器 = 引导页同款 M3 expressive `ContainedLoadingIndicator` 48dp**(2026-09-12 二轮用户定稿,与 §5「加载指示器」一致,实现过程见 `history/features.md`):下拉过程按 `distanceFraction` 形变,松手后转不定态圈。⚠️ 顶栏是透明覆盖层且画在内容之上,指示器整体下移「顶栏总高」(`offset(y = topPadding)`)从顶栏下沿滑出,否则会被左上角订阅源胶囊完全盖住;指示器无手势 modifiers,不拦截列表触摸。刷新完成判定 = 推荐与全部分区都不再 Loading(看门狗 45s 超时转 Error 同样解锁,防指示器永久转圈);未配置接口的引导态不启用下拉刷新。引导态 = 整屏居中:空态图标 **`ic_empty_record` 64dp**(`onSurfaceVariant`,与历史 / 收藏页空态**同款**,2026-09-16 补)+ 间距 12dp +「尚未配置订阅接口」+「添加订阅」文字按钮(跳配置管理页)。
+- **下拉刷新(2026-09-12 用户要求:「下拉出现圆形加载指示器,松手刷新,48dp」)**:内容流最外层 `LazyColumn` 挂 `Modifier.pullToRefresh`(material3 1.5.0-alpha23 官方下拉刷新,阈值 80dp M3 默认);**松手触发 `HomeViewModel.reload()`**(清运行期缓存 `SourceRuntimeState.clearRuntimeCache()` + 整页重载,避免 sortCache 命中导致「刷新后推荐没变」)。**指示器 = 引导页同款 M3 expressive `ContainedLoadingIndicator` 48dp**(2026-09-12 二轮用户定稿,与 §5「加载指示器」一致,实现过程见 `history/features.md`):下拉过程按 `distanceFraction` 形变,松手后转不定态圈。⚠️ 顶栏是透明覆盖层且画在内容之上,指示器整体下移「顶栏总高」(`offset(y = topPadding)`)从顶栏下沿滑出,否则会被左上角订阅源胶囊完全盖住;指示器无手势 modifiers,不拦截列表触摸。刷新完成判定 = 推荐与全部分区都不再 Loading(看门狗 45s 超时转 Error 同样解锁,防指示器永久转圈);未配置接口的引导态不启用下拉刷新。引导态 = 整屏居中:空态图标 **`ic_empty_record` 64dp**(`onSurfaceVariant`,与历史 / 收藏页空态**同款**,2026-09-16 补)+ 间距 12dp +「尚未配置订阅接口」+「添加订阅」文字按钮(跳配置管理页)。
 
 ### 4.2 历史 / 收藏 tab(Step 2 实施时已与用户确认)
 
@@ -510,7 +510,7 @@
 - ⚠️ **崩溃标记只由"可能与源有关"的崩溃写入**(`BootGuard.looksSourceRelated`,`IGNORABLE_FRAME_PREFIXES` 是唯一旋钮):遍历 cause + suppressed 全链的帧,**全部**落在平台/界面层才算"无关";无帧 / null / 过滤自身抛错一律按"有关"——漏判会回到"坏源把应用锁进启动崩溃、只能清数据"。刻意不含 `com.github.catvod.`(jar/js/py 装载器与爬虫都在这条链上)。放宽白名单前先读 §4 配置管理页的「风险源标记 + 二次确认」——那是误判的唯一出口。
 - ⚠️⚠️ **`com.android.internal.` 必须在白名单里(2026-09-23 实机误禁事故,最容易漏的一条)**:任何**主线程**未捕获异常的栈尾必然是 `com.android.internal.os.RuntimeInit.run` → `ZygoteInit.main`(见真机 `logcat -b crash`)。漏了它,`looksSourceRelated` 会对**每一次**主线程崩溃都返回 `true` ⇒ 判据恒真、「界面崩溃不参与停用判定」这条保护**从未生效过**。事故形态:设置页一个既有的 CME 崩在启动期(装载后 10s 内)⇒ 一次即停用 ⇒ **把用户正常的源误禁**。**回归锁 = `BootGuardTest.uiCrashIsNotSourceRelated` / `frameworkCrashTailIsNotSourceRelated`,它们的假栈必须按真实主线程崩溃写全(带 `com.android.internal.os.*` 尾巴)**;旧用例的假栈以 `java.lang.Thread.run` 收尾,所以单测绿着、线上恒真 —— 加白名单/改判据后**务必用"去掉修复是否转红"反向验证一次**。
 - ⚠️ **兜底计数只认"与源有关"的崩溃**:启动时没有崩溃标记 ⇒ `disableBootLoopingSource` 把 `BOOT_LOADING_COUNT` 清零。不清零的话,普通重启与界面崩溃同样会装载 jar、把计数推过 `MAX_LOAD_ATTEMPTS`(3),之后**任何一次**无关但被判"有关"的崩溃都会停用正常源(触发条件比改前更隐蔽)。
-- **残留窗口(未决,见 §7)**:白名单覆盖平台(`android.`/`androidx.`/`com.android.internal.`)+ `ui`/`base`,但栈里带 `util`/`viewmodel`/播放器包装帧的界面 bug 仍会被判"与源有关"(例:`OkGoHelper`/`SettingsPage` 那类 `util` 层的界面崩溃)。要彻底收口需按"是否出现 `com.github.catvod.`"正向判定,而不是按平台前缀反向排除。
+- **残留窗口(未决,见 §7)**:白名单覆盖平台(`android.`/`androidx.`/`com.android.internal.`)+ `ui`/`base`,但栈里带 `util`/`sourcedata`(原 `viewmodel`)/播放器包装帧的界面 bug 仍会被判"与源有关"(例:`OkGoHelper`/`SettingsPage` 那类 `util` 层的界面崩溃)。要彻底收口需按"是否出现 `com.github.catvod.`"正向判定,而不是按平台前缀反向排除。
 
 ### 6.14 观看历史的落库时机(2026-09-23 补,由实机误判得出)
 
@@ -608,7 +608,7 @@
 - **嗅探/代理观测到的头未过滤(2026-09-23 记录,低)**:`PlayUrlResolver` 把 WebView 实际请求头与 Cookie 收进 `loadFoundVideoUrlsHeader`,最终可能进 M3U8 净化的 OkGo 请求;这些头来自真实网络(非配置),正常不含非法字符,但理论上仍可让 `Headers.of` 抛 `IllegalArgumentException`。要闭环应在 `M3u8PurifyUseCase` 的出口兜一层 `HeaderGuard`。
 - **`sites[].header` 的播放兜底是"只补缺键"而非 fongmi 的"整块为空才兜底"**:结果自带任意一个头时仍会补齐站点声明的其余键(对"源只回了 UA、Referer 缺"的场景更实用)。若要严格对齐 fongmi 需改 `mergeSiteHeaders` 的判据,属口味问题。
 - **播放参数抽屉丢了两条可见性规则(2026-09-26 审查发现,待定)**:原底栏文字菜单行用 `PlayerUiState.ijkBtnVisible`(= `playerType == 1 || 2`)隐藏非 EXO/IJK 内核下的「解码」按钮、用 `liveButtonsVisible`(duration ≠ 0)隐藏直播源下的「倍速/片头尾」按钮;这两组控件移进抽屉后**两个字段都没有消费方了**(`ijkBtnVisible` 已随 IJK 内核移除删除、`liveButtonsVisible` 只剩写入),而抽屉里这两组**恒显示** —— 后果:①用外部内核(MX/VLC/Kodi)时抽屉仍会列出「解码方式」(现只剩 EXO 硬/软两档,点了会 `replay` 但对外部播放器无实际作用);②点播里 duration==0 的内容仍显示倍速/片头尾。**`liveButtonsVisible` 未删**(它编码的是规则、不是陈旧状态),收口 = 把「pl 是否为 2」的判据与 `liveButtonsVisible` 接进 `buildParamsSheet` 决定这两组是否下发(`ParamsSheetState` 的可空字段)。属观感/行为决策,等用户拍板。
-- **启动看门狗的崩溃栈白名单只覆盖平台 + `ui`/`base`(2026-09-23)**:栈里带 `com.github.tvbox.osc.util.` / `viewmodel` / 播放器包装帧的**界面** bug 仍会被判"与源有关",连环崩 3 次仍可能停用正常源。收口 = 放宽白名单到全部 `com.github.tvbox.osc.`;代价是播放内核包装(`util/PlayerHelper`、`player/`)崩溃不再算源的问题。判据与当前口径见 §6.13。
+- **启动看门狗的崩溃栈白名单只覆盖平台 + `ui`/`base`(2026-09-23)**:栈里带 `com.github.tvbox.osc.util.` / `sourcedata`(原 `viewmodel`) / 播放器包装帧的**界面** bug 仍会被判"与源有关",连环崩 3 次仍可能停用正常源。收口 = 放宽白名单到全部 `com.github.tvbox.osc.`;代价是播放内核包装(`util/PlayerHelper`、`player/`)崩溃不再算源的问题。判据与当前口径见 §6.13。
 
 ## 8. 历史归档索引(`history/`,按需检索)
 

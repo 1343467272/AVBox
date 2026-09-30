@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 站点取数的运行期状态持有者:homeContent 缓存、extend 解析缓存、spider 线程池入口。
+ * 站点取数的运行期状态持有者:homeContent 缓存、extend 解析缓存。
  *
  * <p>这些状态必须活过页面级 VM 的换实例(换源清理要有唯一出口),原先是门面 {@link SourceViewModel}
  * 的 static 字段 —— 页面 VM 因此"名不副实"地带着 static 可变状态。搬到此处后门面只管通道与入口,

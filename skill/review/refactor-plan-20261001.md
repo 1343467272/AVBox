@@ -113,14 +113,27 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 
 **执行状态（2026-10-01）**：
 
-- 已落地（2 个本地 commit，未推远程）：`0bbcb5c` 状态外迁；`e082bcf` 包改名。
+- 已落地（3 个本地 commit，未推远程）：`0bbcb5c` 状态外迁；`e082bcf` 包改名；`<审查轮修复,见下>` 注释/活规范同步。
+- **审查轮（2026-10-01）结论：0 真回归**（两轮独立复核，含"逐字节比对改名文件"与"变异矩阵实测测试有效性"）。逐点复核结果：
+  - **改名是纯搬迁（字节级证据）**：16 个改名文件 `git cat-file blob` 对比,去掉第 1 行后**逐字节完全相同**(16/16);`git show e082bcf --stat` 全部识别为 rename;行尾/BOM 核对通过(`SearchViewModel.kt` 303 CRLF 保持)。
+  - **静态语义未变**：`sortCache` 的上限/access-order/锁/持有者/初始化时机/清理时机一字未变,全库**无任何重新赋值路径**(唯一 mutator 是 `clear()`,唯一出口 `HomeViewModel.reload()`);类初始化无环(`SourceRuntimeState` 只依赖 `AbsSortXml`+`java.util`);`SourceHelper.<clinit>` 只建两个线程池,无可观察差异。
+  - **加锁语义**：全库 `sortCache` 访问点仅 3 处(`SortLoader` put/get + `clearRuntimeCache`),**全部在 `synchronized (sortCache)` 内且持锁不做 IO**,无未加锁访问。
+  - **测试有效性（变异矩阵实测,非"看起来对"）**：把 access-order 参数改 `false` ⇒ **只有** `sortCacheGetRefreshesRecency` 转红(证明它是 access-order 的唯一守卫);`removeEldestEntry` 改 `false` ⇒ 上限用例转红;去掉 `clearRuntimeCache` 里的 `sortCache.clear()` ⇒ 清空用例转红。三条都是真断言。
+  - **非 Java/Kotlin 消费面零命中**：proguard(通配 `-keep class com.github.tvbox.osc.**`)、Manifest、资源 XML、KV 键、EventBus(事件类在 `osc.event`)、Room schema(`app/schemas` 未变)、KSP、`app/src/python`、`app/libs/*`(jar/aar 二进制扫描)、gradle/CI(`.github/workflows`,顺带发现 **CI 只跑 `compileDebugKotlin`/`assembleRelease`,不跑单测**)、跨模块 `player`/`pyramid`/`quickjs`/`libs` 均零引用。
+  - **产物级复核**：debug APK dex 内旧包名出现 **0** 次、`sourcedata` 137 次(无残留/重复类)。
+- **审查轮修复（本笔 commit）**：
+  1. **计划文档证据措辞纠错**(本文件上一版自称"0 insertions / 0 deletions",实测 `--numstat` = 24 文件/25+25 行 —— 改名文件各 1 行 package、包外 8 文件各 1~2 行 import);已改为可复现的准确表述。
+  2. **三处同源注释失真**(都因本次搬动产生):`SortLoader` 的"缓存本体由门面持有"、`SourceRuntimeState` 头注释自称含"spider 线程池入口"、`SourceViewModel` 头注释把"线程池"列入已经外迁的状态 —— 池仍在 `SourceHelper.SPIDER_POOL`、没搬;`SourceHelper` 的"门面仍然持有 extendCache"一并改正。
+  3. **活规范失真**(按 `SKILL.md`「仍生效的规范写在活规范里」):`avbox-mobile-ui-spec.md` 三处(下拉刷新引用已删的 `SourceViewModel.clearRuntimeCache()`;§6.13/§6 两处把 `viewmodel` 当"崩溃栈白名单外"的示例包名)、`avbox-code-review-spec.md` 两处(模块清单、批次二包名)、`avbox-i18n-spec.md` 四处(R2/R8/R9 红线路径、附录 A.2 清单)。**历史归档不动**(`skill/history/features.md` 与 `skill/review/review-20260928-batch1.md`/`refactor-plan-20260928.md` 的旧包名是当时事实,改写会伪造历史)。编辑器镜像 `.codebuddy/skills/android` 与 `.trae/skills/android` 已按项目约定同步并哈希核对。
 - **前置检查（硬约束级）结论**：`com.github.tvbox.osc.viewmodel` 全库只出现在 **16 处 package 声明 + 9 处 import**（其中包外 8 个文件：`DetailViewModel`/`SearchViewModel`/`HomeViewModel`×2/`PartitionListViewModel`/`PlayContainer`/`PlaybackController`/`PreloadCoordinator`/`SubtitleSheets`），**manifest / proguard-rules / KV 值 / 任何字符串与反射面零命中**。spider jar 契约在 `catvod.crawler`/`catvod.bean`,与本包无关 —— 检索后才动手。
 - **外迁（`0bbcb5c`）**：新增 `sourcedata/SourceRuntimeState.java`,`sortCache`/`extendCache`/`clearRuntimeCache()` 整段搬入(含 access-order `LinkedHashMap` 与 `removeEldestEntry` 上限 5),`synchronized (sortCache)` 加锁语义逐字保留(`aa5b132`);`SourceViewModel` 构造器改从它取缓存交给各 Loader(构造器签名未变,零波及其他 Loader),`HomeViewModel:150` 改指 `SourceRuntimeState.clearRuntimeCache()`。**门面因此只剩 7 个通道 + 入口方法**,页面级 VM 不再带 static 可变状态(消问题 ③b)。
   - **D3 拍板结果:删别名**。`spThreadPool` 全库只有 1 个调用点(门面自己的 `action()`),已改直引 `SourceHelper.SPIDER_POOL`,别名删除;`SPIDER_POOL` 真身留在 `SourceHelper`(包级可见,不做带 `@Deprecated` 的过渡别名)。
-  - 新增 `SourceRuntimeStateTest` 3 例:LRU 上限(第 6 条挤掉最早)、**`get` 也刷新 recency**(access-order 的实证,丢了这一条就退化成插入序)、`clearRuntimeCache` 两条缓存都清空。用例与类同包,直接读写包级字段,不新增任何测试依赖。
+  - 新增 `SourceRuntimeStateTest` 3 例:LRU 上限(第 6 条挤掉最早)、**`get` 也刷新 recency**(access-order 的实证,丢了这一条就退化成插入序)、`clearRuntimeCache` 两条缓存都清空(并断言清空不换新 map 实例)。用例与类同包,直接读写包级字段,不新增任何测试依赖。
+  - **已知覆盖缺口(审查轮登记)**:"5 个 Loader 拿到的是同一个 map 实例"这条接线**没有**用例 —— 读它需要 `new SourceViewModel`(构造器初始化 `MutableLiveData`,纯 JVM 单测拿不到 Looper,与 `features.md` 记的同一个坑),而 Loader 没有实例就拿不到字段。改动 `SourceViewModel` 构造器那 5 行传参时须人工确认传的是 `SourceRuntimeState` 的字段本身;已写进测试类 KDoc,不假装已覆盖。
 - **改名（`e082bcf`）**：`git mv` 两个目录(主 + 测试,16 文件)+ 原地改写 24 个文件里的包名/import。**不动编码与行尾**(`SearchViewModel.kt` 保持 CRLF,其余 LF;全部无 BOM)。
-  - **纯搬迁证明**:`git diff --cached --stat` 16 个文件全部识别为 rename 且 **0 insertions / 0 deletions**;另按 spec §9 卡口做逐行去空白比对,**24 个文件各自只有 package/import 一行不同**(`SourceRuntimeState*` 两个新文件与 `HEAD` 无差异)。包内 40 个包级成员的可见性一字未改(这是选"改名而非重拆"的唯一理由)。
-  - 验证:`assembleDebug` + `testDebugUnitTest` 全绿(**59 类 / 458 例 / 0 失败**,与 V3.1 同数 —— 改名不带行为);`--rerun-tasks` 复跑确认非缓存结论。
+  - **纯搬迁证明**:`git show e082bcf --numstat` = **24 文件 / 25 insertions / 25 deletions** —— 16 个改名文件各只有 1 行(package 声明)不同、8 个包外文件各只有 1~2 行(import)不同(`HomeViewModel` 2 行),账目恰好对上;`git show e082bcf --stat` 把这些文件全部识别为 rename(`{viewmodel => sourcedata}`),**改名本身零内容改动**。另按 spec §9 卡口做逐行去空白比对:24 个文件各自只有 package/import 一行不同。包内 40 个包级成员的可见性一字未改(这是选"改名而非重拆"的唯一理由)。行尾/编码逐文件核对:除 `SearchViewModel.kt` 保持 CRLF 外均 LF,全部无 BOM。
+  - 验证:`assembleDebug` + `testDebugUnitTest` 全绿(**59 类 / 458 例 / 0 失败**,与 V3.1 同数 —— 改名不带行为);审查轮又做了一次**删掉整个 `app/build` 的全量重建**复核(依赖缓存与子模块输出不动,20s),结论相同,排除缓存假绿。
+  - **审查轮登记的接受项**:①缓存字段由 `private` 放宽为**包级**(计划要求,`SortLoader` 只用注入引用,当前无滥用),代价是"唯一清理出口"从语言保证降为约定;②`Entry` 裸名(未写 `Map.Entry`)是从旧实现逐字搬来的写法,项目工具链通过,仅对"把该类搬进纯 JVM 编译"的场景有影响;③仓外 spider jar 若按上游类名引用 `SourceViewModel.spThreadPool`/`clearRuntimeCache`,改名+删别名会让其在运行时失配(D3 已明确不留过渡别名;仓内与 `示例文件/上游项目` 之外的来源不在库内,无法检索)。
 - 未做:装机走查 —— `adb` 不在 PATH。判据沿用旧 spec 阶段 5:换源后 `sortCache` 清理仍生效(`HomeViewModel.reload()` → 分类与首页推荐应重新取数,不再命中旧源缓存)。
 - 遗留说明:包名叫 `sourcedata` 后,`SourceViewModel`/`SubtitleViewModel` 这两个**真 VM** 也在包内(旧 spec 阶段 5 的同包刻意产物,D1 的前提就是整包原样改名)。V4 会在这两个类上继续做观察侧收口,是否把它们移出该包等 V4/V5 后再评估(D4 同类问题)。
 

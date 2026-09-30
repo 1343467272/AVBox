@@ -19,8 +19,8 @@ import org.json.JSONObject;
 /**
  * 站点取数门面:对外只暴露通道 + 入口方法,取数实现按职责分在同包 Loader 里。
  *
- * <p>门面自己只保留跨 Loader 共享的东西:7 个结果通道;运行期状态(homeContent 缓存、extend 缓存、
- * 线程池)统一归 {@link SourceRuntimeState},换源清理因此仍有唯一出口。
+ * <p>门面自己只保留跨 Loader 共享的东西:7 个结果通道;homeContent/extend 缓存归
+ * {@link SourceRuntimeState},换源清理因此仍有唯一出口(线程池仍在 {@link SourceHelper})。
  *
  * @author pj567
  */

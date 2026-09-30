@@ -67,14 +67,14 @@
 | # | 位置 | 中文值 | 性质 |
 |---|---|---|---|
 | R1 | `"硬解码"` / `"软解码"` 取值点已收窄(2026-09-29 IJK 内核移除后:KV 只剩 `EXO_DECODE`、播放配置只剩 `exo`),仍集中在 `bean/LivePlayerManager`、`player/PlaybackController`、`player/controller/ComposeVideoController`、`ui/page/PlaySettingsPage` | `硬解码` / `软解码` | **KV 持久化值**(`HawkConfig.EXO_DECODE`)+ 播放配置 JSON 值 + 逻辑判据(`equals("硬解码")` / 切解码写回)。显示可翻译,**值一律不动** |
-| R2 | `viewmodel/SortLoader.java:135` | `name.endsWith("搜")` | 站点命名约定(数据规则),不能翻译 |
+| R2 | `sourcedata/SortLoader.java:135` | `name.endsWith("搜")` | 站点命名约定(数据规则),不能翻译 |
 | R3 | `ui/activity/LiveEpgParser.kt:155` | `contains("未提供")` / `contains("暂无")` | EPG 文本内容判据(数据规则) |
 | R4 | `util/FileUtils.java:536` | `contains("模板.js")` | 本地文件名约定 |
 | R5 | `player/PlaybackController.java:1232` | `contains("歌词")` | 媒体文件名约定 |
 | R6 | `crawler/js/Trans` 字表 + `DanmakuApi` 的 `Trans.t2s` | 简繁字表 | 数据转换(§4.5),不是 UI 文案 |
 | R7 | `api/ApiConfig.addSuperParse` | `"超级解析"` | 解析名参与 `HawkConfig.DEFAULT_PARSE` 持久化 + `getName().equals()` 比较 ⇒ 值不动(第 1 步实测发现) |
-| R8 | `viewmodel/DetailLoader.java:174`（`createPushDetail`） | `"推送"` / `"播放$" + url` / `InfoBean("播放")` | 合成 Movie 的结构化数据(type / 线路 flag / `名字$地址` 格式),进历史与播放链路 ⇒ 值不动(第 1 步实测发现) |
-| R9 | `viewmodel/SourceHelper.java:44`（常量定义）+ 5 个 Loader 的 9 处引用（`DetailLoader`1 / `ListLoader`3 / `PlayLoader`1 / `SearchLoader`2 / `SortLoader`2；另 `SearchLoader.java:131` 是仅进日志的变体文案） | `IllegalStateException("网络请求错误")`（9 处引用 + 1 处日志变体；`player/PlayUrlResolver.java:332` 另有 1 处同文案字面量） | 只经 `convertResponse → onError → LOG.i` 进日志,无 UI 出口 ⇒ 不翻 |
+| R8 | `sourcedata/DetailLoader.java:174`（`createPushDetail`） | `"推送"` / `"播放$" + url` / `InfoBean("播放")` | 合成 Movie 的结构化数据(type / 线路 flag / `名字$地址` 格式),进历史与播放链路 ⇒ 值不动(第 1 步实测发现) |
+| R9 | `sourcedata/SourceHelper.java:44`（常量定义）+ 5 个 Loader 的 9 处引用（`DetailLoader`1 / `ListLoader`3 / `PlayLoader`1 / `SearchLoader`2 / `SortLoader`2；另 `SearchLoader.java:131` 是仅进日志的变体文案） | `IllegalStateException("网络请求错误")`（9 处引用 + 1 处日志变体；`player/PlayUrlResolver.java:332` 另有 1 处同文案字面量） | 只经 `convertResponse → onError → LOG.i` 进日志,无 UI 出口 ⇒ 不翻 |
 | R10 | `ui/page/HistoryPage.kt` | `Regex("(\\d+)\\s*[集期]")` | 匹配源数据(片名/备注)里的集数标记,不是 UI 文案 |
 | R11 | ~~`api/ApiConfig.defaultIJKADS`~~(已作废) | ijk 分组的 `"硬解码"` / `"软解码"` | **已作废(2026-09-29:IJK 内核移除,`default_config.json` 的 `ijk` 段、`IJKCode` 与 `getIJKCodec`/`getCurrentIJKCode` 一并删除)** |
 | R12 | `ui/activity/DetailViewModel.kt` | `SOURCE_EMPTY_MSG = "数据列表"` | 源返回 msg 的"非错误"哨兵值(数据规则)⇒ 不翻 |
@@ -343,7 +343,7 @@ Android 13+ 的「系统设置 → 应用 → 语言」需要 `res/xml/locales_c
 
 **A.1 UI 层(43 文件 / 435 处)** —— `ui/page/`:`SettingsPage` 37、`ConfigManagePage` 35、`PlaySettingsPage` 20、`ThemeSettingsPage` 19、`PreferenceSettingsPage` 17、`HomePage` 15、`HistoryPage` 14、`MainScreen` 9、`PreloadSettingsPage` 8、`HomeGridLayout` 7、`CollectPage` 7、`HomeViewModel` 2、`VodCardAction` 1;`ui/activity/`:`LiveScreens` 21、`DetailScreens` 20、`SearchActivity` 13、`LivePlayActivity` 11、`DetailViewModel` 8、`SearchScreens` 7、`LiveEpgParser` 4、`PartitionListActivity` 3、`DetailActivity` 3、`MusicPlayerActivity` 2、`LivePlayViewModel` 2、`ConfigManageActivity` 1;`ui/components/`:`SearchSettingsSheet` 10、`VodCardMenu` 7、`ThemeColorPickerSheet` 5、`FilterSheet` 3、`VodCard` 2、`HeroCarousel` 2;`ui/music/`:`MusicPlayerScreen` 11、`MusicPlayerState` 3;`ui/theme/`:`ThemeConfig` 17、`Theme` 2;`ui/player/`:`PlayContainer` 16;`player/ui/`:`DanmuSheets` 20、`SubtitleSheets` 19、`CastSheet` 13、`PlayerBottomBar` 10、`PlayerOverlay` 4、`PlayerLayers` 4、`PlayerTopBar` 1。
 
-**A.2 非 UI 层(32 文件 / 213 处,逐条甄别)** —— `api/`:ApiConfig 33、SpiderLoader 5、DanmakuApi 4、ConfigParser 1;`player/`:PlaybackController 25、PlayUrlResolver 15、ComposeVideoController 19、PlaybackService 6、M3u8PurifyUseCase 2、PlayerUiState 2、IjkMediaPlayer 2、ExoPlayer 1;`util/`:PlayerHelper 17、Thunder 13、LocalConfigHelper 11、DefaultConfig 6、OkGoHelper 4、Proxy 2、FileUtils 2、KV 1、HistoryHelper 1、EpisodeTotals 1、parser/SuperParse 1、live/TxtSubscribe 1;`bean/`:LivePlayerManager 9;`viewmodel/`:SourceViewModel 15;`dlna/`:DLNACastManager 2;`crawler/`:RSAEncrypt 6、Trans 2、JsSpider 1;`python/java/`:PythonSpider 2、PyLog 1。
+**A.2 非 UI 层(32 文件 / 213 处,逐条甄别)** —— `api/`:ApiConfig 33、SpiderLoader 5、DanmakuApi 4、ConfigParser 1;`player/`:PlaybackController 25、PlayUrlResolver 15、ComposeVideoController 19、PlaybackService 6、M3u8PurifyUseCase 2、PlayerUiState 2、IjkMediaPlayer 2、ExoPlayer 1;`util/`:PlayerHelper 17、Thunder 13、LocalConfigHelper 11、DefaultConfig 6、OkGoHelper 4、Proxy 2、FileUtils 2、KV 1、HistoryHelper 1、EpisodeTotals 1、parser/SuperParse 1、live/TxtSubscribe 1;`bean/`:LivePlayerManager 9;`sourcedata/`:SourceViewModel 15;`dlna/`:DLNACastManager 2;`crawler/`:RSAEncrypt 6、Trans 2、JsSpider 1;`python/java/`:PythonSpider 2、PyLog 1。
 
 ## 附录 B:统计口径与复现
 

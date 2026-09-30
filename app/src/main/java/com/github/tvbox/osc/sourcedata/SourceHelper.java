@@ -30,8 +30,8 @@ import java.util.concurrent.TimeoutException;
 /**
  * 站点取数的公共支撑:线程池、站点级请求构造、豆瓣源识别、extend 解析、结果来源标注。
  *
- * <p>这些能力被多个 Loader 共用,放在这里而不是各自复制;门面仍然持有 {@code extendCache},
- * 由调用方把自己的缓存传进来。
+ * <p>这些能力被多个 Loader 共用,放在这里而不是各自复制;extend 解析缓存归
+ * {@link SourceRuntimeState},由调用方把自己的缓存传进来。
  */
 final class SourceHelper {
     private SourceHelper() {

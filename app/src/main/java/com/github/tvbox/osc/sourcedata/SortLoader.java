@@ -33,8 +33,8 @@ import okhttp3.Call;
 /**
  * 首页取数:站点分类(sort/分类列表)与首页推荐位。
  *
- * <p>带 homeContent 缓存(最多 5 个源),命中的判定与写入条件都在这里;缓存本体由门面持有,
- * 这里只拿引用,便于门面统一清理。
+ * <p>带 homeContent 缓存(最多 5 个源),命中的判定与写入条件都在这里;缓存本体归
+ * {@link SourceRuntimeState},这里只拿引用,便于统一清理。
  */
 final class SortLoader {
     private final Gson gson;

@@ -52,7 +52,7 @@
 ## 技术栈实况（审查清单以此为准，勿套通用模板）
 
 - 语言构成：`app/src/main` 自身 Java 约 180、Kotlin 约 110 个文件（Java 主要是 TVBox 上游遗产），`player` 模块另有 50 个上游内核 Java 文件；新代码一律 Kotlin。**不建议**"整体迁移 Kotlin"类建议
-- 模块：`app`（宿主，含 api/base/bean/data/dlna/event/player/receiver/server/subtitle/ui/util/viewmodel；原 `cache` 包已于 2026-09-28 并入 `data`）、`player`（doikki `xyz.doikki` 播放骨架 + media3/ExoPlayer;ijk `tv.danmaku.ijk` 已于 2026-09-29 删除）、`pyramid`、`quickjs`（JS 脚本引擎）、`libs`（backdrop 等第三方）
+- 模块：`app`（宿主，含 api/base/bean/data/dlna/event/player/receiver/server/sourcedata/subtitle/ui/util；原 `cache` 包已于 2026-09-28 并入 `data`，原 `viewmodel` 包已于 2026-10-01 改名 `sourcedata`）、`player`（doikki `xyz.doikki` 播放骨架 + media3/ExoPlayer;ijk `tv.danmaku.ijk` 已于 2026-09-29 删除）、`pyramid`、`quickjs`（JS 脚本引擎）、`libs`（backdrop 等第三方）
 - UI：View 体系与 Jetpack Compose（Material3）共存；Compose 集中在 `app` 的 ui/page、ui/components、navbar、glass 系列，以及播放器 ui 层
 - 播放内核：media3/ExoPlayer（唯一内置内核，2026-09-29 起；外部播放器 MX/VLC/Kodi/Reex 仍可选用）+ dkplayer `AbstractPlayer` 骨架；预载走 `PreloadManagerHolder` / `PreloadCoordinator` 链路
 - 存储：Room（实体 Cache / VodRecord / VodCollect）+ MMKV 键值（经 `util/kv` KV 门面）
@@ -103,7 +103,7 @@
 ## 深度模式（三批，跑完即一轮完整深审）
 
 - **批次一 数据与解析链**（134 文件）：`com/github/catvod`、`osc/api`、`osc/data`、`osc/bean`、`osc/util`、quickjs 宿主侧桥接。锚点类：`ConfigParser`、`BootGuard`、`VideoParseRuler`、`OkHttp`（catvod.net）、`Spider`、KV 门面、Room DAO
-- **批次二 UI 层**（123 文件；`osc/viewmodel` 因 2026-09-28 的取数层拆分由 2 个文件变为 11 个）：`osc/ui`（Compose page/components/navbar/glass 与上游 View 页共存）、`osc/subtitle`、`osc/viewmodel`、`osc/base`。重点：双 UI 体系一致性、触屏交互、状态管理
+- **批次二 UI 层**（123 文件；`osc/viewmodel` 因 2026-09-28 的取数层拆分由 2 个文件变为 11 个，该包已于 2026-10-01 更名为 `osc/sourcedata`）：`osc/ui`（Compose page/components/navbar/glass 与上游 View 页共存）、`osc/subtitle`、`osc/sourcedata`、`osc/base`。重点：双 UI 体系一致性、触屏交互、状态管理
 - **批次三 播放与后台**（约 60 文件）：`osc/player`、`osc/dlna`、`osc/server`、`osc/receiver`、`osc/event`、`player` 模块（doikki 骨架只看与宿主桥接;ijk 已于 2026-09-29 删除）。重点：播放器所有权、预载链路、服务与通知
 
 有仓库访问权的 AI 按上述目录与锚点类自行定位文件；无仓库访问权时由喂文件者按此准备清单。跨批发现只记录移交，不展开。

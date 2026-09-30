@@ -2,19 +2,16 @@ package com.github.tvbox.osc.player;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.util.Base64;
 
 import android.text.TextUtils;
 
 import androidx.annotation.Nullable;
-import androidx.lifecycle.Observer;
 
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.player.ExoPlayer;
 import com.github.tvbox.osc.player.TrackInfo;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.base.App;
-import com.github.tvbox.osc.api.DanmakuApi;
 import com.github.tvbox.osc.bean.ParseBean;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.bean.VodInfo;
@@ -23,7 +20,6 @@ import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.server.ControlManager;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.EpisodeMatcher;
-import com.github.tvbox.osc.util.FileUtils;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.ImgUtil;
@@ -43,10 +39,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 import xyz.doikki.videoplayer.player.AbstractPlayer;
@@ -60,7 +54,7 @@ import xyz.doikki.videoplayer.player.VideoView;
 public class PlaybackController {
 
     /** 资源文案:Application 的 base 只在进程启动时挂一次,切语言后直接用 app.getString 会停在旧语言 */
-    private static String str(int resId, Object... args) {
+    static String str(int resId, Object... args) {
         App app = App.getInstance();
         return app == null ? "" : LanguageManager.INSTANCE.localized(app).getString(resId, args);
     }
@@ -941,7 +935,7 @@ public class PlaybackController {
     public void handleResolvePlayUrlTimeout() {
         if (retryWithFreshResolve("resolveTimeout")) return;
         LOG.i("echo-resolvePlayUrl timeout, try next line");
-        cancelPlayRequest();
+        fetch.cancelPlayRequest();
         stopParse();
         if (st.userPickedLine) {
             st.userPickedLine = false;
@@ -957,7 +951,7 @@ public class PlaybackController {
 
     public void handleResolvePlayUrlFailed(String err) {
         LOG.i("echo-resolvePlayUrl failed, try next line: " + err);
-        cancelPlayRequest();
+        fetch.cancelPlayRequest();
         stopParse();
         if (st.userPickedLine) {
             st.userPickedLine = false;
@@ -1018,8 +1012,8 @@ public class PlaybackController {
      */
     private int playUrlGeneration;
 
-    private SourceViewModel sourceViewModel;
-    private Observer<JSONObject> playResultObserver;
+    /** 取流状态与结果观察者(见 PlaybackFetch) */
+    private final PlaybackFetch fetch = new PlaybackFetch(this);
 
     /** 当前会话(页面 setData 交进来的那一份;D6 接管与"已起播内容"判定都基于它) */
     private PlaybackSession currentSession;
@@ -1048,138 +1042,21 @@ public class PlaybackController {
 
     /** 建立取流结果观察者(预载协调器仍归页面) */
     public void initFetch() {
-        sourceViewModel = new SourceViewModel();
-        playResultObserver = new Observer<JSONObject>() {
-            @Override
-            public void onChanged(JSONObject info) {
-                if (info == null) publishQuality(null);
-                if (info != null) {
-                    try {
-                        if (isStalePlayResult(info)) {
-                            LOG.i("echo-ignore stale play result");
-                            return;
-                        }
-                        if (view != null && st.switchStopPending) {
-                            // 换源点击即停后,旧源在途的取流结果不得再拉起播放
-                            LOG.i("echo-ignore play result while source switching");
-                            return;
-                        }
-                        cancelResolvePlayUrlTimeout();
-                        publishQuality(info);
-                        webPlayUrl = null;
-                        setProgressKey(info.optString("proKey", null));
-                        boolean parse = info.optString("parse", "1").equals("1");
-                        boolean jx = info.optString("jx", "0").equals("1");
-                        setPlaySubtitle(info.optString("subt", ""));
-                        setPlayLyric(info.optString("lyric", ""));
-                        setLyricCacheKey(info.optString("lyricKey", null));
-                        if (TextUtils.isEmpty(lyricCacheKey()) && !TextUtils.isEmpty(progressKey())) {
-                            setLyricCacheKey(progressKey() + "-lyric");
-                        }
-                        JSONArray lyrics = info.optJSONArray("lyrics");
-                        if (lyrics != null && lyrics.length() > 0) {
-                            setPlayLyric(getSubtitleUrl(lyrics.optJSONObject(0)));
-                        }
-                        JSONArray subtitles = info.optJSONArray("subs");
-                        if (subtitles != null) {
-                            for (int i = 0; i < subtitles.length(); i++) {
-                                JSONObject obj = subtitles.optJSONObject(i);
-                                if (obj == null) continue;
-                                String url = getSubtitleUrl(obj);
-                                String name = obj.optString("name", "");
-                                if (isLyricSubtitle(name)) {
-                                    if (TextUtils.isEmpty(playLyric())) setPlayLyric(url);
-                                } else if (TextUtils.isEmpty(playSubtitle())) {
-                                    setPlaySubtitle(url);
-                                }
-                            }
-                        }
-                        setSubtitleCacheKey(info.optString("subtKey", null));
-                        String lyricPick = playLyric();
-                        LOG.i("echo-lyric pick: " + (TextUtils.isEmpty(lyricPick) ? "none"
-                                : lyricPick.startsWith("data:") ? "inline len=" + lyricPick.length() : lyricPick));
-                        String playUrl = info.optString("playUrl", "");
-                        String flag = info.optString("flag");
-                        Object rawUrl = info.opt("url");
-                        String url = rawUrl instanceof JSONArray ? rawUrl.toString() : String.valueOf(rawUrl);
-                        if (url.startsWith("[") && view != null) {
-                            url = view.firstUrlByArray(url);
-                        }
-                        // 音乐源取流结果的封面字段常是 cover 而不是 artwork;漏读会让换集后海报不刷新
-                        String artwork = info.optString("artwork", "");
-                        if (TextUtils.isEmpty(artwork)) artwork = info.optString("cover", "");
-                        if (TextUtils.isEmpty(artwork) && !TextUtils.isEmpty(playLyric()) && vod() != null) {
-                            artwork = vod().pic;
-                        }
-                        currentArtwork = artwork;
-                        if (view != null) view.setArtwork(artwork);
-                        String msg = info.optString("msg", "");
-                        if (!TextUtils.isEmpty(msg)) {
-                            handleResolvePlayUrlFailed(msg);
-                            return;
-                        }
-                        // 取流成功,手动选线标记完成使命,后续失败恢复走正常自动策略
-                        st.userPickedLine = false;
-                        String danmaku = info.optString("danmaku", "").trim();
-                        final String danmuProgressKey = progressKey();
-                        setWebUserAgent(null);
-                        setWebHeaderMap(null);
-                        HashMap<String, String> headers = extractHeaders(info);
-                        if (headers != null) {
-                            setWebHeaderMap(headers);
-                            String ua = headerValue(headers, "user-agent");
-                            setWebUserAgent(ua == null ? null : ua.trim());
-                        }
-                        if (parse || jx) {
-                            boolean userJxList = (playUrl.isEmpty() && ApiConfig.get().getVipParseFlags().contains(flag)) || jx;
-                            initParse(flag, userJxList, playUrl, url);
-                        } else {
-                            if (view != null) view.showParse(false);
-                            if (view != null) playUrl(playUrl + url, headers);
-                        }
-                        if (TextUtils.isEmpty(danmaku)) {
-                            checkDanmu("", null);
-                            searchDanmu("");
-                        } else {
-                            checkDanmu(danmaku, () -> {
-                                if (TextUtils.equals(danmuProgressKey, progressKey())) {
-                                    searchDanmu("");
-                                }
-                            });
-                        }
-                    } catch (Throwable th) {
-                        handleResolvePlayUrlFailed(str(R.string.player_get_info_error));
-                    }
-                } else {
-                    // 获取播放信息错误后只需再重试一次
-                    handleResolvePlayUrlFailed(str(R.string.player_get_info_error));
-                }
-            }
-        };
-        sourceViewModel.playResult.observeForever(playResultObserver);
+        fetch.init();
     }
 
     /** 页面销毁时注销观察者(对应原 hostDestroy 的 removeObserver) */
     public void releaseFetch() {
-        if (sourceViewModel != null && playResultObserver != null) {
-            sourceViewModel.playResult.removeObserver(playResultObserver);
-            playResultObserver = null;
-        }
+        fetch.release();
     }
 
-    /** 把“已准备好的取流结果”直接喂给解析链(页面 play() 命中预载数据时调用) */
-    public void deliverPlayResult(JSONObject info) {
-        if (playResultObserver != null) playResultObserver.onChanged(info);
+    /** 当前视图桥(取流观察者/预载调度读取) */
+    PlaybackViewBridge viewBridge() {
+        return view;
     }
 
-    /** 预载协调器需要它取流(PreloadCoordinator 构造参数) */
-    public SourceViewModel sourceViewModel() {
-        return sourceViewModel;
-    }
-
-    /** 取消在途取流请求 */
-    public void cancelPlayRequest() {
-        if (sourceViewModel != null) sourceViewModel.cancelPlayRequest();
+    void setCurrentArtwork(String artwork) {
+        this.currentArtwork = artwork;
     }
 
     @Nullable
@@ -1207,63 +1084,6 @@ public class PlaybackController {
 
     public void setWebUserAgent(String webUserAgent) {
         this.webUserAgent = webUserAgent;
-    }
-
-    // -------------------- 字幕/歌词地址与弹幕搜索 --------------------
-
-    private String getSubtitleUrl(JSONObject object) {
-        if (object == null) return "";
-        String format = object.optString("format", "");
-        String name = object.optString("name", str(R.string.player_menu_subtitle));
-        String ext = ".srt";
-        if ("text/x-ssa".equals(format)) {
-            ext = ".ass";
-        } else if ("text/vtt".equals(format)) {
-            ext = ".vtt";
-        } else if ("text/lrc".equals(format)) {
-            ext = ".lrc";
-        }
-        String filename = name + (name.toLowerCase(Locale.ROOT).endsWith(ext) ? "" : ext);
-        String url = object.optString("url", "");
-        String data = object.optString("data", "");
-        // 本地代理 URL 要靠爬虫的内存态现取,拿不到就整段没有字幕/歌词;同一份内容已在 data 里时直接用
-        if (!TextUtils.isEmpty(data) && (TextUtils.isEmpty(url) || PlayerHelper.isLocalProxyUrl(url))) {
-            url = "data:text/plain;base64," + Base64.encodeToString(data.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-            // data: URI 的文件名只能靠 fragment 带(内容里出现的点会让 hasExtension 误判)
-            return view == null ? url : url + "#" + view.encodeUrl(filename);
-        }
-        if (TextUtils.isEmpty(url) || FileUtils.hasExtension(url)) return url;
-        return view == null ? url : url + "#" + view.encodeUrl(filename);
-    }
-
-    private boolean isLyricSubtitle(String name) {
-        if (TextUtils.isEmpty(name)) return false;
-        String value = name.toLowerCase(Locale.ROOT);
-        return value.contains("lyric") || value.contains("lrc") || name.contains("歌词"); // i18n: keep
-    }
-
-    /** 取流结果没带弹幕地址时联网搜一份(与进度键绑定:切集后旧结果作废) */
-    private void searchDanmu(String danmaku) {
-        if (!TextUtils.isEmpty(danmaku) || !DanmakuApi.canSearch(sourceBean()) || vod() == null) return;
-        VodInfo.VodSeries series = currentSeries(vod().playFlag, vod().playIndex);
-        String key = progressKey();
-        DanmakuApi.search(vod().name, series == null ? "" : series.name, new DanmakuApi.SearchCallback() {
-            @Override
-            public void onFound(String url) {
-                if (!TextUtils.equals(key, progressKey())) return;
-                checkDanmu(url, null);
-            }
-
-            @Override
-            public void onNotFound() {
-                if (!TextUtils.equals(key, progressKey())) return;
-                checkDanmu("", null);
-            }
-        });
-    }
-
-    private void checkDanmu(String danmaku, Runnable onFailed) {
-        if (view != null) view.checkDanmu(danmaku, onFailed);
     }
 
     // -------------------- 解析/嗅探门面(见 PlayUrlResolver) --------------------
@@ -1449,8 +1269,9 @@ public class PlaybackController {
         }
 
         if (preload.consumeResult(progressKey())) return;
-        if (sourceViewModel != null) {
-            sourceViewModel.getPlay(sourceKey(), vod().playFlag, progressKey(), vs.url, subtitleCacheKey());
+        SourceViewModel svm = fetch.sourceViewModel();
+        if (svm != null) {
+            svm.getPlay(sourceKey(), vod().playFlag, progressKey(), vs.url, subtitleCacheKey());
         }
     }
 
@@ -1591,7 +1412,7 @@ public class PlaybackController {
 
         @Override
         public SourceViewModel sourceViewModel() {
-            return PlaybackController.this.sourceViewModel;
+            return fetch.sourceViewModel();
         }
 
         @Override
@@ -1602,7 +1423,7 @@ public class PlaybackController {
         @Override
         public void onPreloadedResult(JSONObject info) {
             st.usedPreloadedResult = true;
-            deliverPlayResult(info);
+            fetch.deliver(info);
         }
     });
 
@@ -1688,7 +1509,7 @@ public class PlaybackController {
         cancelPlayTimeout();
         cancelSwitchLinePlayTimeout();
         cancelResolvePlayUrlTimeout();
-        cancelPlayRequest();
+        fetch.cancelPlayRequest();
         stopParse();
     }
 

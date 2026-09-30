@@ -1,6 +1,6 @@
 ---
 name: AVBox 渐进式重构 Spec（VM 归一与上帝类收尾专项）
-status: 待执行（2026-10-01 立项，同日 D1/D2/V6 拍板：全部按建议；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
+status: 执行中（2026-10-01：V1 已落地待走查；D1/D2/V6 已拍板；V2–V5 待做；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
 source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveData/StateFlow 各半、viewmodel/ 名不副实）② 上帝类残留（PlaybackController / ComposeVideoController / PlayContainer / ApiConfig）③ VM 持 View 与 static 可变缓存 ④ 业务逻辑写进 Composable。审查结论：四问题全部属实（数字 ±5% 出入见 §2）
 ---
 
@@ -60,6 +60,15 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 # 5. 渐进式计划
 
 ## V1｜ConfigManageViewModel 抽取（风险最低，消问题 ④）
+
+**执行状态（2026-10-01）**：
+
+- 已落地（3 个本地 commit，未推远程）：`b7361b7` 本 spec 立项；`171d65b` VM 抽取（状态 + 逻辑合并一笔，与本节 Commit 行的"或合并一笔"一致）；`1eee293` 审查修复（副本清理脱离 `viewModelScope`）。
+- 实测：新增 `ui/page/ConfigManageViewModel.kt`（~360 行）；`ConfigManagePage.kt` **953 → ~700 行**（-294/+37）。按计划留 UI 的：`badgeText`、对话框/面板开关（`addDialogOpen`/`repoSheetOpen`/`mode`）、列表项内联 inUse 判定（AnimatedContent 过渡期 `mIsVod` 语义，勿改成 `isVod`）；入 VM 的：`vodItems`/`liveItems`/`activeUrl`/`liveActiveUrl`/`liveFollow`/`disabledUrls`/`selected`/`manageMode`/`editTarget`/`pendingSwitch`/`toastEvent` + 14 个业务方法 + 8 个支撑函数；`SUBSCRIBE_SPLIT`（原 `SubscribeSplit`）与 `parseSubscribe` 为文件顶层 `internal`。
+- **审查轮发现并修复 1 处真实回归**（`1eee293`）：副本清理最初写进 `viewModelScope.launch(Dispatchers.IO)` —— 删源后立即退出页面会取消协程（`removeLocalCopy` 是 `deleteRecursively`），旧实现是 executor 即发即走。改为独立 `copyCleanupScope`（照 `AppBootstrap` 样式），**勿改回 viewModelScope**。
+- 登记的可接受差异：① 黑名单二次确认对话框跨旋转保留（原 `remember` 丢失，改善型）；② `toastEvent` 同值连发被 StateFlow conflated 吞掉（与 `DetailViewModel` 同模式，实际被切源去重守卫挡住）；③ 编辑态旋转后仍清（`LaunchedEffect(mode)` 重建触发 `onModeChanged`，与原行为一致）。
+- 验证：`assembleDebug` + `testDebugUnitTest` 全绿（**57 类 / 447 例 / 0 失败**）；行集多重集比对 118 条 missing 全部为预期形式转换（`.value` 后缀 / `toastEvent` / `vod` 参数化 / `collectAsState` / 注释形式）；Kotlin 警告零新增；`viewModel()` 依赖有 5+ 处先例。
+- 未做：装机走查 —— 设备离线（`adb devices` 空，vivo 未枚举）。走查判据同本节"验证"行。
 
 - **修改**：新增 `ui/page/ConfigManageViewModel.kt`（Kotlin + `MutableStateFlow`，与 `DetailViewModel` 同范式）。
   - 状态入 VM：`vodItems`/`liveItems`/`activeUrl`/`liveActiveUrl`/`liveFollow`/`disabledUrls`/`selected`/`manageMode`/`pendingSwitch`/`editTarget`（`addDialogOpen`/`repoSheetOpen`/`mode` 等纯 UI 开关可留 Composable，逐个判断后在本节登记归属）。

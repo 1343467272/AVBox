@@ -168,7 +168,7 @@ class GestureController(private val host: ComposeVideoController) :
     }
 
     fun onTouchEvent(event: MotionEvent) {
-        // BugReview #16:CANCEL(来电浮窗/下拉通知栏/父容器拦截)时也要结束倍速,
+        // CANCEL(来电浮窗/下拉通知栏/父容器拦截)时也要结束倍速,
         // 否则长按 3.0x 永不恢复
         when (event.actionMasked) {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> speedPlayEnd()
@@ -237,7 +237,7 @@ class GestureController(private val host: ComposeVideoController) :
         fromLongPress = true
         try {
             val cfg = host.playerConfig ?: return
-            // BugReview #16:倍速提速不入 playerCfg(原实现把 "sp":3.0 经 updatePlayerCfg
+            // 倍速提速不入 playerCfg(原实现把 "sp":3.0 经 updatePlayerCfg
             // 持久化,手势被 CANCEL 中断或后续集数会持续 3.0x);只改播放器速度,配置保持原值
             host.speedOld = cfg.getDouble("sp").toFloat()
             // 长按倍速:设置页滑块可调 2x~10x,每次长按实时读 KV,改设置立即生效

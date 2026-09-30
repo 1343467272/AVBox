@@ -42,7 +42,9 @@ private val TopBarLineHeight = 36.dp
 
 @Composable
 fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
-    val anyVisible = state.topLeftVisible || state.topRightVisible
+    val rightVisible = state.topRightVisible && !state.previewMode
+    val previewSizeVisible = state.previewMode && state.topLeftVisible
+    val anyVisible = state.topLeftVisible || rightVisible
     // 左右边距按窗口宽度分档（竖屏预览 16dp / 横屏全屏与平板 48dp，见 playerEdgePadding）
     val edge = playerEdgePadding()
     // 顶栏贴顶时补上未被自身覆盖的安全区差值（不贴顶/已被上层 padding 抬下去时为 0）。宽档（≥600dp：横屏
@@ -121,7 +123,7 @@ fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
                 Spacer(Modifier.weight(3f))
             }
             // —— 右块：网速/进度时间/系统时间 ——
-            if (state.topRightVisible) {
+            if (rightVisible) {
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -163,6 +165,13 @@ fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
                     if (state.netSpeedTopRightVisible) {
                         TopBarText(state.netSpeedTopRight)
                     }
+                }
+            } else if (previewSizeVisible) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.height(TopBarLineHeight),
+                ) {
+                    TopBarText(state.videoSize)
                 }
             } else {
                 Spacer(Modifier.weight(1f))

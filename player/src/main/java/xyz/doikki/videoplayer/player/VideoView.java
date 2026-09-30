@@ -786,6 +786,10 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
         mHeaders = headers;
         mVideoSize[0] = 0;
         mVideoSize[1] = 0;
+        // 换内容:旧尺寸作废(控制层据此丢弃上一会话的残留值)
+        if (mVideoController != null) {
+            mVideoController.onVideoSizeCleared();
+        }
     }
 
     /**
@@ -1079,6 +1083,10 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
         mVideoSize[0] = videoWidth;
         mVideoSize[1] = videoHeight;
 
+        // 同步给控制器:控制层原先只能轮询取值,换片后要等下一次轮询才刷新
+        if (mVideoController != null) {
+            mVideoController.onVideoSizeChanged(videoWidth, videoHeight);
+        }
         if (mRenderView != null) {
             mRenderView.setScaleType(mCurrentScreenScaleType);
             mRenderView.setVideoSize(videoWidth, videoHeight);

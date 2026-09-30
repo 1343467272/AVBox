@@ -632,6 +632,20 @@ public abstract class BaseVideoController extends FrameLayout
         }
     }
 
+    /**
+     * 内核上报视频宽高（0 = 尺寸未知）：子类可据此实时刷新显示，不必等轮询
+     */
+    public void onVideoSizeChanged(int width, int height) {
+
+    }
+
+    /**
+     * 内核视频尺寸已清零（换内容 {@link VideoView#setUrl} 时）：此前上报的尺寸不再属于当前会话
+     */
+    public void onVideoSizeCleared() {
+
+    }
+
     private void handleSetProgress(int duration, int position) {
         for (Map.Entry<IControlComponent, Boolean> next
                 : mControlComponents.entrySet()) {

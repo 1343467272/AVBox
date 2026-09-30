@@ -31,6 +31,7 @@ import com.github.tvbox.osc.player.effect.PictureEffects
 import com.github.tvbox.osc.player.state.PictureParamsState
 import com.github.tvbox.osc.player.state.PlayerActions
 import com.github.tvbox.osc.player.state.PlayerUiState
+import com.github.tvbox.osc.player.state.VideoSizeGate
 import com.github.tvbox.osc.util.GestureHelper
 import com.github.tvbox.osc.player.state.SelectDialogState
 import com.github.tvbox.osc.player.ui.PlayerOverlay
@@ -100,6 +101,7 @@ class ComposeVideoController @JvmOverloads constructor(
     private var canSlide = false
     private var curPlayState = 0
     private var isDoubleTapTogglePlayEnabled = true
+    private val videoSizeGate = VideoSizeGate()
 
     // —— 控制层行为字段（照抄 VodController） ——
     private var previewMode = false
@@ -308,6 +310,18 @@ class ComposeVideoController @JvmOverloads constructor(
     override fun onLockStateChanged(isLocked: Boolean) {
         super.onLockStateChanged(isLocked)
         state.locked = isLocked
+    }
+
+    /** 内核上报尺寸（换内容必然先回落 0）：角标当帧刷新，不等轮询 */
+    override fun onVideoSizeChanged(width: Int, height: Int) {
+        super.onVideoSizeChanged(width, height)
+        state.videoSize = videoSizeGate.textFor(width, height)
+    }
+
+    /** 内核换了内容（setUrl）：解除闸门过滤 */
+    override fun onVideoSizeCleared() {
+        super.onVideoSizeCleared()
+        videoSizeGate.onKernelContentReplaced()
     }
 
     override fun onVisibilityChanged(isVisible: Boolean, anim: Animation?) {
@@ -916,6 +930,11 @@ class ComposeVideoController @JvmOverloads constructor(
     /** 旧暂停浮层根已并入 Compose 层,View 版无需隐藏 */
     override fun hidePauseRoot() = Unit
 
+    override fun onNewPlayStarted() {
+        val size = runCatching { mControlWrapper?.videoSize }.getOrNull() ?: intArrayOf(0, 0)
+        state.videoSize = videoSizeGate.onNewSession(size[0], size[1])
+    }
+
     override fun setLifecyclePaused(paused: Boolean) {
         state.lifecyclePaused = paused
         // 退后台保留控件(任务快照 = 离开时的样子):冻结自动收起,否则计时会在后台把控件收掉
@@ -1325,7 +1344,7 @@ class ComposeVideoController @JvmOverloads constructor(
         state.netSpeedTopRight = PlayerHelper.getDisplaySpeed(speed, true)
         state.netSpeedCenter = PlayerHelper.getDisplaySpeed(speed, false)
         val size = runCatching { wrapper.videoSize }.getOrDefault(intArrayOf(0, 0))
-        state.videoSize = "" + size[0] + " X " + size[1]
+        state.videoSize = videoSizeGate.textFor(size[0], size[1])
     }
 
     /** 系统电量与充电状态（读不到/越界时 batteryPercent=-1 不显示） */

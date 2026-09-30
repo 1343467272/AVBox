@@ -68,6 +68,9 @@ public interface PlayerControlApi {
 
     void hidePauseRoot();
 
+    /** 新一次播放开始（取流入口）：控制层复位会话级侧写，如分辨率角标回落占位 */
+    void onNewPlayStarted();
+
     void setLifecyclePaused(boolean paused);
 
     void resetSpeed();

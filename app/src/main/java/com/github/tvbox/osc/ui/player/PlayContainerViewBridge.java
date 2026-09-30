@@ -155,6 +155,7 @@ final class PlayContainerViewBridge implements PlaybackViewBridge {
     @Override
     public void onNewPlayStarted() {
         container.exitingPreview = false;
+        if (container.mController != null) container.mController.onNewPlayStarted();
     }
 
     @Override

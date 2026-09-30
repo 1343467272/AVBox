@@ -56,7 +56,7 @@ class PlayerUiState {
 
     // —— 1 秒轮询（替代 myRunnable2） ——
     var title: String by mutableStateOf("")
-    var videoSize: String by mutableStateOf("")
+    var videoSize: String by mutableStateOf(VideoSizeGate.UNKNOWN)
     var sysTime: String by mutableStateOf("")
     /** 电量百分比（0~100；读不到为 -1 不显示），随 1s 轮询刷新 */
     var batteryPercent: Int by mutableStateOf(-1)

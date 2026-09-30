@@ -3853,3 +3853,51 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **验证**:`assembleDebug` + `testDebugUnitTest` 绿(**409 用例**/0 失败,新增 1 条);i18n 三关 PASS(en/Hant 479=479、HK 子集 EXTRA=0)、`i18n_check_keys.py` 仅既有死键 `toast_permission_required`;装机 `06:14:08`。**未做/待走查**:分组标题仍沿用「语言」(两项同组但标题语义偏窄,若需改「界面/外观」再加 key);平板/横屏下三列观感;代码未提交。
 
 **同日追加(用户「将语言改为语言与布局」)**:分组标题改用新 key `settings_group_language_layout`(语言与布局 / `Language &amp; Layout` / 語言與佈局;HK 复用繁体),**行标题仍用 `settings_language`(语言)——两者必须分开**,合并会把语言选择行的标题也改掉。i18n 三关 PASS(480=480)、`assembleDebug` 绿、装机 `06:15:41`。
+
+### 竖屏详情页预览区顶栏右块不画(2026-09-30,用户「竖屏影视详情页面播放器区域右上角的时间电量和网速都删除,全屏模式横屏和竖屏下的则保留不动」,附真机截图)
+
+**改动 1 文件**(`player/ui/PlayerTopBar.kt`):右块守卫由 `state.topRightVisible` 收成局部 `rightVisible = state.topRightVisible && !state.previewMode`;顶栏 scrim 的 `anyVisible` 同源改为 `state.topLeftVisible || rightVisible`。被删的正是那张截图里的 `32% + 电池图标`(系统时间为屏显关闭时的常驻项、在窄屏上被 Ellipsis 截成「…」)与第二行的 `6.21MB/s`。
+
+**为什么连 scrim 一起收**:屏显开启(`screenDisplayOn` = true)时右块是**常驻**的 —— `hideBottom()` 只把 `sysTimeVisible` 置假、`netSpeedSideVisible` 反而置真,控件收起后右块仍在屏。只改守卫不连 `anyVisible`,预览区会留下一条没有内容的黑色渐变带。
+
+**口径依据**:`previewMode` 就是「竖屏详情页预览态」,唯一写入方 = `DetailActivity.syncFullBoxSideEffects()` 的 `setPreviewMode(!isFullBox())` ⇒ 点全屏进横屏、竖屏视频的全屏(`fullScreen = true`,含系统忽略方向限制、窗口仍竖屏的情形)都是 `false`,四项(行内网速 / 进度时间 / 电量 + 电池图标 / 系统时间)照旧全显;与 2026-09-29「分辨率胶囊预览态不画」同一守卫写法。**未动**:预览态左块(返回箭头 + 片名)与底栏行为。
+
+**验证**:`:app:assembleDebug` BUILD SUCCESSFUL(先 `gradlew --stop` 再以系统 JDK 重启守护进程 —— redhat.java 扩展自带 JRE 无 `jlink.exe`,会以 `JdkImageTransform ... core-for-system-modules.jar` 失败,与代码无关);`:app:testDebugUnitTest` 54 个测试类 / **409 用例 / 0 失败 0 错误**;活规范 §4.4 顶栏右块条目已补该守卫。**未真机验证** —— 待用户确认:①预览区右上角(含屏显开启、控件收起时的那条常驻)不再有时间/电量/网速,顶部也不再剩空渐变带;②横屏全屏与竖屏全屏下这四项照旧显示。
+
+### 竖屏详情页预览区右上角补分辨率(2026-09-30 同日,用户「在竖屏详情页面播放区域右上角加上当前视频的分辨率」)
+
+**改动 2 文件**:①`PlayerTopBar` 新增 `previewSizeVisible = previewMode && topLeftVisible && videoSize.isNotBlank()`,右块分支改为「全屏 → 原四项 / 预览态 → 只画 `state.videoSize`」;②`ComposeVideoController.refreshSystemInfo` 的 `videoSize` 由无条件拼接改为**两维都 > 0 才写入,否则空串**。
+
+**布局两点**:①预览态的右块**不给 weight** —— Row 先量无 weight 的子项,分辨率因此永不被截,片名吃剩余宽度并走 Ellipsis(全屏那支仍是 `weight(1f)`,未动);②套一层 `TopBarLineHeight`(36dp)盒居中,与左块首行同一条水平线 —— 这正是 2026-09-29「左右首行共盒对齐」那条约束,不套盒会偏高。
+
+**为什么顺带改 `videoSize` 语义**:原实现恒写 `"0 X 0"`,而底栏胶囊只判 `isBlank()` ⇒ 尺寸未就绪时会画出一颗假分辨率;预览区把它放到右上角后这个占位更显眼(刚进页面、还没起播时就会露出来)。改成空串后,顶栏与底栏胶囊共用同一个"未知不画"口径(底栏行为变化仅限这一处占位)。
+
+**未动**:底栏那行「时间 + 分辨率」胶囊仍只在全屏出现(分辨率在全屏不重复画到顶栏);预览态左块与其它控件照旧。
+
+**验证**:`:app:assembleDebug` BUILD SUCCESSFUL + `:app:testDebugUnitTest` 54 类 / 409 用例 / 0 失败 0 错误;活规范 §4.4 的顶栏右块条目与底栏胶囊条目已同步。**未真机验证** —— 待用户确认:①预览区右上角的分辨率与片名同一水平线、超长片名被截而不是分辨率被截;②分辨率与左块同起同落(单击收控件时一起消失);③刚进页面/未起播时不出现 `0 X 0`。
+
+### 补:右上角分辨率闪烁的成因与修法(2026-09-30 同日,用户「右上角分辨率是怎么加载的，怎么感觉会闪烁的」)
+
+**加载链路**(自上而下):顶栏只是**读** —— `PlayerOverlay` 的 `LaunchedEffect` 每秒调一次 `refreshSystemInfo()`,它从 `mControlWrapper.videoSize` 取值 → kernel → `VideoView.getVideoSize()` 返回的 `mVideoSize` 数组,由内核上报(EXO 走媒体回调 `onVideoSizeChanged`;**画质参数效果链开通时内核不再上报,改由 `ExoPlayer.reportVideoSizeFromTracks` 在 `onTracksChanged` 里从选中视频轨补报**,90/270 度按旋转交换宽高)。所以文字**不是**每秒重画的:同值写入 `mutableStateOf` 结构相等 ⇒ 不触发重组。
+
+**闪烁的成因(定位而非猜测)**:`mVideoSize` 有两处被清零 —— `VideoView.setUrl()`(换集 / 换源 / 重播 / 切线路)与 `VideoView.release()`(内核重建 / 释放),清零后要等内核重新上报才有值。上一轮为了不画「0 X 0」把无效读写成空串 ⇒ 那段窗口里 `videoSize` 变成空串、下一拍又变回真值,文字便"消失→出现"。
+
+**修法**:`refreshSystemInfo` 改成**只在两维都 > 0 时写入**(粘住最后一次有效值),空读不再覆盖。代价:换到始终不上报尺寸的内容(纯音频)时会短暂留着上一集的数值。
+
+**仍可能存在、未改的两种观感**(待用户确认属哪种):①分辨率与左块(返回 + 片名)同起同落 —— 单击显隐或 10s 自动收起时,它会跟着标题一起消失;②HLS 多码率源在效果链开通时按**选中轨**上报,ABR 切换(1080p↔720p)会让数值跳变。
+
+**定稿(2026-09-30 同日,用户「别把简单的问题复杂化了，在右上角默认显示0x0，读取到分辨率后自动刷新，就不会出现闪烁的问题了」)**:放弃"空串/粘住最后一次"两版方案,回到**固定占位 + 每秒刷新** —— `PlayerUiState.videoSize` 初值 `0 X 0`,`refreshSystemInfo` 无条件写 `"宽 X 高"`,`PlayerTopBar` 预览态照画(不再判空)。理由:空串会让文字"消失→出现",粘连会把上一部数值挂到新片上;占位值恒定则两种观感都不存在。**连带**:底栏分辨率胶囊(全屏)在尺寸未读出时会显示「0 X 0」,即改回本次改动之前的行为。
+
+**验证**:`:app:assembleDebug` BUILD SUCCESSFUL。
+
+### 右上角分辨率顶着上一部的值 → 0x0 → 真值(2026-09-30,用户「上一次观看的影视分辨率 1920x1080,换到一部新的影视,竖屏详情页播放区域右上角有概率显示上一部的分辨率,然后闪烁成 0x0,最后才读到正确的分辨率,这是 bug 吗,什么原因导致的」→「用推荐方案修吧」)
+
+**定位(真机三张截图 + 代码链路)**:三张图 = 三个阶段,只有第一阶段是缺陷。①**图一(上一部 1920x1080)= 真 bug**:角标只是 1s 轮询的快照(`PlayerOverlay` 的 `LaunchedEffect` → `ComposeVideoController.refreshSystemInfo` → `mControlWrapper.videoSize` → `VideoView.mVideoSize`),而 `mVideoSize` 只在 `setUrl()`/`release()` 清零,退页面走的 `stopPlaybackKeepPlayer()` 特意不清 ⇒ 新片起播的**取流窗口**(爬虫解析 + 嗅探 + 连接预热)里内核仍持有上一部的尺寸,标题却已换成新集 ⇒ 新片名旁边顶着上一部的分辨率。②**图二 0x0 = 既定设计 + 内核真实状态**:`setUrl` 清零,且 media3 每个新条目必然先发一次 `VideoSize.UNKNOWN`(源码 `MediaCodecVideoRenderer.onDisabled` → `eventDispatcher.videoSizeChanged(VideoSize.UNKNOWN)`,`reportedVideoSize` 同时被置 null ⇒ **同分辨率的下一集也会重报**,不靠"尺寸变了才通知");用户此前定稿就是"未知显示 0 X 0"。③图三 = 内核上报真值后由轮询画出来。"有概率"= 取决于 1s 轮询节拍与取流耗时的相位,以及顶栏是否正在画(预览态靠 `topLeftVisible`)。
+
+**根因**:角标与会话生命周期脱钩 —— 取值纯粹来自"内核最后一次上报",既没有"新会话开始"的边界,也没有事件驱动(内核上报只到 `VideoView`,控制器只收到 playState/playerState)。
+
+**修法(用户选"会话边界 + 事件驱动")**:新增 `player/state/VideoSizeGate.kt`(纯逻辑,可 JVM 测):起播入口记下内核此刻的值作**残留基准**并回落占位(权威放行 = 内核换内容通知;兜底 = 读数与基准不同,防通知缺失时整集卡在占位值),轮询与上报事件共用同一判定;`PlayerControlApi.onNewPlayStarted()` 由 `PlaybackController.play()` → `PlayContainerViewBridge.onNewPlayStarted()` 下发(复用既有"新一次播放开始"钩子,不新增桥方法);内核侧 `VideoView.onVideoSizeChanged`/`setUrl` 分别转发到 `BaseVideoController.onVideoSizeChanged`/`onVideoSizeCleared`(默认空实现,live 控制器不受影响);`PlayerUiState.videoSize` 初值改用 `VideoSizeGate.UNKNOWN`。**效果**:取流窗口画占位(图一消失)、内核上报当帧刷新(图三提前,不再等下一次轮询)、图二缩短到内核真正未知的那一小段。
+
+**自审发现并补掉的坑**:只靠"残留基准对比"会在**画质效果链开通 + 下一集同分辨率**时整集卡在「0 X 0」—— 该模式下尺寸只由 `onTracksChanged` 补报一次,读数与上一集相同就被判为残留,而轮询错过 0 窗口后再无翻转机会;故补了 `setUrl` 的权威放行信号(补后同分辨率下一集正常出数值)。
+
+**验证**:`:app:assembleDebug` BUILD SUCCESSFUL;`:app:testDebugUnitTest` **55 类 / 417 用例 / 0 失败**(新增 `VideoSizeGateTest` 8 例,覆盖取流窗口不采信、内核清零、事件先于轮询、同分辨率需换内容信号、起播快照为 0 时直接采信);新增/改动文件行尾 LF(`git ls-files --eol` = `w/lf`)。**未真机验证** —— 待走查:①换片/换集时右上角立刻回落 `0 X 0`、不再出现上一部的分辨率;②内核上报后当帧变真值(不再有 1s 延迟);③画质参数开启(效果链)下换到同分辨率的下一集,角标照常显示该分辨率;④全屏底栏胶囊同一口径(换内容时也会先显示 `0 X 0`);⑤同片接管(退出再进同一集)不出现假占位。**未做**:底栏胶囊的 `isBlank()` 死守卫未删(取值恒非空,留着无副作用);纯音频内容(始终无尺寸上报)角标会一直停在 `0 X 0`,与改动前一致。

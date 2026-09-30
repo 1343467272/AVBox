@@ -1,6 +1,6 @@
 ---
 name: AVBox 渐进式重构 Spec（VM 归一与上帝类收尾专项）
-status: 执行中（2026-10-01：V1–V4 已落地并过审查轮；**V5 已落地（6 个本地 commit，逐簇结论见 V5 节）、审查轮未做**；V1–V5 均待真机走查；D1/D2/D3/V6 已拍板；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
+status: 执行中（2026-10-01：V1–V5 已全部落地并过审查轮【V5 含 1 处阻断级构造期 NPE 修复】；V1–V5 均待真机走查；D1/D2/D3/V6 已拍板；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
 source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveData/StateFlow 各半、viewmodel/ 名不副实）② 上帝类残留（PlaybackController / ComposeVideoController / PlayContainer / ApiConfig）③ VM 持 View 与 static 可变缓存 ④ 业务逻辑写进 Composable。审查结论：四问题全部属实（数字 ±5% 出入见 §2）
 ---
 
@@ -197,7 +197,7 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 
 ## V5｜播放三件套结构拆分（消问题 ②a；风险最高，最后做）
 
-**执行状态（2026-10-01）**：已落地（6 个本地 commit，未推远程；全程"只搬位置不改逻辑"，逐簇做归一化多重集比对 + 构建 + 单测）：
+**执行状态（2026-10-01）**：已落地（8 个本地 commit：6 笔拆分 + 1 笔审查轮修复 + 1 笔注释纠正；未推远程；全程"只搬位置不改逻辑"，逐簇做归一化多重集比对 + 构建 + 单测）：
 
 | commit | 簇 | 交付与行数 |
 | --- | --- | --- |
@@ -207,6 +207,8 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 | `5f26c88` | PlaybackController 取流观察 | 新增 `player/PlaybackFetch.java`（239 行：107 行匿名 Observer 具名化为 `handlePlayResult` + 字幕/歌词地址 + 弹幕搜索搬迁）；主类 **2016 → 1806 行** |
 | `a97bc5b` | PlayContainer 音轨选择 | 新增 `ui/player/TrackSelectorDelegate.java`（158 行：音/视频轨弹窗 + 200ms 复位 + 代次守卫）；容器 1422 → 1337 行 |
 | `aa144b1` | 注释规范化 | 新文件里两条 `BugReview #N:` 前缀去掉（保留其解释）；存量 `BugReview #32`（ComposeVideoController）未动 |
+| `c3993a1` | 审查轮修复 | 手势委托改 `lateinit` + 在 `initView` 内创建（构造期 NPE，见审查轮段） |
+| `143d380` | 注释纠正 | 订正 `initView` 初始化顺序的错误表述（`ComposeLiveController` + `ComposeVideoController` 各一处） |
 
 **逐簇结论（"拆出 / 留下 + 豁免理由"二选一）**：
 
@@ -238,6 +240,13 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - 新增协作者的宿主注入沿用两种既有形态：`PlaybackTimeouts.Callback`/`PlaybackPreload.Host` 用接口；`PlaybackFetch`/`TrackSelectorDelegate` 包级持有宿主引用（同 `PlaybackAttemptState` 同包先例）。
 - i18n 卡口（`.codebuddy/tools/i18n_gate.py`）复跑：**ui 0 处 + 非 ui 0 处**（新文件未引入未外置文案；`PlaybackFetch` 的 `"歌词"` 带 `// i18n: keep`）。
 - **未做**：装机走查——设备离线（`adb devices` 空，与 V1–V4 同因）。走查判据 = `avbox-playback-service-spec.md` §4 的 1–14 全清单，本轮重点覆盖：手势（单击/双击/长按倍速/横滑 seek/亮度音量/预览态横滑）、三处超时（取流超时换线 / 20s 起播超时 / 播完延后撤会话）、预载（命中起播 / 下一集就绪 Toast / 弱网让路）、取流结果（切集换线换源迟到回包丢弃 / 字幕歌词弹幕 / 封面）、音轨与视频轨切换。
+
+**审查轮（独立复核，2026-10-01）**：抓到并修复 **1 处阻断级真回归**，另完成一轮全量等价性复核。
+
+- **【高，已修 `c3993a1`】构造期 NPE**：`ComposeVideoController.gestures` 最初写成属性初始化器 `internal val gestures = GestureController(this)`，而 `BaseVideoController` 的构造器会虚调用 `initView()`（`player/src/.../BaseVideoController.java:89–92`），**属性初始化器在 super 构造之后才执行** ⇒ `initView` 里 `gestures.attach()` 读到 null，播放页一建即崩（编译/单测都发现不了，只有读构造时序或反汇编能发现）。修法：`lateinit var gestures` + 在 `initView` 内创建（同 `ComposeLiveController` 先例）。**字节码实证**（`javap -c` 对 `app/build/tmp/kotlin-classes/debug/...ComposeVideoController.class`）：修复前主构造器 = `invokespecial BaseVideoController.<init>` → `new GestureController` → `putfield gestures`；修复后构造器无 `putfield gestures`，`initView` 体 = `new GestureController` → `setGestures` → `getGestures.attach()`。
+  - 顺带用同一份字节码订正了一条既有误述（`143d380`）：Kotlin **不生成**零值属性初始化器（`= null`/`= 0`/`= false`）的 `putfield` —— 所以原实现 `private var gestureDetector: GestureDetector? = null` + `initView` 赋值不会被清掉（这是它一直能工作的原因）；`ComposeLiveController` 注释里"带 = null 初始化器的字段会把 initView 的赋值清掉"不成立，已改为准确表述。
+- 复核确认（无问题）：5 个新文件的搬移完整性（逐块对齐删除行）；`PlaybackTimeouts` 的 101/102/103 与 15s/20s、"先 cancel 再 send"、`armPendingCompletionDrop` 用 `sendEmptyMessage` 而非 delayed；`PlaybackPreload.consumeResult` 的"命中即喂/未命中即 drop"顺序；`GestureController` 的 UP/CANCEL→`speedPlayEnd`、`super.onTouchEvent` 留宿主、`speedOld` 跨类读写；`TrackSelectorDelegate` 的 200ms 代次守卫与 `isSameTrack` static 化；`PlaybackController` 的三个匿名 Callback/Host 与 `PlayContainer.trackSelector` 均只延迟读外部字段（不在构造期做快照）；`PlaybackEngine` 的 `initFetch`/`initPreload`/`releaseFetch` 调用点齐全。
+- 复核登记的既有问题（非本次引入、未改）：① `PlaybackFetch.handlePlayResult` 的 `view` 由"多次字段读"归一为"入口一次局部读"，理论上若 `publishQuality` 的 EventBus 订阅方在同一栈内换 bridge，结果会打到旧 bridge（实际订阅方是 UI 列表刷新、不换 bridge，且全在主线程 ⇒ 不可达）；② `release()` 沿旧实现不置空 `sourceViewModel`，页面销毁后仍可能对旧会话 svm 发 getPlay（旧行为一致）；③ `TrackSelectorDelegate` 每次点击 `new Handler` 不回收、靠代次守卫拦截（与旧一致）。
 
 **原设计记录（本次执行按上述落地）**：
 
@@ -296,6 +305,7 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - 纯搬迁步（V3 改名、V5 各簇）：`git show HEAD:旧文件` 逐行去空白后多重集比对 + 方法级存在性检查（旧 spec 阶段 4/5 验证过的卡口，含 marker 唯一性教训）。
 - 语义转换步（V2 指令流、V4 token）：必须先补单测锁行为再改实现（`token 失配丢弃`/`指令有序消费`）。**V2 教训（写进流程）**：改动判据前先按 `git show HEAD^:文件` 把旧表达式抄下来逐格推真值表，再拿真值表写断言；凭直觉写的断言会把"新行为"锁成"旧语义"，给的是虚假覆盖信心（V2 首版即如此，审查轮才抓到）。判据类改动一律先查 `skill/history/features.md` 有没有该判据的真机验证记录与"不要盲改"警告。
 - **V4 教训（写进流程）**：三类问题单测与"全绿"都发现不了，只能靠读语义与路径枚举 —— ①**判据前的早退分支**是否也走该判据的更新步骤（V4 首版在 `loadDetail` 早退前漏了换代次）；②**自建 CoroutineScope 继承了什么 Dispatcher**（漏了就是 `Dispatchers.Default`，而 `observeForever`/UI 状态有主线程断言）；③**`cancel()` 会打到哪个 Job**（复用父 Job 就会连 `viewModelScope` 一起杀，而 `loadHome()` 每次换源都会 release）。审查这类改动时，重点不是"用例过没过"，而是"哪些代码路径没有用例能覆盖"。
+- **V5 教训（写进流程）**：`View` 子类的 `initView()` 会被父类构造器**虚调用**（dkplayer `BaseVideoController` 构造器第 91 行），此时子类属性初始化器尚未执行 —— 拆出委托/助手时若让"委托字段"用带非零值初始化器的属性持有（如 `val gestures = GestureController(this)`），`initView` 里第一次使用就是 NPE。**判据：凡在 `initView()` 内使用的协作对象，一律 `lateinit` + 在 `initView` 内创建**。另一条字节码实证：Kotlin **不生成**零值（`= null`/`= 0`/`= false`）属性初始化器的 `putfield`，故这类字段在 `initView` 里赋值不会被覆盖（别把 `= null` 当危险写法）。验证手段：`javap -c` 反汇编 `app/build/tmp/kotlin-classes/debug/` 下对应 class，直接看构造器与 `initView` 的指令顺序。
 - 真机走查判据按阶段分列（见各节）；V5 绑定播放服务化 §4 全清单。
 - 每步一个 commit，可独立回滚；不推远程除非明确许可。
 

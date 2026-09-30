@@ -3,14 +3,6 @@
 # 对于一些基本指令的添加
 #
 #############################################
--optimizationpasses 5
--dontusemixedcaseclassnames
--dontskipnonpubliclibraryclasses
--dontskipnonpubliclibraryclassmembers
--dontpreverify
--verbose
--printmapping proguardMapping.txt
--optimizations !code/simplification/cast,!field/*,!class/merging/*
 -keepattributes *Annotation*,InnerClasses
 -keepattributes EnclosingMethod, InnerClasses
 -keepattributes *Annotation*
@@ -26,17 +18,15 @@
 #
 #############################################
 
-# 保留我们使用的四大组件，自定义的Application等等这些类不被混淆
+# 保留我们使用的四大组件等这些类不被混淆
 # 因为这些子类都有可能被外部调用
 -keep public class * extends android.app.Activity
--keep public class * extends android.app.Application.**
 -keep public class * extends android.app.Service
 -keep public class * extends android.content.BroadcastReceiver
 -keep public class * extends android.content.ContentProvider
 -keep public class * extends android.app.backup.BackupAgentHelper
 -keep public class * extends android.preference.Preference
 -keep public class * extends android.view.View
--keep public class com.android.vending.licensing.ILicensingService.**
 
 -dontwarn androidx.**
 -keep class androidx.** { *; }
@@ -154,7 +144,6 @@
 # 迅雷下载模块
 -keep class com.xunlei.downloadlib.** {*;}
 # quickjs引擎
-#-keep class com.github.tvbox.quickjs.** {*;}
 -keep class com.whl.quickjs.** {*;}
 
 # media3(含 jellyfin ffmpeg 软解,类都在 androidx.media3 包下)
@@ -182,10 +171,6 @@
 # 与 Guava 属同一类问题。对齐上游 fongmi 的同名规则。
 -keeppackagenames kotlin.**
 -keep class kotlin.** { *; }
--keepclassmembers enum * {
-    public static **[] values();
-    public static ** valueOf(java.lang.String);
-}
 # MaterialKolor PaletteStyle(主题设置页):枚举名被持久化到 KV,
 # 上面的通用枚举规则只保留 valueOf/values 方法签名、不保留常量字段名,
 # 重命名后 PaletteStyle.valueOf(持久化名) 会抛 IllegalArgumentException(主题风格回落默认值)

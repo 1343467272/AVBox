@@ -4,12 +4,8 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.util.Base64;
 
-import android.os.Handler;
-import android.os.Looper;
-import android.os.Message;
 import android.text.TextUtils;
 
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.lifecycle.Observer;
 
@@ -110,7 +106,7 @@ public class PlaybackController {
         // 刚发起的取流一起撤掉。
         cancelInFlight();
         // 作废上一条"播完待撤会话"的待判消息(见 handlePendingCompletionDrop),避免落到新会话上。
-        timeoutHandler.removeMessages(MSG_DROP_SESSION_AFTER_COMPLETED);
+        timeouts.cancelPendingCompletionDrop();
         // 代际复位:上一会话的迟到回调不得作用到新会话
         resolver.resetGen();
         // 封面属于上一个会话的内容,换内容必须清:playArtwork 只写一次(见 updateMusicSession 的 isEmpty 守卫)、
@@ -433,32 +429,21 @@ public class PlaybackController {
         this.view = bridge;
     }
 
-    /** 取流超时/换线播放超时(与既有 mHandler 的三条定时消息拆开:解析超时留在页面/解析层) */
-    private static final int MSG_RESOLVE_PLAY_URL_TIMEOUT = 101;
-    private static final int MSG_SWITCH_LINE_PLAY_TIMEOUT = 102;
-    /**
-     * 本集播完后的**延后一拍**撤会话判定(见 {@link #handlePlayStateForMusicSession})。
-     */
-    private static final int MSG_DROP_SESSION_AFTER_COMPLETED = 103;
-    private static final long RESOLVE_PLAY_URL_TIMEOUT_MS = 15 * 1000L;
-    private static final long SWITCH_LINE_PLAY_TIMEOUT_MS = 20 * 1000L;
-
-    private final Handler timeoutHandler = new Handler(Looper.getMainLooper(), new Handler.Callback() {
+    /** 三处超时(取流/换线/播完待撤)的定时消息投递 */
+    private final PlaybackTimeouts timeouts = new PlaybackTimeouts(new PlaybackTimeouts.Callback() {
         @Override
-        public boolean handleMessage(@NonNull Message msg) {
-            switch (msg.what) {
-                case MSG_RESOLVE_PLAY_URL_TIMEOUT:
-                    handleResolvePlayUrlTimeout();
-                    return true;
-                case MSG_SWITCH_LINE_PLAY_TIMEOUT:
-                    handleSwitchLinePlayTimeout();
-                    return true;
-                case MSG_DROP_SESSION_AFTER_COMPLETED:
-                    handlePendingCompletionDrop();
-                    return true;
-                default:
-                    return false;
-            }
+        public void onResolvePlayUrlTimeout() {
+            handleResolvePlayUrlTimeout();
+        }
+
+        @Override
+        public void onSwitchLinePlayTimeout() {
+            handleSwitchLinePlayTimeout();
+        }
+
+        @Override
+        public void onPendingCompletionDrop() {
+            handlePendingCompletionDrop();
         }
     });
 
@@ -514,7 +499,7 @@ public class PlaybackController {
     public void beginNewPlay() {
         st.beginNewPlay();
         // 新内容开始 ⇒ 上一条"播完待撤会话"的判定作废(否则那条迟到的消息会打到本次新会话上)
-        timeoutHandler.removeMessages(MSG_DROP_SESSION_AFTER_COMPLETED);
+        timeouts.cancelPendingCompletionDrop();
         // 换内容(换集/换线/换源/重播)⇒ 上一次确认的"纯音频"作废,由新内容自己重新确认
         // (自动重试不走本方法,见 retryAfterStartedError:同一内容的确认必须留着)
         st.audioOnlyConfirmed = false;
@@ -657,13 +642,12 @@ public class PlaybackController {
     // -------------------- 三处超时 --------------------
 
     public void startResolvePlayUrlTimeout() {
-        cancelPlayTimeout();
-        timeoutHandler.sendEmptyMessageDelayed(MSG_RESOLVE_PLAY_URL_TIMEOUT, getResolvePlayUrlTimeoutMs());
+        timeouts.startResolvePlayUrlTimeout(getResolvePlayUrlTimeoutMs());
     }
 
     private long getResolvePlayUrlTimeoutMs() {
-        if (sourceBean() == null) return RESOLVE_PLAY_URL_TIMEOUT_MS;
-        return Math.max(RESOLVE_PLAY_URL_TIMEOUT_MS, (sourceBean().getPlayTimeoutSeconds() + 1L) * 1000L);
+        if (sourceBean() == null) return PlaybackTimeouts.RESOLVE_PLAY_URL_TIMEOUT_MS;
+        return Math.max(PlaybackTimeouts.RESOLVE_PLAY_URL_TIMEOUT_MS, (sourceBean().getPlayTimeoutSeconds() + 1L) * 1000L);
     }
 
     public void startSwitchLinePlayTimeout() {
@@ -673,7 +657,7 @@ public class PlaybackController {
         }
         cancelPlayTimeout();
         LOG.i("echo-switchLinePlay start timeout");
-        timeoutHandler.sendEmptyMessageDelayed(MSG_SWITCH_LINE_PLAY_TIMEOUT, SWITCH_LINE_PLAY_TIMEOUT_MS);
+        timeouts.startSwitchLinePlayTimeout();
     }
 
     public void cancelSwitchLinePlayTimeout() {
@@ -681,13 +665,12 @@ public class PlaybackController {
     }
 
     public void cancelPlayTimeout() {
-        timeoutHandler.removeMessages(MSG_RESOLVE_PLAY_URL_TIMEOUT);
-        timeoutHandler.removeMessages(MSG_SWITCH_LINE_PLAY_TIMEOUT);
+        timeouts.cancelPlayTimeout();
     }
 
     /** 只取消"取流超时"(取流结果已到达时;换线播放超时另计,不能一起取消) */
     public void cancelResolvePlayUrlTimeout() {
-        timeoutHandler.removeMessages(MSG_RESOLVE_PLAY_URL_TIMEOUT);
+        timeouts.cancelResolvePlayUrlTimeout();
     }
 
     /** 预览态启用/全屏禁用自动换线(全屏时用户在看画面,不该被换线打断) */
@@ -1673,7 +1656,7 @@ public class PlaybackController {
      */
     public void beginSwitchPlayback() {
         st.switchingPlayback = true;
-        timeoutHandler.removeMessages(MSG_DROP_SESSION_AFTER_COMPLETED);
+        timeouts.cancelPendingCompletionDrop();
     }
     /** 纯音频封面地址(影视绝不设置:否则视频被压成海报) */
     private String playArtwork;
@@ -1726,7 +1709,7 @@ public class PlaybackController {
     public void stopPlaybackForPageExit() {
         st.clearSessionFlags();
         // 与 onHostDestroy 同属会话边界:一并作废"播完待撤会话"的待判消息
-        timeoutHandler.removeMessages(MSG_DROP_SESSION_AFTER_COMPLETED);
+        timeouts.cancelPendingCompletionDrop();
         cancelInFlight();
         // 页面退出即"没有正在播的源"
         ApiConfig.get().setCurrentPlaySourceKey("");
@@ -1736,7 +1719,7 @@ public class PlaybackController {
     /** 起播失败/换源点击即停:清会话标记并停掉通知 */
     public void stopMusicSessionForFailedPlayback() {
         st.clearSessionFlags();
-        timeoutHandler.removeMessages(MSG_DROP_SESSION_AFTER_COMPLETED);
+        timeouts.cancelPendingCompletionDrop();
         stopMusicSession();
     }
 
@@ -1749,7 +1732,7 @@ public class PlaybackController {
     /** 页面销毁:清会话标记 + 停通知 + 收预载(对应原 hostDestroy 的音乐/预载段) */
     public void onHostDestroy() {
         st.clearSessionFlags();
-        timeoutHandler.removeMessages(MSG_DROP_SESSION_AFTER_COMPLETED);
+        timeouts.cancelPendingCompletionDrop();
         // 引擎已释放:三处超时消息若留着,到期仍会走"换线/报错"链路并打到视图桥(见 detach 的桥切换)
         cancelPlayTimeout();
         cancelResolvePlayUrlTimeout();
@@ -1800,8 +1783,8 @@ public class PlaybackController {
                 // 真机复现:后台播完一首自动切歌,19 秒后
                 // 通知消失、连两次 startForeground 被拒、回到页面点击无反应。
                 // 改为**延后一拍**再判:让同一次状态分发里页面的 beginSwitchPlayback() 有机会先执行。
-                timeoutHandler.removeMessages(MSG_DROP_SESSION_AFTER_COMPLETED);
-                timeoutHandler.sendEmptyMessage(MSG_DROP_SESSION_AFTER_COMPLETED);
+                timeouts.cancelPendingCompletionDrop();
+                timeouts.armPendingCompletionDrop();
                 return false;
             }
             updateMusicSession();
@@ -1836,7 +1819,7 @@ public class PlaybackController {
         }
         // 页面**已销毁**时让位给既有收尾路径(页面退出会走 onHostDestroy/stopPlaybackForPageExit,
         // 那两条自己撤会话并放锁):这里不再插手,以免与它们重复撤会话、或撤在"随后 attach 的新会话"上。
-        // ⚠️ 本判据**不**负责"防止迟到消息打到新会话" —— 那是各会话边界 removeMessages 的职责:
+        // ⚠️ 本判据**不**负责"防止迟到消息打到新会话" —— 那是各会话边界 cancelPendingCompletionDrop 的职责:
         // startSession / beginNewPlay / beginSwitchPlayback / stopMusicSessionForFailedPlayback /
         // stopPlaybackForPageExit / onHostDestroy。
         if (!view.isPageAlive()) {

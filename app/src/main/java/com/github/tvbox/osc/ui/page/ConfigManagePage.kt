@@ -56,6 +56,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.api.ApiConfig
 import com.github.tvbox.osc.ui.activity.ConfigManageActivity
@@ -78,66 +79,7 @@ import com.github.tvbox.osc.ui.components.SettingsSwitchRow
 import com.github.tvbox.osc.ui.components.TopBarActionBox
 import com.github.tvbox.osc.ui.components.glassSurface
 import com.github.tvbox.osc.ui.theme.cardContainer
-import com.github.tvbox.osc.util.ApiLineSignal
-import com.github.tvbox.osc.util.BootGuard
-import com.github.tvbox.osc.util.HawkConfig
 import com.github.tvbox.osc.util.HistoryHelper
-import com.github.tvbox.osc.util.KV
-import com.github.tvbox.osc.util.removeLocalCopy
-import java.util.concurrent.Executors
-
-private const val SubscribeSplit = "\t"
-
-private data class SubscribeSource(val name: String, val url: String)
-
-/**
- * 待二次确认的切源请求。带 `vod` 是必需的:列表在 AnimatedContent 里渲染,过渡期内外两份内容
- * 同时在组合中,读外层 `isVod` 会把正在退场的那份按错的模式切源。
- */
-private data class PendingSwitch(val item: SubscribeSource, val vod: Boolean)
-
-private enum class ConfigMode { Vod, Live }
-
-private fun subscribeKeyOf(mode: ConfigMode): String = when (mode) {
-    ConfigMode.Vod -> HawkConfig.SUBSCRIBE_LIST
-    ConfigMode.Live -> HawkConfig.LIVE_SUBSCRIBE_LIST
-}
-
-private fun loadSubscribes(mode: ConfigMode): List<String> =
-    KV.get(subscribeKeyOf(mode), ArrayList<String>()).toList()
-
-private fun parseSubscribe(value: String): SubscribeSource {
-    val index = value.indexOf(SubscribeSplit)
-    return if (index < 0) {
-        SubscribeSource(value.trim(), value.trim())
-    } else {
-        SubscribeSource(
-            value.substring(0, index).trim(),
-            value.substring(index + SubscribeSplit.length).trim(),
-        )
-    }
-}
-
-private fun saveSubscribe(mode: ConfigMode, name: String, url: String): List<String> {
-    val value = (name.ifEmpty { url }) + SubscribeSplit + url
-    val list = ArrayList(loadSubscribes(mode))
-    val existIndex = list.indexOfFirst { parseSubscribe(it).url == url }
-    if (existIndex >= 0) list[existIndex] = value else list.add(value)
-    KV.put(subscribeKeyOf(mode), list)
-    return list
-}
-
-private fun updateSubscribe(mode: ConfigMode, original: SubscribeSource, name: String, url: String): List<String> {
-    val value = (name.ifEmpty { url }) + SubscribeSplit + url
-    val list = ArrayList(loadSubscribes(mode))
-    val index = list.indexOfFirst { parseSubscribe(it).url == original.url }
-    if (index < 0) return list
-    list[index] = value
-    val dupIndex = list.indexOfFirst { it != value && parseSubscribe(it).url == url }
-    if (dupIndex >= 0) list.removeAt(dupIndex)
-    KV.put(subscribeKeyOf(mode), list)
-    return list
-}
 
 private fun badgeText(name: String, url: String, emptyText: String): String = when {
     name.isNotEmpty() -> name
@@ -145,175 +87,47 @@ private fun badgeText(name: String, url: String, emptyText: String): String = wh
     else -> url.substringAfter("://").substringBefore('/').ifEmpty { url }
 }
 
-private fun applyVodSource(item: SubscribeSource): Boolean =
-    AppBootstrap.switchVodSubscription(item.url)
-
-private fun applyLiveSource(item: SubscribeSource) {
-    HistoryHelper.setLiveApiHistory(item.url)
-    KV.put(HawkConfig.LIVE_API_URL, item.url)
-    // 多仓(2026-09-21):换到仓列表之外的地址即退出仓模式,否则「配置切换」会继续列上一仓的子源
-    if (!HistoryHelper.isLiveApiLineHistory(item.url)) HistoryHelper.clearLiveApiLineList()
-    // 换了直播源就得让旧源的 hosts 映射立刻失效:不能等下次加载成功(加载失败则永久残留)
-    ApiConfig.get().clearLiveHosts()
-    ApiConfig.get().invalidateLiveConfig()
-}
-
-private fun applyLiveFollowVod() {
-    KV.put(HawkConfig.LIVE_API_URL, "")
-    HistoryHelper.clearLiveApiLineList()
-    ApiConfig.get().clearLiveHosts()
-    ApiConfig.get().invalidateLiveConfig()
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ConfigManageScreen(onNavigateBack: () -> Unit) {
     val context = LocalContext.current
+    val vm: ConfigManageViewModel = viewModel()
     var mode by rememberSaveable { mutableStateOf(ConfigMode.Vod) }
-    var vodItems by remember { mutableStateOf(loadSubscribes(ConfigMode.Vod)) }
-    var liveItems by remember { mutableStateOf(loadSubscribes(ConfigMode.Live)) }
-    var activeUrl by remember { mutableStateOf(KV.get(HawkConfig.API_URL, "")) }
-    var liveActiveUrl by remember { mutableStateOf(KV.get(HawkConfig.LIVE_API_URL, "")) }
-    var liveFollow by remember { mutableStateOf(ApiConfig.isLiveFollowVod()) }
     var addDialogOpen by remember { mutableStateOf(false) }
-    var editTarget by remember { mutableStateOf<SubscribeSource?>(null) }
-    var manageMode by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf(emptySet<String>()) }
     var repoSheetOpen by remember { mutableStateOf(false) }
-    /**
-     * 被看门狗自动停用过的源地址(黑名单)。只在首次组合读一次 —— 本页是独立 Activity、
-     * 每次进入都是新实例;页内的增删(二次确认启用 / 删除订阅)都由本页自己改这份状态。
-     */
-    var disabledUrls by remember { mutableStateOf(BootGuard.disabledSources().toSet()) }
+    val vodItems by vm.vodItems.collectAsState()
+    val liveItems by vm.liveItems.collectAsState()
+    val activeUrl by vm.activeUrl.collectAsState()
+    val liveActiveUrl by vm.liveActiveUrl.collectAsState()
+    val liveFollow by vm.liveFollow.collectAsState()
+    /** 被看门狗自动停用过的源地址(黑名单)。本页是独立 Activity、每次进入都是新实例;页内的增删(二次确认启用 / 删除订阅)都由本页自己改这份状态。 */
+    val disabledUrls by vm.disabledUrls.collectAsState()
     /** 点到黑名单里的源时先挂起,由二次确认对话框决定是否放行 */
-    var pendingSwitch by remember { mutableStateOf<PendingSwitch?>(null) }
-
-    /**
-     * 多仓的地址改写由异步 loadConfig 完成(仓地址 → 仓内首条子源),它不产生任何 Compose 状态
-     * 变化 ⇒ 这几份"只在首次组合读一次"的当前态不会自更新,换仓入口与"使用中"标记要退出重进才正确。
-     *
-     * <p>刷新只走一条:改写点发的 [ApiLineSignal]。反推"加载什么时候完成"不可靠 —— 点播的完成态
-     * 要等 jar 装载也跑完,那时改写早已结束;也不必再挂 ON_RESUME,因为本页存活期间唯一会改写仓
-     * 关系的只有点播这一路(它必发信号),直播那路只在直播页拉配置时才改写,届时本页早已重建,
-     * 首次组合读到的就是新值。只重读"当前态"而**不**重读订阅列表 —— 列表的增删改都同步写 KV,
-     * 重读只会与 manageMode 的勾选集错位。
-     */
-    fun refreshActiveSnapshot() {
-        activeUrl = KV.get(HawkConfig.API_URL, "")
-        liveActiveUrl = KV.get(HawkConfig.LIVE_API_URL, "")
-        liveFollow = ApiConfig.isLiveFollowVod()
-    }
-
-    val apiLineVersion by ApiLineSignal.version.collectAsState()
-    LaunchedEffect(apiLineVersion) { refreshActiveSnapshot() }
-
-    // 收藏跨订阅打开也会切订阅(不经过本页):配置就绪后再对一次 KV,
-    // 否则"使用中"标记与 switchToVod 的去重判断会停在旧值(表现为点某条源没反应)
-    LaunchedEffect(Unit) {
-        AppBootstrap.state.collect { boot ->
-            if (boot is AppBootstrap.Boot.Ready) refreshActiveSnapshot()
-        }
-    }
+    val pendingSwitch by vm.pendingSwitch.collectAsState()
+    val selected by vm.selected.collectAsState()
+    val manageMode by vm.manageMode.collectAsState()
+    val editTarget by vm.editTarget.collectAsState()
+    val toastEvent by vm.toastEvent.collectAsState()
 
     val isVod = mode == ConfigMode.Vod
     val currentItems = if (isVod) vodItems else liveItems
 
-    LaunchedEffect(selected, currentItems) {
-        if (manageMode && selected.isEmpty()) manageMode = false
+    LaunchedEffect(toastEvent) {
+        toastEvent?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            vm.clearToast()
+        }
     }
 
     LaunchedEffect(mode) {
-        manageMode = false
-        selected = emptySet()
-        editTarget = null
+        vm.onModeChanged()
         // 换仓 sheet 也关掉:它列的是"当前模式"那份仓列表,切模式后台面下的列表已经换了,
         // 留着会出现"点的是直播的子源、实际按点播语义切"的错配(分段按钮在遮罩之下点不到,
         // 但系统返回键/手势能先关 sheet,防的是这一类时序)
         repoSheetOpen = false
     }
 
-    fun exitManageMode() {
-        manageMode = false
-        selected = emptySet()
-        editTarget = null
-    }
-
-    BackHandler(enabled = manageMode) { exitManageMode() }
-
-    /**
-     * 这一条源是不是"正在使用"。
-     *
-     * <p>多仓生效后 {@code API_URL} 已被改写成仓里第一条子源的地址,订阅列表里那条仓地址匹配不上,
-     * 所以还要认"它正是当前仓的来源地址"(否则切到仓之后重进页面,所有源都显示未使用)。
-     */
-    fun isInUse(url: String): Boolean =
-        if (isVod) {
-            url == activeUrl || HistoryHelper.isApiLineSourceOf(url, activeUrl)
-        } else {
-            (!liveFollow && url == liveActiveUrl) ||
-                (!liveFollow && HistoryHelper.isLiveApiLineSourceOf(url, liveActiveUrl))
-        }
-
-    /** 该地址在点播/直播任一侧仍在生效(激活源或仓来源)—— 只用于挡副本清理,不放宽上面的删除保护 */
-    fun activeInEitherMode(url: String): Boolean {
-        val vodApi = KV.get(HawkConfig.API_URL, "")
-        val liveApi = KV.get(HawkConfig.LIVE_API_URL, "")
-        return url == vodApi || url == liveApi ||
-            HistoryHelper.isApiLineSourceOf(url, vodApi) ||
-            HistoryHelper.isLiveApiLineSourceOf(url, liveApi)
-    }
-
-    /** 任一模式的订阅列表里还留着该地址(同地址允许跨模式重复添加)—— 副本同样不能删 */
-    fun referencedBySubscribes(url: String): Boolean =
-        loadSubscribes(ConfigMode.Vod).any { parseSubscribe(it).url == url } ||
-            loadSubscribes(ConfigMode.Live).any { parseSubscribe(it).url == url }
-
-    /** 多仓的子源条目里还留着该地址 —— 仓的多个子源只有当前生效那个会被上面查到,其余必须在这里挡 */
-    fun referencedByRepo(url: String): Boolean =
-        (HistoryHelper.getApiLines().orEmpty() + HistoryHelper.getLiveApiLines().orEmpty())
-            .any { HistoryHelper.getApiLineUrl(it) == url }
-
-    fun switchToVod(item: SubscribeSource) {
-        if (activeUrl == item.url) return
-        val followLive = applyVodSource(item)
-        activeUrl = item.url
-        if (followLive) {
-            liveActiveUrl = ""
-            liveFollow = true
-        }
-        Toast.makeText(context, context.getString(R.string.config_switched_to, item.name), Toast.LENGTH_SHORT).show()
-    }
-
-    fun switchToLive(item: SubscribeSource) {
-        if (!liveFollow && liveActiveUrl == item.url) return
-        applyLiveSource(item)
-        liveActiveUrl = item.url
-        liveFollow = false
-        Toast.makeText(context, context.getString(R.string.config_switched_to, item.name), Toast.LENGTH_SHORT).show()
-    }
-
-    /**
-     * 切源统一入口:黑名单里的源**不当场切** —— 它上次就是在这个源上把应用崩掉的,
-     * 直接切等于再崩一次,所以先弹二次确认(用户可能知道远端已经修好了)。
-     */
-    fun requestSwitch(item: SubscribeSource, vod: Boolean) {
-        if (item.url in disabledUrls) {
-            pendingSwitch = PendingSwitch(item, vod)
-        } else if (vod) {
-            switchToVod(item)
-        } else {
-            switchToLive(item)
-        }
-    }
-
-    /** 二次确认"仍要启用":移出黑名单再切;真坏的话下次启动会重新记入 */
-    fun enableAndSwitch() {
-        val pending = pendingSwitch ?: return
-        pendingSwitch = null
-        BootGuard.enableSource(pending.item.url)
-        disabledUrls = disabledUrls - pending.item.url
-        if (pending.vod) switchToVod(pending.item) else switchToLive(pending.item)
-    }
+    BackHandler(enabled = manageMode) { vm.exitManageMode() }
 
     // ---------- 换仓(2026-09-21) ----------
     // 多仓生效后启动地址被改写成仓里某个子源,订阅卡与"使用中"都不再指向用户填的仓地址,
@@ -331,77 +145,6 @@ fun ConfigManageScreen(onNavigateBack: () -> Unit) {
 
     /** 当前生效的子源地址:换仓列表据此打选中标记 */
     val repoActiveUrl = if (isVod) activeUrl else liveActiveUrl
-
-    fun followLiveNow() {
-        applyLiveFollowVod()
-        liveActiveUrl = ""
-        liveFollow = true
-        Toast.makeText(context, context.getString(R.string.toast_live_follow_vod), Toast.LENGTH_SHORT).show()
-    }
-
-    fun deleteSelected() {
-        val target = selected.filterNot { isInUse(parseSubscribe(it).url) }
-        if (target.size != selected.size) {
-            Toast.makeText(context, context.getString(R.string.toast_source_in_use), Toast.LENGTH_SHORT).show()
-        }
-        val remaining = currentItems.filterNot { it in target }
-        KV.put(subscribeKeyOf(mode), ArrayList(remaining))
-        // 源都删了,就别再留着它的"崩过"记录 —— 否则名单里堆的是用户已经不要的地址
-        val removedUrls = target.map { parseSubscribe(it).url }
-        BootGuard.forgetSources(removedUrls)
-        disabledUrls = disabledUrls - removedUrls
-        // 副本清理要跨模式判"仍在用":点播页删除时,同一地址可能正被直播侧当激活源/仓来源,或被另一模式的订阅/仓子源引用
-        val copyUrls = removedUrls.filterNot {
-            activeInEitherMode(it) || referencedBySubscribes(it) || referencedByRepo(it)
-        }
-        if (copyUrls.isNotEmpty()) {
-            val executor = Executors.newSingleThreadExecutor()
-            executor.execute { copyUrls.forEach { removeLocalCopy(it) } }
-            executor.shutdown()
-        }
-        if (isVod) {
-            vodItems = remaining
-            if (remaining.isEmpty()) {
-                ApiConfig.get().clearVodConfig()
-                activeUrl = ""
-                AppBootstrap.retry()
-            }
-        } else {
-            liveItems = remaining
-            if (remaining.isEmpty()) {
-                applyLiveFollowVod()
-                liveActiveUrl = ""
-                liveFollow = true
-            }
-        }
-        selected = emptySet()
-    }
-
-    fun commitAdd(name: String, url: String) {
-        val newItems = saveSubscribe(mode, name, url)
-        if (isVod) vodItems = newItems else liveItems = newItems
-        addDialogOpen = false
-        if (newItems.size == 1) {
-            val item = parseSubscribe(newItems.first())
-            if (isVod) switchToVod(item) else switchToLive(item)
-        }
-    }
-
-    fun commitEdit(target: SubscribeSource, name: String, url: String) {
-        if (url.isEmpty()) return
-        val newValue = (name.ifEmpty { url }) + SubscribeSplit + url
-        val oldValue = selected.firstOrNull { parseSubscribe(it).url == target.url }
-        val updated = updateSubscribe(mode, target, name, url)
-        if (isVod) vodItems = updated else liveItems = updated
-        if (oldValue != null) selected = selected - oldValue + newValue
-        editTarget = null
-        val item = parseSubscribe(newValue)
-        if (isVod) {
-            if (target.url == activeUrl && url != activeUrl) switchToVod(item)
-        } else if (!liveFollow && target.url == liveActiveUrl && url != liveActiveUrl) {
-            switchToLive(item)
-        }
-    }
 
     val noSourceText = stringResource(R.string.config_no_source)
     val vodBadge = remember(vodItems, activeUrl, noSourceText) {
@@ -437,7 +180,7 @@ fun ConfigManageScreen(onNavigateBack: () -> Unit) {
             TopBarActionBox(
                 R.drawable.ic_arrow_left,
                 stringResource(R.string.common_back),
-                onClick = { if (manageMode) exitManageMode() else onNavigateBack() },
+                onClick = { if (manageMode) vm.exitManageMode() else onNavigateBack() },
             )
         },
         actions = {
@@ -459,13 +202,13 @@ fun ConfigManageScreen(onNavigateBack: () -> Unit) {
                             iconRes = R.drawable.ic_edit,
                             contentDescription = stringResource(R.string.common_edit),
                             enabled = selected.size == 1,
-                            onClick = { editTarget = selected.firstOrNull()?.let { parseSubscribe(it) } },
+                            onClick = { vm.editTarget.value = selected.firstOrNull()?.let { parseSubscribe(it) } },
                         )
                         ManageActionIcon(
                             iconRes = R.drawable.ic_delete,
                             contentDescription = stringResource(R.string.common_delete),
                             enabled = selected.isNotEmpty(),
-                            onClick = { deleteSelected() },
+                            onClick = { vm.deleteSelected(isVod) },
                         )
                     }
                 } else {
@@ -564,7 +307,7 @@ fun ConfigManageScreen(onNavigateBack: () -> Unit) {
                                     } else {
                                         stringResource(R.string.config_current_vod_source, vodBadge)
                                     },
-                                    onFollow = { followLiveNow() },
+                                    onFollow = { vm.followLiveNow() },
                                     modifier = Modifier.animateItem(),
                                 )
                             }
@@ -591,20 +334,19 @@ fun ConfigManageScreen(onNavigateBack: () -> Unit) {
                                 selected = value in selected,
                                 onClick = {
                                     if (manageMode) {
-                                        selected = if (value in selected) selected - value else selected + value
+                                        vm.toggleSelected(value)
                                     } else {
-                                        requestSwitch(item, mIsVod)
+                                        vm.requestSwitch(item, mIsVod)
                                     }
                                 },
                                 onLongClick = {
-                                    manageMode = true
-                                    selected = setOf(value)
+                                    vm.longPressSelect(value)
                                 },
                                 onCheckedChange = { checked ->
                                     if (checked) {
-                                        requestSwitch(item, mIsVod)
+                                        vm.requestSwitch(item, mIsVod)
                                     } else if (!mIsVod) {
-                                        followLiveNow()
+                                        vm.followLiveNow()
                                     }
                                 },
                             )
@@ -642,10 +384,11 @@ fun ConfigManageScreen(onNavigateBack: () -> Unit) {
             initialUrl = editing?.url.orEmpty(),
             onDismiss = {
                 addDialogOpen = false
-                editTarget = null
+                vm.editTarget.value = null
             },
             onSave = { name, url ->
-                if (editing != null) commitEdit(editing, name, url) else commitAdd(name, url)
+                if (editing != null) vm.commitEdit(isVod, editing, name, url) else vm.commitAdd(isVod, name, url)
+                addDialogOpen = false
             },
             onPickFile = { onPicked ->
                 (context as? ConfigManageActivity)?.launchLocalConfig { api -> onPicked(api) }
@@ -656,14 +399,14 @@ fun ConfigManageScreen(onNavigateBack: () -> Unit) {
     val pending = pendingSwitch
     if (pending != null) {
         AVBoxAlertDialog(
-            onDismissRequest = { pendingSwitch = null },
+            onDismissRequest = { vm.cancelPendingSwitch() },
             title = { Text(stringResource(R.string.dialog_source_disabled_title)) },
             text = {
                 Text(stringResource(R.string.dialog_source_disabled_message, pending.item.name))
             },
             confirmButton = {
                 val dismissThen = LocalSheetDismissThen.current
-                TextButton(onClick = { dismissThen { enableAndSwitch() } }) {
+                TextButton(onClick = { dismissThen { vm.enableAndSwitch() } }) {
                     Text(stringResource(R.string.dialog_source_disabled_confirm))
                 }
             },
@@ -686,10 +429,10 @@ fun ConfigManageScreen(onNavigateBack: () -> Unit) {
                 )
                 // 与在订阅列表里点同一条源等价 —— switchToVod 里已经处理了"是否落在仓里"的仓列表保留判定,
                 // 所以换完仓后入口仍在。统一走 requestSwitch:仓里藏着的坏子源同样要过二次确认
-                requestSwitch(SubscribeSource(name, url), isVod)
+                vm.requestSwitch(SubscribeSource(name, url), isVod)
                 // 命中"源已停用"时 requestSwitch 会立刻弹确认对话框,而覆盖层槽位只有一个(面板会被顶掉)。
                 // 这里同步收掉面板状态:否则面板的可见性标志还是 true,对话框关掉后它会被重新提交而"复活"。
-                if (pendingSwitch != null) repoSheetOpen = false
+                if (vm.pendingSwitch.value != null) repoSheetOpen = false
             },
         )
     }

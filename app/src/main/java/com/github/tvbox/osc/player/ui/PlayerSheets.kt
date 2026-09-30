@@ -273,7 +273,7 @@ internal fun SheetButton(
             )
         }
         .padding(horizontal = contentPadding)
-        .height(playerDim(R.dimen.vs_50))
+        .height(playerDim(R.dimen.vs_40))
     Box(modifier = m, contentAlignment = Alignment.Center) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (iconRes != null) {

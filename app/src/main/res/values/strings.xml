@@ -168,8 +168,8 @@
     <string name="player_params_set_start">设为片头</string>
     <string name="player_params_set_end">设为片尾</string>
 
-    <!-- 画质参数面板 -->
-    <string name="player_menu_picture">画质参数</string>
+    <!-- 画面参数面板 -->
+    <string name="player_menu_picture">画面参数</string>
     <string name="player_picture_preset">预设</string>
     <string name="player_anime4k_title">Anime4K</string>
     <string name="player_anime4k_tier_light">轻量增强</string>
@@ -203,10 +203,10 @@
     <string name="player_picture_shadow">暗部提升</string>
     <string name="player_picture_compare">按住对比</string>
     <string name="player_picture_reset">恢复默认</string>
-    <string name="player_picture_unavailable_tunnel">隧道模式起播，画质参数本集不生效；关闭隧道并重新起播后生效</string>
-    <string name="player_picture_unavailable_hdr">HDR 片源不支持画质参数，当前按原样输出</string>
-    <string name="player_picture_unavailable_restart">画质参数已保存，重新起播后生效</string>
-    <string name="player_picture_unavailable_decoder">当前解码方式不支持画质参数</string>
+    <string name="player_picture_unavailable_tunnel">隧道模式起播，画面参数本集不生效；关闭隧道并重新起播后生效</string>
+    <string name="player_picture_unavailable_hdr">HDR 片源不支持画面参数，当前按原样输出</string>
+    <string name="player_picture_unavailable_restart">画面参数已保存，重新起播后生效</string>
+    <string name="player_picture_unavailable_decoder">当前解码方式不支持画面参数</string>
 
     <!-- 音乐播放页 -->
     <string name="music_queue">播放队列</string>

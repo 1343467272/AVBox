@@ -55,7 +55,7 @@ class ConfigManageViewModel : ViewModel() {
     val editTarget = MutableStateFlow<SubscribeSource?>(null)
     val pendingSwitch = MutableStateFlow<PendingSwitch?>(null)
     val toastEvent = MutableStateFlow<String?>(null)
-    /** 副本清理即发即走,不受页面退出(VM cleared)取消 —— 与旧实现的一次性 executor 语义对齐 */
+    /** 即发即走:不随页面退出(VM cleared)取消,对齐旧 executor 语义 */
     private val copyCleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
@@ -85,14 +85,9 @@ class ConfigManageViewModel : ViewModel() {
     }
 
     /**
-     * 多仓的地址改写由异步 loadConfig 完成(仓地址 → 仓内首条子源),它不产生任何 Compose 状态
-     * 变化 ⇒ 这几份"只在进入页面时读一次"的当前态不会自更新,换仓入口与"使用中"标记要退出重进才正确。
-     *
-     * <p>刷新只走一条:改写点发的 [ApiLineSignal]。反推"加载什么时候完成"不可靠 —— 点播的完成态
-     * 要等 jar 装载也跑完,那时改写早已结束;也不必再挂 ON_RESUME,因为本页存活期间唯一会改写仓
-     * 关系的只有点播这一路(它必发信号),直播那路只在直播页拉配置时才改写,届时本页早已重建,
-     * 进入时读到的就是新值。只重读"当前态"而**不**重读订阅列表 —— 列表的增删改都同步写 KV,
-     * 重读只会与 manageMode 的勾选集错位。
+     * 多仓地址改写不产生 Compose 状态变化 ⇒ 当前态不会自更新,要退出重进才正确;
+     * 刷新只走一条:改写点发的 [ApiLineSignal],不反推加载完成态、不挂 ON_RESUME。
+     * 只重读"当前态"而**不**重读订阅列表 —— 列表增删改都同步写 KV,重读只会与勾选集错位。
      */
     private fun refreshActiveSnapshot() {
         activeUrl.value = KV.get(HawkConfig.API_URL, "")
@@ -100,7 +95,7 @@ class ConfigManageViewModel : ViewModel() {
         liveFollow.value = ApiConfig.isLiveFollowVod()
     }
 
-    /** 换模式即换语境:编辑态/勾选集/编辑目标全部归零(repoSheetOpen 由 UI 自关) */
+    /** 换模式清编辑态(repoSheetOpen 由 UI 自关) */
     fun onModeChanged() {
         manageMode.value = false
         selected.value = emptySet()

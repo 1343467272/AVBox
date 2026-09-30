@@ -100,7 +100,7 @@ fun ConfigManageScreen(onNavigateBack: () -> Unit) {
     val activeUrl by vm.activeUrl.collectAsState()
     val liveActiveUrl by vm.liveActiveUrl.collectAsState()
     val liveFollow by vm.liveFollow.collectAsState()
-    /** 被看门狗自动停用过的源地址(黑名单)。本页是独立 Activity、每次进入都是新实例;页内的增删(二次确认启用 / 删除订阅)都由本页自己改这份状态。 */
+    /** 被看门狗停用过的源地址(黑名单):只随页内增删变化 */
     val disabledUrls by vm.disabledUrls.collectAsState()
     /** 点到黑名单里的源时先挂起,由二次确认对话框决定是否放行 */
     val pendingSwitch by vm.pendingSwitch.collectAsState()

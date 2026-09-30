@@ -82,7 +82,7 @@ class DetailActivity : BaseActivity(), PageHost {
                 val container = playContainer
                 if (fullScreen) {
                     if (container != null && container.onBackPressed()) return
-                    vm.setFullScreen(false)
+                    vm.exitFullScreen()
                 } else {
                     if (vm.backToPreviousTarget()) {
                         pendingEpisodeSync = false
@@ -110,7 +110,7 @@ class DetailActivity : BaseActivity(), PageHost {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingEpisodeSync = false
-        vm.setFullScreen(false)
+        vm.exitFullScreen()
         vm.pushTargetFromIntent(intent)
     }
 
@@ -123,6 +123,17 @@ class DetailActivity : BaseActivity(), PageHost {
         }
         return playContainer!!
     }
+
+    /**
+     * 进全屏/切清晰度需要的设备事实,调用当帧现算(见 `DetailPlaybackFacts`)。
+     *
+     * 页面是唯一同时掌握"窗口当前方向"与"播放层视频尺寸"的地方;VM 两者都读不到,
+     * 所以由页面提供,V2 之前 VM 是直持容器读的。
+     */
+    fun playbackFacts(): DetailPlaybackFacts = DetailPlaybackFacts(
+        landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
+        portraitVideo = playContainer?.isPortraitVideo() == true,
+    )
 
     private fun releasePlayContainer() {
         playContainer?.hostDestroy()

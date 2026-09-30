@@ -68,7 +68,19 @@ fun DetailScreen(activity: DetailActivity, vm: DetailViewModel) {
         .coerceAtLeast(150.dp)
         .coerceAtMost(maxOf(150.dp, longEdge / 2))
 
-    val container = remember { activity.ensurePlayContainer().also { vm.playContainerRef = it } }
+    val container = remember { activity.ensurePlayContainer().also { it.setOnQualitySelectedListener(vm::onQualitySelectionAccepted) } }
+
+    LaunchedEffect(container, vm) {
+        vm.playbackCommands.collect { command ->
+            when (command) {
+                is PlaybackCommand.StopForContentSwitch -> container.stopForContentSwitch()
+                is PlaybackCommand.StopForSourceSwitch -> container.stopForSourceSwitch(command.tip)
+                is PlaybackCommand.ClearSourceSwitchTip -> container.clearSourceSwitchTip()
+                is PlaybackCommand.SetEpisodeSheetOpen -> container.setEpisodeSheetOpen(command.open)
+                is PlaybackCommand.SelectQuality -> container.selectQuality(command.position)
+            }
+        }
+    }
 
     LaunchedEffect(container, playSignal) {
         if (playSignal > 0) activity.playCurrent()
@@ -155,7 +167,7 @@ fun DetailScreen(activity: DetailActivity, vm: DetailViewModel) {
                             bottom = (16.dp + playerDim(R.dimen.vs_30) / 2 - 20.dp).coerceAtLeast(0.dp),
                         )
                         .size(40.dp)
-                        .clickable { vm.setFullScreen(true) }
+                        .clickable { vm.onFullScreenToggleRequested(true, activity.playbackFacts()) }
                         .padding(9.dp),
                 )
             }

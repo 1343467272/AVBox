@@ -1,6 +1,6 @@
 ---
 name: AVBox 渐进式重构 Spec（VM 归一与上帝类收尾专项）
-status: 执行中（2026-10-01：V1 已落地待走查；D1/D2/V6 已拍板；V2–V5 待做；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
+status: 执行中（2026-10-01：V1/V2 已落地待走查；D1/D2/V6 已拍板；V3–V5 待做；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
 source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveData/StateFlow 各半、viewmodel/ 名不副实）② 上帝类残留（PlaybackController / ComposeVideoController / PlayContainer / ApiConfig）③ VM 持 View 与 static 可变缓存 ④ 业务逻辑写进 Composable。审查结论：四问题全部属实（数字 ±5% 出入见 §2）
 ---
 
@@ -80,6 +80,23 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - **Commit**：状态搬迁一笔、逻辑搬迁一笔（或合并一笔，登记后执行时定）。
 
 ## V2｜`playContainerRef` 去引用（消问题 ③a）
+
+**执行状态（2026-10-01）**：
+
+- 已落地（1 个本地 commit，未推远程）：指令流 + 逐点语义转换一笔。
+- 实测：新增 `ui/activity/DetailPlaybackCommands.kt`（~70 行：5 个指令 + 事实类型 + 全屏判定纯函数）；`DetailViewModel.kt` 959 → 992 行（+33，全部是注释与指令发送），**`playContainerRef` 字段与 7 处使用全部消失，文件不再 import `PlayContainer`、不再 import 任何 `androidx.compose.*`**（原 4 条 Compose import 全是死引用，一并清掉）。
+- 逐点落地方式（与本节设计的三处差异，均已登记理由）：
+  1. **指令通道用带缓冲的 Channel 而非 `SharedFlow`**：指令源存在早于收集器的调用（`DetailActivity.init` 里 `initFromIntent` → `applyTarget` 早于 `setContent`），缓冲保证「先发后收」不丢且顺序 = 旧直调顺序；5 个指令都带自守卫（`stopForContentSwitch` 无归属内容时不动、清提示无在途换源时不动），晚到消费无副作用。
+  2. **设备事实（方向 + 竖屏视频）改当帧入参**，不再"orientation 走 `AppContextHolder` + `isPortraitVideo` 走状态通道"：状态通道会晚一帧，而 `rotating` 要当帧交给布局（`fullBox = if (rotating) isLandscapeNow else full`）——晚一帧会先按错误形态铺一帧再纠正。事实由页面 `DetailActivity.playbackFacts()` 提供（页面是唯一同时掌握窗口方向与播放层视频尺寸的地方）。**未**引入 `DetailActivity` → VM 的方向回写，避免多一条与 `onConfigurationChanged` 竞态的路径。
+  3. **清晰度选中结果改容器回调**（`PlayContainer.OnQualitySelectedListener` → `vm.onQualitySelectionAccepted(position)`），而非"补一条确认通道"：与旧实现读 `selectQuality` 同步返回值同为同帧落地，"能否切"的判定仍留在控制器侧，VM 不新增容器知识。容器侧补了 `scheduler != null` 守卫（旧实现直接解引用）。
+  4. 选集面板：`episodeSheet` 仍是 VM 状态，投影改由 VM 在 `showEpisodeSheet`/`dismissEpisodeSheet` 内下发指令（`EpisodeSheet` 里那条 `LaunchedEffect(show)` 删除）。两条入口（页内"全部"按钮、播放器底栏 `PageHost.showEpisodeSheet`）都经 VM 方法，改一处即覆盖。
+  5. `setFullScreen` 拆成：`onFullScreenToggleRequested(requested, facts)`（保留 `DetailFullScreenGate` 门禁 + 形态决策）、`exitFullScreen()`（退全屏无决策，替换两处 back/onNewIntent 调用点）。
+- **语义单测（本节"验证"要求的 vm 逻辑单测）**：`DetailPlaybackCommandsTest` 6 例，按旧表达式真值表逐条锁行为 —— 其中 3 例锁的是易被"顺手修正"的真实语义：竖屏视频进全屏**不置** `rotating`（留在竖屏窗口只换版式，锁竖屏在 `applyFullscreen` 的 `SENSOR_PORTRAIT` 分支）；横屏窗口 + 竖屏视频反而**要**置位（转回竖屏）；退全屏一律清零。写测试时前两轮断言写错、被用例纠正，正好证明该判据不写下来就会被改错（详见 Commit 说明）。
+- 已知的**未做**：指令流本身（`Channel` 顺序与缓冲）没有单测 —— `DetailViewModel` 无法在纯 JUnit 下实例化（`mainHandler = Handler(Looper.getMainLooper())`、`App.getInstance()`、`SourceViewModel` 的 `MutableLiveData` 三个字段初始化器都依赖 Android 运行时，项目只有 `testImplementation(libs.junit)`、无 Robolectric/coroutines-test）。行为锁在可测的纯函数上，与旧 spec 阶段 2 把判据抽成 `DetailNavStack`/`DetailFullScreenGate` 的做法一致。
+- 验证：`assembleDebug` + `testDebugUnitTest` 全绿（**58 类 / 453 例 / 0 失败** = V1 基线 447 例 + 本次 6 例）；Kotlin 编译零新增警告。
+- 未做：装机走查 —— `adb` 不在 PATH，与 V1 同日同因。
+
+**原设计记录（本次执行按上述差异落地）**：
 
 - **修改**：`DetailViewModel` 引入播放指令流 `playbackCommands: SharedFlow<DetailPlaybackCommand>`（sealed：`StopForContentSwitch` / `StopForSourceSwitch(tipRes)` / `ClearSourceSwitchTip` / `SetEpisodeSheetOpen(Boolean)` / `SelectQuality(Int)`），`DetailScreen`/`DetailEpisodes` 收集后调 `PlayContainer`；删除 79 行字段与 7 处使用，`DetailViewModel` 不再 import `PlayContainer`。
 - **逐点注意**：

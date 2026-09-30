@@ -163,8 +163,8 @@ private fun PillAction(iconRes: Int, text: String, onClick: () -> Unit) {
 internal fun EpisodeSheet(vm: DetailViewModel, revision: Int, slideFromEnd: Boolean) {
     @Suppress("UNUSED_EXPRESSION") revision
     val show by vm.episodeSheet.collectAsState()
-    // 面板在屏时冻结底栏自动收起（见 PlayerUiState.overlayPanelOpen）
-    LaunchedEffect(show) { vm.playContainerRef?.setEpisodeSheetOpen(show) }
+    // 面板在屏时冻结底栏自动收起（见 PlayerUiState.overlayPanelOpen）:状态投影已随开合指令下发到播放层
+    // (showEpisodeSheet/dismissEpisodeSheet),这里不再单独下发(V2 起 UI 不持容器引用)
     if (!show) return
     val info = vm.vodInfo ?: return
     val flags = info.seriesFlags.orEmpty()

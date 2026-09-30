@@ -215,7 +215,7 @@ internal fun DetailContent(
                     itemsIndexed(qualityOptions) { index, option ->
                         FilterChip(
                             selected = index == qualitySelected,
-                            onClick = { vm.onQualityClick(index) },
+                            onClick = { vm.onQualityClick(index, activity.playbackFacts()) },
                             label = { Text(option) },
                             shape = RoundedCornerShape(20.dp),
                             colors = MaterialTheme.colorScheme.filterChipColors(),

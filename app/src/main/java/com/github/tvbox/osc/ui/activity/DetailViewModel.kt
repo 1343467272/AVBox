@@ -1,12 +1,7 @@
 package com.github.tvbox.osc.ui.activity
 
 import android.content.Intent
-import android.content.res.Configuration
 import android.os.Bundle
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.tvbox.osc.api.ApiConfig
@@ -19,7 +14,6 @@ import com.github.tvbox.osc.bean.VodInfo
 import com.github.tvbox.osc.data.RoomDataManger
 import com.github.tvbox.osc.event.RefreshEvent
 import com.github.tvbox.osc.player.PlaybackSession
-import com.github.tvbox.osc.ui.player.PlayContainer
 import com.github.tvbox.osc.util.EpisodeTotals
 import com.github.tvbox.osc.util.HistoryHelper
 import com.github.tvbox.osc.util.HistoryWriter
@@ -32,8 +26,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -76,7 +73,16 @@ class DetailViewModel : ViewModel() {
     val toastEvent = MutableStateFlow<String?>(null)
     val finishEvent = MutableStateFlow(false)
 
-    var playContainerRef: PlayContainer? = null
+    /**
+     * 播放层下行指令(V2 起 VM 不再持 `PlayContainer` 引用)。
+     *
+     * 用带缓冲的 Channel 而非 SharedFlow:指令源可能是页面存活之前的调用
+     * (`DetailActivity.init` 里 `initFromIntent` → `applyTarget` 早于 `setContent`),
+     * 缓冲保证「先发后收」不丢,顺序即旧实现的直调顺序。指令本身都带自守卫
+     * (`stopForContentSwitch` 无归属内容时不动、清提示无在途换源时不动),晚到消费无副作用。
+     */
+    private val playbackCommandChannel = Channel<PlaybackCommand>(Channel.BUFFERED)
+    val playbackCommands: Flow<PlaybackCommand> = playbackCommandChannel.receiveAsFlow()
 
     var vodInfo: VodInfo? = null; private set
     var previewVodInfo: VodInfo? = null; private set
@@ -167,7 +173,8 @@ class DetailViewModel : ViewModel() {
         cancelInFlightContent()
         resetContentState()
         rebindDetailSource()
-        playContainerRef?.stopForContentSwitch()
+        sendCommand(PlaybackCommand.StopForContentSwitch)
+        sendCommand(PlaybackCommand.SetEpisodeSheetOpen(false))
         fromCollect = target.fromCollect
         vodName = target.title
         vodPicture = target.picture
@@ -217,8 +224,11 @@ class DetailViewModel : ViewModel() {
         sourceViewModel.detailResult.observeForever(detailObserver)
     }
 
-    fun setFullScreen(full: Boolean) {
-        if (full) {
+    /**
+     * 进/退全屏。设备事实由 UI 当帧传入(见 `DetailPlaybackFacts`),VM 不再读 View 状态。
+     */
+    fun onFullScreenToggleRequested(requested: Boolean, facts: DetailPlaybackFacts) {
+        if (requested) {
             val reason = DetailFullScreenGate.refusalReason(
                 pageState.value,
                 loadingText = { str(R.string.detail_content_not_ready) },
@@ -229,10 +239,15 @@ class DetailViewModel : ViewModel() {
                 return
             }
         }
-        val landNow = playContainerRef?.resources?.configuration?.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val landTarget = full && playContainerRef?.isPortraitVideo() != true
-        rotating.value = landTarget != landNow
+        val (full, rotating) = DetailPlaybackCommands.fullScreenState(requested, facts)
         fullScreen.value = full
+        this.rotating.value = rotating
+    }
+
+    /** 换片/换源时 UI 直接退回竖屏形态(不经决策:没有"进全屏"的成功判定要跑) */
+    fun exitFullScreen() {
+        fullScreen.value = false
+        rotating.value = false
     }
 
     fun bumpRevision() {
@@ -249,12 +264,15 @@ class DetailViewModel : ViewModel() {
         return pending
     }
 
+    /** 面板开合同时投影给播放底栏(冻结自动收起,见 `PlayerUiState.overlayPanelOpen`) */
     fun showEpisodeSheet() {
         episodeSheet.value = true
+        sendCommand(PlaybackCommand.SetEpisodeSheetOpen(true))
     }
 
     fun dismissEpisodeSheet() {
         episodeSheet.value = false
+        sendCommand(PlaybackCommand.SetEpisodeSheetOpen(false))
     }
 
     fun clearToast() {
@@ -522,7 +540,7 @@ class DetailViewModel : ViewModel() {
         if (switchSnapshot == null) {
             switchSnapshot = SwitchSnapshot(info, vodId, sourceKey, firstsourceKey, vodName, vodPicture)
         }
-        playContainerRef?.stopForSourceSwitch(str(R.string.detail_switching_source))
+        sendCommand(PlaybackCommand.StopForSourceSwitch(str(R.string.detail_switching_source)))
     }
 
     private fun rollbackManualSwitch(reason: String? = null): Boolean {
@@ -549,7 +567,7 @@ class DetailViewModel : ViewModel() {
     }
 
     private fun enterEmpty(msg: String? = null) {
-        playContainerRef?.clearSourceSwitchTip()
+        sendCommand(PlaybackCommand.ClearSourceSwitchTip)
         LOG.i("echo-detail-empty-state msg=$msg key=$sourceKey id=$vodId")
         pageState.value = PageState.Empty(msg)
     }
@@ -767,14 +785,29 @@ class DetailViewModel : ViewModel() {
         qualitySelected.value = 0
     }
 
-    fun onQualityClick(position: Int) {
+    /**
+     * 点击清晰度项。已选中项再点 = 请求进全屏(经同一道 `DetailFullScreenGate` 与旋转决策,
+     * 与旧实现 `setFullScreen(true)` 等价);换一项则下发指令,选中态等容器确认后回写。
+     *
+     * 事实随点击当帧传入,原因同 [onFullScreenToggleRequested]。
+     */
+    fun onQualityClick(position: Int, facts: DetailPlaybackFacts) {
         if (position == qualitySelected.value) {
-            setFullScreen(true)
+            onFullScreenToggleRequested(true, facts)
             return
         }
-        if (playContainerRef?.selectQuality(position) == true) {
-            qualitySelected.value = position
-        }
+        // 能否切取决于控制器当前清晰度表,不是 VM 能判定的:选中结果由容器经 onQualitySelectionAccepted 回写
+        sendCommand(PlaybackCommand.SelectQuality(position))
+    }
+
+    /** 容器侧确认清晰度切换已受理:这才是"选中态"该落地的时刻(旧实现读 `selectQuality` 的同步返回值) */
+    fun onQualitySelectionAccepted(position: Int) {
+        qualitySelected.value = position
+    }
+
+    /** 播放层下行指令:指令来自主线程事件(点击/回包),缓冲 Channel 的 trySend 不阻塞 */
+    private fun sendCommand(command: PlaybackCommand) {
+        playbackCommandChannel.trySend(command)
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)

@@ -153,6 +153,20 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         if (mController != null) mController.getUiState().setEpisodeSheetOpen(open);
     }
 
+    /**
+     * 清晰度切换结果回调。能否切只取决于控制器当前清晰度表(见 `PlaybackController.selectQuality`),
+     * 页面拿不到这个判定(V2 起详情页 VM 不再持容器引用)⇒ 由容器把结果回写页面状态。
+     */
+    public interface OnQualitySelectedListener {
+        void onQualitySelected(int position);
+    }
+
+    private OnQualitySelectedListener qualitySelectedListener;
+
+    public void setOnQualitySelectedListener(OnQualitySelectedListener listener) {
+        qualitySelectedListener = listener;
+    }
+
     private final PlaybackViewBridge viewBridge = new PlayContainerViewBridge(this);
 
     /** 控制器回调:切解码重播等复用路径要直接触发,故存字段 */
@@ -1109,7 +1123,10 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
 
     @Override
     public boolean selectQuality(int position) {
-        return scheduler.selectQuality(position);
+        boolean accepted = scheduler != null && scheduler.selectQuality(position);
+        // 主线程同步回调(切换链路只发起取流,不阻塞):与旧实现"用返回值同步判定选中态"等价
+        if (accepted && qualitySelectedListener != null) qualitySelectedListener.onQualitySelected(position);
+        return accepted;
     }
                 @Override
     public void setData(PlaybackSession session) {

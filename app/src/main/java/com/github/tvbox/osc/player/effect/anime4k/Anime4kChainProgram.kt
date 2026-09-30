@@ -12,7 +12,7 @@ import com.github.tvbox.osc.util.LOG
 
 internal class Anime4kChainProgram(
     private val context: Context,
-    private val tier: Anime4kTier,
+    private val tier: Anime4kTier?,
     hdr: Boolean,
 ) : BaseGlShaderProgram(false, 3) {
 
@@ -21,7 +21,7 @@ internal class Anime4kChainProgram(
     private var copyProgram: GlProgram? = null
     private var outputWidth = 0
     private var outputHeight = 0
-    private var failed = hdr
+    private var failed = hdr || tier == null
     private var firstFrameLogged = false
 
     override fun configure(inputWidth: Int, inputHeight: Int): Size {
@@ -31,7 +31,7 @@ internal class Anime4kChainProgram(
         outputHeight = inputHeight
         if (!failed) {
             try {
-                build(inputWidth, inputHeight)
+                build(requireNotNull(tier), inputWidth, inputHeight)
                 Anime4kStatus.onBuildSucceeded()
             } catch (e: Exception) {
                 failed = true
@@ -122,7 +122,7 @@ internal class Anime4kChainProgram(
         releaseGl()
     }
 
-    private fun build(inputWidth: Int, inputHeight: Int) {
+    private fun build(tier: Anime4kTier, inputWidth: Int, inputHeight: Int) {
         fun load(asset: String): List<Anime4kPass> = Anime4kShader.parse(
             context.assets.open(ANIME4K_ASSET_DIR + asset).bufferedReader().use { it.readText() },
         )
@@ -188,7 +188,7 @@ internal class Anime4kChainProgram(
         if (firstFrameLogged) return
         firstFrameLogged = true
         LOG.i(
-            "echo-anime4k draw: tier=${tier.name} passes=${passes.size}" +
+            "echo-anime4k draw: tier=${tier?.name ?: "off"} passes=${passes.size}" +
                 " out=${outputWidth}x$outputHeight" + if (failed) " (passthrough)" else "",
         )
     }

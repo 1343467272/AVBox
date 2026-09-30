@@ -40,7 +40,13 @@ object PictureEffects {
     private val colorTone = ColorToneAdjustEffect()
     private val detail = DetailAdjustEffect()
     private val anime4k = Anime4kEffect()
-    private val activeEffects: List<Effect> = listOf(colorTone, detail, anime4k)
+
+    /** 下发列表的两种形态:超分关闭时不下发它 —— media3 不消费 isNoOp,进了列表就一定会被实例化 */
+    private val listWithoutAnime4k: List<Effect> = listOf(colorTone, detail)
+    private val listWithAnime4k: List<Effect> = listOf(colorTone, detail, anime4k)
+
+    internal fun effectsFor(anime4kEnabled: Boolean): List<Effect> =
+        if (anime4kEnabled) listWithAnime4k else listWithoutAnime4k
 
     /** 当前在出画的内核实例(实时调参打给它) */
     private var current: WeakReference<ExoPlayer>? = null
@@ -154,7 +160,7 @@ object PictureEffects {
         // 链挂着 ⟺ 当前参数非恒等:关闭(参数回恒等)只表示"下次起播不再挂链",绝不下发空列表摘链
         val enabled = !profile.isNoOp || anime4kWanted
         openedThisSession = enabled
-        if (enabled) player.applyVideoEffects(activeEffects)
+        if (enabled) player.applyVideoEffects(effectsFor(anime4kWanted))
     }
 
     /** 内核释放:摘掉引用,后续调参只落库、等下次起播生效 */
@@ -234,6 +240,7 @@ object PictureEffects {
             return
         }
         if (!wanted()) return
-        player.applyVideoEffects(activeEffects)
+        // 本集列表形态跟 prepare 时记下的启用态:开启超分必走重播,这里不会遇到两者不一致
+        player.applyVideoEffects(effectsFor(anime4kOpened))
     }
 }

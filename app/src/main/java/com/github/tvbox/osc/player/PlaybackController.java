@@ -41,7 +41,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import xyz.doikki.videoplayer.player.AbstractPlayer;
 import xyz.doikki.videoplayer.player.VideoView;
 
 /**
@@ -421,6 +420,109 @@ public class PlaybackController {
         }
     });
 
+    /** 重试与换线策略(见 PlaybackRetryDelegate) */
+    private final PlaybackRetryDelegate retry = new PlaybackRetryDelegate(new PlaybackRetryDelegate.Host() {
+        @Override
+        public PlaybackAttemptState attemptState() {
+            return st;
+        }
+
+        @Override
+        public PlaybackViewBridge view() {
+            return PlaybackController.this.view;
+        }
+
+        @Override
+        public JSONObject playerCfg() {
+            return PlaybackController.this.playerCfg;
+        }
+
+        @Override
+        public VodInfo vod() {
+            return PlaybackController.this.vod;
+        }
+
+        @Override
+        public VodInfo.VodSeries currentSeries(String flag, int index) {
+            return PlaybackController.this.currentSeries(flag, index);
+        }
+
+        @Override
+        public String progressKey() {
+            return PlaybackController.this.progressKey;
+        }
+
+        @Override
+        public long getSavedProgress(String url) {
+            return PlaybackController.this.getSavedProgress(url);
+        }
+
+        @Override
+        public void inheritProgressFrom(String key, long position) {
+            PlaybackController.this.inheritProgressFrom(key, position);
+        }
+
+        @Override
+        public String webPlayUrl() {
+            return PlaybackController.this.webPlayUrl;
+        }
+
+        @Override
+        public HashMap<String, String> webHeaderMap() {
+            return PlaybackController.this.webHeaderMap;
+        }
+
+        @Override
+        public boolean resolverHasFoundUrls() {
+            return resolver.hasFoundUrls();
+        }
+
+        @Override
+        public void resolverConsumeFoundUrl() {
+            resolver.consumeFoundUrl();
+        }
+
+        @Override
+        public void play(boolean reset) {
+            PlaybackController.this.play(reset);
+        }
+
+        @Override
+        public void playUrl(String url, HashMap<String, String> headers) {
+            PlaybackController.this.playUrl(url, headers);
+        }
+
+        @Override
+        public void stopParse() {
+            PlaybackController.this.stopParse();
+        }
+
+        @Override
+        public void initParseLoadFound() {
+            PlaybackController.this.initParseLoadFound();
+        }
+
+        @Override
+        public void cancelPlayRequest() {
+            fetch.cancelPlayRequest();
+        }
+
+        @Override
+        public void cancelPlayTimeout() {
+            PlaybackController.this.cancelPlayTimeout();
+        }
+
+        @Override
+        public boolean isPlaybackStarted() {
+            return PlaybackController.this.isPlaybackStarted();
+        }
+
+        @Override
+        public void stopMusicSessionForFailedPlayback() {
+            music.stopMusicSessionForFailedPlayback();
+        }
+    });
+
     /** 解析/嗅探调度(见 PlayUrlResolver) */
     private final PlayUrlResolver resolver = new PlayUrlResolver(new PlayUrlResolver.Host() {
         @Override
@@ -602,321 +704,37 @@ public class PlaybackController {
     }
 
     // -------------------- 重试与换线 --------------------
+    // 实现见 PlaybackRetryDelegate
 
-    /** 自动重试回滚:把"自动切成别的内核"还原成用户配置(只改内存态 + 通知 UI) */
-    private void restoreAutoSwitchedPlayer() {
-        if (st.autoSwitchedPlayerType < 0) return;
-        st.releasePlayerOnSwitch = true;
-        try {
-            LOG.i("echo-autoRetry restore player: " + playerCfg().optInt("pl", -1) + " -> " + st.autoSwitchedPlayerType);
-            playerCfg().put("pl", st.autoSwitchedPlayerType);
-            if (view != null) view.applyPlayerConfig(playerCfg());
-        } catch (Throwable th) {
-            LOG.e("PlaybackController", th);
-        } finally {
-            st.autoSwitchedPlayerType = -1;
-        }
-    }
-
-    /**
-     * 自动切"硬解→软解"的回滚(与 restoreAutoSwitchedPlayer 同语义):把 cfg.exo 还原成用户设置的值(只改内存)。
-     *
-     * <p>⚠️ 判定只看 {@code autoSwitchedDecodeOld}(确有"自动软解"可回滚),**不能**看
-     * {@code hasAutoSwitchedDecode} —— 后者同时兼任"用户显式选过解码 ⇒ 本次播放不再自动回退"的**阻断标记**
-     * (见 {@link #setAllowDecodeFallback(boolean)},此时 autoSwitchedDecodeOld 为 null);按它判定会在
-     * 换线/超时等失败路径上把用户的阻断一并清掉,此后自动软解又会把用户显式选的硬解顶掉。
-     */
-    private void restoreAutoSwitchedDecode() {
-        if (st.autoSwitchedDecodeOld == null) return;
-        st.hasAutoSwitchedDecode = false;
-        try {
-            if (playerCfg != null) {
-                LOG.i("echo-autoRetry restore decode: " + playerCfg.optString(st.autoSwitchedDecodeKey, "") + " -> " + st.autoSwitchedDecodeOld);
-                playerCfg.put(st.autoSwitchedDecodeKey, st.autoSwitchedDecodeOld);
-                // 与 restoreAutoSwitchedPlayer 同款:同步覆盖层 UI(解码按钮文案/状态读的是 cfg)
-                if (view != null) view.applyPlayerConfig(playerCfg);
-            }
-        } catch (Throwable th) {
-            LOG.e("PlaybackController", th);
-        } finally {
-            st.autoSwitchedDecodeOld = null;
-        }
-    }
-
-    private int exoLastErrorKind() {
-        try {
-            AbstractPlayer live = (view == null) ? null : view.mediaPlayer();
-            if (live instanceof ExoPlayer) return ((ExoPlayer) live).lastErrorKind();
-        } catch (Throwable ignored) {
-            LOG.d("PlaybackController", "exo error kind probe failed");
-        }
-        return ExoPlayer.ERROR_KIND_UNKNOWN;
-    }
-
-    /**
-     * 起播失败的"硬解→软解"回退(每次播放最多触发一次,软解态在本次会话内持续)。
-     *
-     * <p>为什么必须做在**内核内部**而不是靠阶梯里的"换线路":设备硬解不了的格式(HEVC 10bit/高 profile、
-     * 老设备 AV1 等)最有效的兜底是软解 —— EXO 走系统软件解码器(c2.android.*),命中率远高于换一路硬解源。
-     *
-     * <p>改动的是 {@code cfg.exo}(由 PlayerHelper 下发到 media3 的视频解码选择器,
-     * 见 ExoPlayer.EXO_VIDEO_CODEC_SELECTOR)。
-     *
-     * <p>只改本次会话的内存配置({@code playerCfg}),**不落播放记录**
-     * (落库侧由 {@link #playerCfgForPersist()} 兜底剔除),换线时由 {@link #restoreAutoSwitchedDecode()} 回滚,
-     * 用户显式点解码按钮时由 {@link #setAllowDecodeFallback(boolean)} 作废。换集不还原(会话内持续用软解),
-     * 但阻断标记会随 {@link #beginNewPlay()} 复位,即新一集仍可获得一次回退机会。
-     */
-    private boolean trySoftDecodeFallback() {
-        if (st.hasAutoSwitchedDecode || playerCfg == null) return false;
-        // 外部播放器(pl 10~14)没有内核内软解路径,不适用
-        if (playerCfg.optInt("pl", 2) >= 10) return false;
-        final String decodeKey = "exo";
-        if (!"硬解码".equals(playerCfg.optString(decodeKey, ""))) return false; // i18n: keep —— 已经是软解,不再回退
-        if (TextUtils.isEmpty(webPlayUrl)) return false;                      // 没拿到可播地址(解析/嗅探失败)不适用
-        String oldDecode = playerCfg.optString(decodeKey, "");
-        try {
-            playerCfg.put(decodeKey, "软解码"); // i18n: keep
-        } catch (Throwable th) {
-            return false;
-        }
-        LOG.i("echo-autoRetry hard->soft decode: " + webPlayUrl);
-        st.autoSwitchedDecodeOld = oldDecode;
-        st.autoSwitchedDecodeKey = decodeKey;
-        st.hasAutoSwitchedDecode = true;
-        // 覆盖层"解码"按钮的文案读的是 cfg,这里同步一次(与自动切内核一致,见 restoreAutoSwitchedPlayer)
-        if (view != null) view.applyPlayerConfig(playerCfg);
-        stopParse();
-        initParseLoadFound();
-        if (view != null && view.isPageAlive()) {
-            final PlaybackViewBridge aliveView = view;
-            view.runOnUi(() -> aliveView.toast(str(R.string.player_decode_fallback_tip)));
-        }
-        if (view != null) view.releasePlayer();
-        if (view != null) playUrl(webPlayUrl, webHeaderMap);
-        return true;
-    }
-
-    /**
-     * 起播后(已 PREPARED/PLAYING 过)报错的兜底:此前 errorWithRetry 对这类错误静默吞掉 ——
-     * 无提示、不重试,表现为"黑屏死在那"(源上游不稳,播放中重拉 m3u8
-     * 播放列表拿到网关 HTML 错误页)。这里自动"同内核同地址重播"一次;已试过或无可播地址时
-     * 返回 false,由页面给可见提示。
-     *
-     * <p>复位点:{@link #beginNewPlay()}(换集/换线/换源)与 {@link #resetAutoRetryState()}
-     * (手动重播/切内核/切解码/换解析)—— 用户的主动自救动作之后允许再兜一次底。
-     */
     public boolean retryAfterStartedError() {
-        if (st.hasRetriedAfterStart) return false;
-        if (TextUtils.isEmpty(webPlayUrl)) return false;
-        st.hasRetriedAfterStart = true;
-        st.hasRetriedSameUrlOnBoot = true;
-        LOG.i("echo-autoRetry retry after started error: " + webPlayUrl);
-        if (view != null && view.isPageAlive()) {
-            final PlaybackViewBridge aliveView = view;
-            view.runOnUi(() -> aliveView.toast(str(R.string.player_play_error_retry)));
-        }
-        stopParse();
-        initParseLoadFound();
-        // 复位"已起播"标记:重播若在起播前就再次失败,后续 errorWithRetry 应走 autoRetry 阶梯
-        // (切内核/换线)而不是再次落入 started=true 的兜底分支(与 PlayContainer.replay 的复位一致)
-        st.playbackStarted = false;
-        if (view != null) view.releasePlayer();
-        if (view != null) playUrl(webPlayUrl, webHeaderMap);
-        return true;
-    }
-
-    /**
-     * 自动重试(播放出错/超时后):依次尝试 ①嗅探到的新地址 ②原样重播当前地址(每轮一次,吸收网络/源抖动)
-     * ③硬解→软解重播当前地址(每次播放一次;EXO 明确报网络/容器解析类错误时跳过)
-     * ④切换播放内核重播当前地址 ⑤下一条线路。
-     *
-     * @return true = 已发起重试;false = 无路可走(调用方负责提示与收尾)
-     */
-    /**
-     * 命中预解析缓存的起播失败兜底(直链可能已过期):丢弃该结果并立即重新取流同集一次。
-     * 没有这一步会先走重播/换线阶梯(含 20s 起播超时),比不预解析更慢。
-     */
-    private boolean retryWithFreshResolve(String reason) {
-        if (!st.usedPreloadedResult) return false;
-        st.usedPreloadedResult = false;
-        LOG.i("echo-preload-stale: re-resolve current episode (" + reason + ")");
-        st.playbackStarted = false;
-        stopParse();
-        initParseLoadFound();
-        if (view != null) view.releasePlayer();
-        play(false);
-        return true;
+        return retry.retryAfterStartedError();
     }
 
     public boolean autoRetry() {
-        if (retryWithFreshResolve("autoRetry")) return true;
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - st.lastRetryTime > 60_000) {
-            LOG.i("echo-reset-autoRetryCount");
-            st.resetAutoRetryLadder();
-        }
-        st.lastRetryTime = currentTime;
-        // ConcurrentLinkedQueue.size() 是 O(n) 遍历且弱一致(并发 add 时可能读到 0);isEmpty() 为 O(1) 且更准确
-        if (resolver.hasFoundUrls()) {
-            resolver.consumeFoundUrl();
-            return true;
-        }
-        int exoErrorKind = exoLastErrorKind();
-        if (exoErrorKind != ExoPlayer.ERROR_KIND_DECODE
-                && !st.hasRetriedSameUrlOnBoot && !TextUtils.isEmpty(webPlayUrl)) {
-            st.hasRetriedSameUrlOnBoot = true;
-            LOG.i("echo-autoRetry replay same url before decode fallback: " + webPlayUrl);
-            stopParse();
-            initParseLoadFound();
-            if (view != null) view.releasePlayer();
-            if (view != null) playUrl(webPlayUrl, webHeaderMap);
-            return true;
-        }
-        // ③ 硬解→软解:解码类起播失败覆盖面最广的兜底,排在换内核之前(先保住用户选的内核)
-        if (exoErrorKind != ExoPlayer.ERROR_KIND_NETWORK && trySoftDecodeFallback()) return true;
-        if (webPlayUrl != null) {
-            if (st.allowSwitchPlayer && !st.hasAutoSwitchedPlayer) {
-                LOG.i("echo-autoRetry switch player and replay current url");
-                int playerType = playerCfg().optInt("pl", -1);
-                boolean switchSkipped = view != null && view.switchPlayerKernel();
-                st.hasAutoSwitchedPlayer = true;
-                st.allowSwitchPlayer = false;
-                if (!switchSkipped) {
-                    st.autoSwitchedPlayerType = playerType;
-                    stopParse();
-                    initParseLoadFound();
-                    if (view != null) view.releasePlayer();
-                    if (view != null) playUrl(webPlayUrl, webHeaderMap);
-                    return true;
-                }
-            }
-            LOG.i("echo-autoRetry current url failed after player switch, try next line");
-            return tryNextLineIfEnabled();
-        }
-        return tryNextLineIfEnabled();
+        return retry.autoRetry();
     }
 
-    /** 自动换线开关判断(已在尝试换线时先回滚内核与解码方式) */
     public boolean tryNextLineIfEnabled() {
-        restoreAutoSwitchedPlayer();
-        restoreAutoSwitchedDecode();
-        if (st.allowAutoSwitchLine && KV.get(HawkConfig.AUTO_SWITCH_LINE, false)) return tryNextLine();
-        LOG.i("echo-autoRetry line switching disabled");
-        st.resetAutoRetryLadder();
-        return false;
+        return retry.tryNextLineIfEnabled();
     }
 
-    /** 切到"下一条未尝试过且有剧集"的线路,集号按集名匹配(换线不换集) */
     public boolean tryNextLine() {
-        if (vod() == null || vod().seriesMap == null || vod().seriesMap.isEmpty()) {
-            st.linesExhausted();
-            return false;
-        }
-        String currentFlag = vod().playFlag;
-        int currentIndex = Math.max(vod().playIndex, 0);
-        VodInfo.VodSeries currentSeries = currentSeries(currentFlag, currentIndex);
-        if (!TextUtils.isEmpty(currentFlag)) {
-            st.triedLineFlags.add(currentFlag);
-        }
-        List<String> lineFlags = EpisodeMatcher.lineFlagsInDisplayOrder(vod());
-        int currentLineIndex = EpisodeMatcher.lineFlagIndex(lineFlags, currentFlag);
-        int startLineIndex = currentLineIndex >= 0 ? currentLineIndex + 1 : 0;
-        String nextFlag = null;
-        int nextIndex = 0;
-        for (int i = startLineIndex; i < lineFlags.size(); i++) {
-            String flag = lineFlags.get(i);
-            List<VodInfo.VodSeries> seriesList = vod().seriesMap.get(flag);
-            if (!st.triedLineFlags.contains(flag) && seriesList != null && !seriesList.isEmpty()) {
-                nextFlag = flag;
-                nextIndex = EpisodeMatcher.sameEpisodeIndex(currentSeries, seriesList, currentIndex);
-                break;
-            }
-        }
-        if (nextFlag == null) {
-            LOG.i("echo-autoRetry all lines exhausted");
-            st.linesExhausted();
-            return view != null && view.onLinesExhausted();
-        }
-        final String flagToSwitch = nextFlag;
-        final String preProgressKey = progressKey();
-        final long savedProgress = TextUtils.isEmpty(preProgressKey) ? 0 : getSavedProgress(preProgressKey);
-        final long preProgress = Math.max(savedProgress, view == null ? 0 : view.currentPosition());
-        LOG.i("echo-autoRetry switch line: " + vod().playFlag + " -> " + flagToSwitch);
-        if (view != null && view.isPageAlive()) {
-            view.runOnUi(() -> view.toast(str(R.string.player_switch_line, flagToSwitch)));
-        }
-        vod().playFlag = flagToSwitch;
-        vod().playIndex = nextIndex;
-        st.onLineSwitched();
-        inheritProgressFrom(preProgressKey, preProgress);
-        play(false);
-        return true;
+        return retry.tryNextLine();
     }
-
-    // -------------------- 超时/失败处理 --------------------
 
     public void handleResolvePlayUrlTimeout() {
-        if (retryWithFreshResolve("resolveTimeout")) return;
-        LOG.i("echo-resolvePlayUrl timeout, try next line");
-        fetch.cancelPlayRequest();
-        stopParse();
-        if (st.userPickedLine) {
-            st.userPickedLine = false;
-            stopMusicSessionForFailedPlayback();
-            showErrorTip(str(R.string.player_get_url_timeout));
-            return;
-        }
-        if (!tryNextLineIfEnabled()) {
-            stopMusicSessionForFailedPlayback();
-            showErrorTip(str(R.string.player_get_url_timeout));
-        }
+        retry.handleResolvePlayUrlTimeout();
     }
 
     public void handleResolvePlayUrlFailed(String err) {
-        LOG.i("echo-resolvePlayUrl failed, try next line: " + err);
-        fetch.cancelPlayRequest();
-        stopParse();
-        if (st.userPickedLine) {
-            st.userPickedLine = false;
-            cancelPlayTimeout();
-            stopMusicSessionForFailedPlayback();
-            showErrorTip(err);
-            return;
-        }
-        if (tryNextLineIfEnabled()) return;
-        cancelPlayTimeout();
-        stopMusicSessionForFailedPlayback();
-        showErrorTip(err);
+        retry.handleResolvePlayUrlFailed(err);
     }
 
     public void handleSwitchLinePlayTimeout() {
-        int state = view == null ? -1 : view.currentPlayState();
-        LOG.i("echo-switchLinePlay timeout state: " + state + ", started: " + st.playbackStarted);
-        if (isPlaybackStarted()) {
-            cancelPlayTimeout();
-            if (view != null) view.hideTipOnUiThread();
-            return;
-        }
-        LOG.i("echo-switchLinePlay timeout, try next line");
-        stopParse();
-        if (st.hasAutoSwitchedPlayer) {
-            if (!tryNextLineIfEnabled()) {
-                stopMusicSessionForFailedPlayback();
-                showErrorTip(str(R.string.player_play_timeout));
-            }
-            return;
-        }
-        if (!autoRetry()) {
-            stopMusicSessionForFailedPlayback();
-            showErrorTip(str(R.string.player_play_timeout));
-        }
+        retry.handleSwitchLinePlayTimeout();
     }
 
 
-    private void showErrorTip(String err) {
-        if (view != null) view.showTip(err, false, true);
-    }
 
     // ==================== 取流状态与结果观察者 ====================
 
@@ -1324,9 +1142,6 @@ public class PlaybackController {
         }
     }
 
-    // ==================== 预载调度 ====================
-    // 目标评估时机(正片稳定/缓冲让路/缓冲结束补枪)、结果取用与冷却期都在 PreloadCoordinator;
-    // 调度层负责"何时喂快照、何时取结果、何时作废",页面只提供快照(需上下文与真实内核实例)与 Toast。
 
     private final PlaybackPreload preload = new PlaybackPreload(new PlaybackPreload.Host() {
         @Override
@@ -1374,9 +1189,6 @@ public class PlaybackController {
     public void destroyPreload() {
         preload.destroy();
     }
-
-    // ==================== 音乐会话/媒体通知 ====================
-    // 会话/通知状态机、封面兜底与清晰度切换见 MusicSessionDelegate
 
     private final MusicSessionDelegate music = new MusicSessionDelegate(new MusicSessionDelegate.Host() {
         @Override
@@ -1453,19 +1265,6 @@ public class PlaybackController {
         music.setPlayDanmu(danmu);
     }
 
-    /**
-     * 页面退出(返回上一级 / 回首页)的统一收尾:**"退页面即停"**(与 fongmi 默认语义一致)。
-     *
-     * <p>停播本身由引擎做(并且**保留播放器实例**,不 release,以保住"跨页不重建内核"的收益);
-     * 这里负责把"还在跑的东西"收干净:撤在途取流与三处超时、清会话标记、停媒体会话(撤通知 + 放 wake/wifi 锁)。
-     * 不做这些的话:退出页面后取流仍会继续并在后台起播(没声音才怪)、通知也不会消失。
-     */
-    /**
-     * 撤掉所有在途动作:三处超时 + 取流请求 + 解析/嗅探(WebView 保留复用,销毁留给引擎释放)。
-     *
-     * <p>这是"共享调度层"唯一的在途收口,由**会话边界**({@link #startSession})与**停播**
-     * ({@link #stopPlaybackForPageExit})共同调用 —— 页面销毁不再直接碰它(架构评审第 3 项)。
-     */
     public void cancelInFlight() {
         cancelPlayTimeout();
         cancelSwitchLinePlayTimeout();

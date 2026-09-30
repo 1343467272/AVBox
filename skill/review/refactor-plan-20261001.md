@@ -1,6 +1,6 @@
 ---
 name: AVBox 渐进式重构 Spec（VM 归一与上帝类收尾专项）
-status: 执行中（2026-10-01：V1–V5 已全部落地并过两轮复核【V5 含 1 处阻断级构造期 NPE 修复】；V1–V5 均待真机走查；D1/D2/D3/V6 已拍板；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
+status: 执行中（2026-10-01：V1–V5 已全部落地并过两轮复核【V5 含 1 处阻断级构造期 NPE 修复】；**V5b 继续拆分已落地（主类 1806→1339，+3 协作者）**；均待真机走查；D1/D2/D3/V6 已拍板；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
 source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveData/StateFlow 各半、viewmodel/ 名不副实）② 上帝类残留（PlaybackController / ComposeVideoController / PlayContainer / ApiConfig）③ VM 持 View 与 static 可变缓存 ④ 业务逻辑写进 Composable。审查结论：四问题全部属实（数字 ±5% 出入见 §2）
 ---
 
@@ -34,7 +34,7 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 | `observeForever` 手动配对 | **9 处 / 5 文件** | `DetailViewModel`(131/217)、`HomeViewModel`(110–112/393，持 3+1 实例)、`PartitionListViewModel`(51/66 两实例)、`SearchViewModel`(302)、`PlaybackController`(1039) |
 | `viewmodel/` 包 | 11 文件 | 真正的 ViewModel 仅 2 个（`SourceViewModel`/`SubtitleViewModel`），其余 9 个为 Loader/Resolver/Helper/Parser |
 
-> **V5 落地后（2026-10-01）**：`PlaybackController` **1806 行**（超时/预载/取流观察三簇拆出）、`PlayContainer` **1337 行**（音轨选择拆出）、`ComposeVideoController` **1214 行**（手势拆出）；新增 5 个协作者与逐簇结论见 V5 节。
+> **V5/V5b 落地后（2026-10-01）**：`PlaybackController` **1339 行**（V5 拆超时/预载/取流观察，V5b 续拆音乐会话/播放器配置/重试换线）、`PlayContainer` **1337 行**（音轨选择拆出）、`ComposeVideoController` **1214 行**（手势拆出）；共 8 个协作者，逐簇结论见 V5 节。
 
 # 3. 问题清单（映射用户提法 → 根因）
 
@@ -255,6 +255,19 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - 【中｜既有文档】`avbox-mobile-ui-spec.md` 播放容器一节写"`SourceViewModel` 由容器直接持有"，代码里容器只用 `SubtitleViewModel`（`mActivity` 作 ViewModelStoreOwner 就地取用）——已修。
 - 【低｜既有，登记不修】`PlaybackFetch.handlePlayResult` 约 105 行（即原匿名 Observer 主体，触 `avbox-code-review-spec.md` 的"方法 >100 行"阈值；本次按"只搬位置"未拆，若要拆另立）；`PlaybackTimeouts` 里"与既有 mHandler 的三条定时消息拆开"沿原文搬运（含过程叙事，按同批"注释精简"惯例处理）。
 - 【信息】无新增包级环（`PlaybackFetch`↔`PlaybackController` 为同包类级双向，`GestureController` 同包单向）；`history/` 不补条目 —— V1–V5 的过程记录归 `skill/review/refactor-plan-20261001.md`，符合文档地图对 `skill/review/` 的定义（活规范已同步的只有手势节与 i18n 附录注记）。
+
+**V5b（继续拆分到 ~1300 行，2026-10-01 同日追加）**：用户要求主类继续压到 1300 行左右，新增 3 个协作者（各一笔 commit，同样逐簇归一化比对 + 构建 + 单测）：
+
+| commit | 簇 | 交付 |
+| --- | --- | --- |
+| `40afd50` | 音乐会话/媒体通知 | `player/MusicSessionDelegate.java`：会话/通知状态机、纯音频判定与封面兜底、清晰度切换；主类留 13 个转发 |
+| `cf5a28a` | 播放器配置 | `player/PlaybackConfigDelegate.java`：会话起始补全、落库快照剔自动容错态、换集解码刷新、自动态开关 |
+| `b65d5a1` | 重试与换线 | `player/PlaybackRetryDelegate.java`：同址重播、硬→软解回退、自动换内核、下一条线路、取流超时/失败/换线超时三入口 |
+
+- 主类行数：**1806 → 1339**（V5 五笔 -187；V5b 三笔 -280）。每笔 `assembleDebug` + `testDebugUnitTest` 全绿（468 例）。
+- 归一化比对 missing 全为登记的预期转换：局部变量化（`playerCfg`→`cfg`、`view`/`vod` 入口一次读）、可见性（`private`→包级）、javadoc `{@link #x}`→`{@code x}`（跨类引用失效）、一处区头删除。
+- 语义等价改写（登记）：`restoreAutoSwitchedDecode`/`trySoftDecodeFallback`/`autoRetry`/`tryNextLine` 等把"字段多次读"归一为"入口一次局部读"；`initPlayerCfg` 改为"局部 cfg 构建完再 `setPlayerCfg`"（原实现"先换引用再逐条填"，最终状态一致；差异仅在构造窗口内被其它线程读到旧对象 —— 主线程独占，不可达）。
+- 仍留主类（理由不变）：`webPlayUrl`/`webHeaderMap`/`webUserAgent` 三字段、进度键与 `progressOwner`、投屏地址改写、解析门面转发。若还要更低（<1300）：可把 header 工具三方法搬进 `PlayerHelper`（约 -20）与投屏地址改写独立（约 -25），边际收益已低。
 
 **原设计记录（本次执行按上述落地）**：
 

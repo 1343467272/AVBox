@@ -112,6 +112,7 @@ fun SettingsOptionMenuRow(
     subtitle: String? = null,
     valueText: String? = null,
     iconRes: Int? = null,
+    leadingIconRes: Int? = null,
     enabled: Boolean = true,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -122,6 +123,7 @@ fun SettingsOptionMenuRow(
             valueText = valueText,
             enabled = enabled,
             iconRes = iconRes,
+            leadingIconRes = leadingIconRes,
             onClick = if (enabled) ({ expanded = true }) else null,
         )
         Box(modifier = Modifier.align(Alignment.BottomEnd)) {

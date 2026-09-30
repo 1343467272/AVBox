@@ -79,6 +79,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                     val playerTypes = PlayerHelper.getExistPlayerTypes().sortedDescending()
                     SettingsOptionMenuRow(
                         title = stringResource(R.string.settings_play_kernel),
+                        leadingIconRes = R.drawable.ic_play_kernel,
                         valueText = PlayerHelper.getPlayerName(state.playType),
                         options = playerTypes.map { PlayerHelper.getPlayerName(it) },
                         selectedIndex = playerTypes.indexOf(state.playType).coerceAtLeast(0),
@@ -88,6 +89,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsOptionMenuRow(
                         title = stringResource(R.string.settings_play_render),
+                        leadingIconRes = R.drawable.ic_play_render,
                         valueText = PlayerHelper.getRenderName(state.playRender),
                         options = listOf("SurfaceView", "TextureView"),
                         selectedIndex = 1 - state.playRender,
@@ -109,6 +111,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                     )
                     SettingsOptionMenuRow(
                         title = stringResource(R.string.settings_play_scale),
+                        leadingIconRes = R.drawable.ic_play_scale,
                         valueText = PlayerHelper.getScaleName(state.playScale),
                         options = scales.map { it.second },
                         selectedIndex = scales.indexOfFirst { it.first == state.playScale },
@@ -125,6 +128,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                     )
                     SettingsOptionMenuRow(
                         title = stringResource(R.string.settings_play_decode),
+                        leadingIconRes = R.drawable.ic_play_decode,
                         valueText = when (codec) {
                             DecodeSoft -> decodeLabels[1]
                             DecodeHard -> decodeLabels[0]
@@ -142,6 +146,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                     val selected = tiers.indexOf(state.anime4kTier).coerceAtLeast(0)
                     SettingsOptionMenuRow(
                         title = stringResource(R.string.settings_play_anime4k),
+                        leadingIconRes = R.drawable.ic_play_anime4k,
                         subtitle = stringResource(R.string.settings_play_anime4k_subtitle),
                         valueText = labels[selected],
                         enabled = state.playType == 2,
@@ -158,6 +163,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                 SettingsCard(SettingsCardPosition.FIRST) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_play_kernel_prewarm),
+                        leadingIconRes = R.drawable.ic_play_prewarm,
                         subtitle = stringResource(R.string.settings_play_kernel_prewarm_subtitle),
                         checked = state.kernelPrewarm,
                         onCheckedChange = { checked ->
@@ -173,6 +179,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_play_tunnel),
+                        leadingIconRes = R.drawable.ic_play_tunnel,
                         checked = state.playTunnel,
                         onCheckedChange = { checked ->
                             if (checked && state.playRender != 1) vm.put(HawkConfig.PLAY_RENDER, 1)
@@ -183,6 +190,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_play_prefer_aac),
+                        leadingIconRes = R.drawable.ic_play_aac,
                         checked = state.preferAac,
                         onCheckedChange = { vm.put(HawkConfig.PLAY_PREFER_AAC, it) },
                     )
@@ -190,6 +198,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                 SettingsCard(SettingsCardPosition.LAST) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_music_page),
+                        leadingIconRes = R.drawable.ic_music_page,
                         subtitle = stringResource(R.string.settings_music_page_subtitle),
                         checked = state.musicPlayerPage,
                         onCheckedChange = {
@@ -206,6 +215,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                 SettingsCard(SettingsCardPosition.FIRST) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.preload_next_episode),
+                        leadingIconRes = R.drawable.ic_preload_next,
                         subtitle = stringResource(R.string.preload_next_episode_subtitle),
                         checked = state.preloadNextEpisode,
                         onCheckedChange = { vm.put(HawkConfig.PRELOAD_NEXT_EPISODE, it) },
@@ -214,6 +224,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSliderRow(
                         title = stringResource(R.string.preload_duration),
+                        leadingIconRes = R.drawable.ic_preload_duration,
                         value = sliderPreloadDuration.toFloat(),
                         valueText = "${sliderPreloadDuration}s",
                         valueRange = 20f..120f,
@@ -229,6 +240,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.preload_play_cache),
+                        leadingIconRes = R.drawable.ic_play_cache,
                         subtitle = stringResource(R.string.preload_play_cache_subtitle),
                         checked = state.playCache,
                         onCheckedChange = { vm.put(HawkConfig.PLAY_CACHE, it) },
@@ -237,6 +249,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                 SettingsCard(SettingsCardPosition.LAST) {
                     SettingsSliderRow(
                         title = stringResource(R.string.preload_cache_size),
+                        leadingIconRes = R.drawable.ic_cache_size,
                         value = sliderCacheSize.toFloat(),
                         valueText = if (sliderCacheSize >= 1024) "%.1fGB".format(sliderCacheSize / 1024f) else "${sliderCacheSize}MB",
                         valueRange = 128f..4096f,

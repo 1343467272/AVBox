@@ -36,6 +36,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.github.tvbox.osc.ui.theme.cardContainer
 
+private val RowLeadingIconSize = 24.dp
+
+private val RowLeadingIconGap = 16.dp
+
 enum class SettingsCardPosition {
     SINGLE,
     FIRST,
@@ -97,6 +101,7 @@ fun SettingsRow(
     valueText: String? = null,
     enabled: Boolean = true,
     iconRes: Int? = null,
+    leadingIconRes: Int? = null,
     onClick: (() -> Unit)? = null,
 ) {
     Row(
@@ -113,6 +118,7 @@ fun SettingsRow(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        leadingIconRes?.let { RowLeadingIcon(it, enabled) }
         if (iconRes != null) {
             SettingsIconBadge(iconRes, title)
             Spacer(Modifier.width(16.dp))
@@ -164,6 +170,7 @@ fun SettingsSliderRow(
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
     steps: Int = 0,
     valueText: String? = null,
+    leadingIconRes: Int? = null,
 ) {
     Column(
         modifier = modifier
@@ -176,6 +183,7 @@ fun SettingsSliderRow(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            leadingIconRes?.let { RowLeadingIcon(it, enabled = true) }
             RowTitle(title = title, enabled = true, modifier = Modifier.weight(1f))
             if (valueText != null) {
                 Spacer(Modifier.width(16.dp))
@@ -214,6 +222,7 @@ fun SettingsSwitchRow(
     subtitle: String? = null,
     valueText: String? = null,
     enabled: Boolean = true,
+    leadingIconRes: Int? = null,
 ) {
     Row(
         modifier = modifier
@@ -229,6 +238,7 @@ fun SettingsSwitchRow(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        leadingIconRes?.let { RowLeadingIcon(it, enabled) }
         Column(modifier = Modifier.weight(1f)) {
             RowTitle(title = title, enabled = enabled)
             if (subtitle != null) {
@@ -272,6 +282,17 @@ fun SettingsOptionRow(
         trailing?.invoke()
         RadioButton(selected = selected, onClick = null)
     }
+}
+
+@Composable
+internal fun RowLeadingIcon(@DrawableRes iconRes: Int, enabled: Boolean) {
+    Icon(
+        painter = painterResource(iconRes),
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f),
+        modifier = Modifier.size(RowLeadingIconSize),
+    )
+    Spacer(Modifier.width(RowLeadingIconGap))
 }
 
 @Composable

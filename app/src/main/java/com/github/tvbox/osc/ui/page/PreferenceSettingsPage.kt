@@ -95,6 +95,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.FIRST) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_history_merge),
+                        leadingIconRes = R.drawable.ic_pref_history_merge,
                         checked = state.historyMerge,
                         onCheckedChange = {
                             HistoryMerge.setEnabled(it)
@@ -106,6 +107,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_incognito),
+                        leadingIconRes = R.drawable.ic_pref_incognito,
                         checked = state.incognito,
                         onCheckedChange = {
                             vm.put(HawkConfig.INCOGNITO, it)
@@ -117,6 +119,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_gesture_disable),
+                        leadingIconRes = R.drawable.ic_pref_gesture,
                         subtitle = stringResource(R.string.settings_gesture_disable_subtitle),
                         checked = state.gestureControlDisabled,
                         onCheckedChange = { vm.put(HawkConfig.GESTURE_CONTROL_DISABLED, it) },
@@ -125,6 +128,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_nav_animation_disable),
+                        leadingIconRes = R.drawable.ic_pref_nav_animation,
                         subtitle = stringResource(R.string.settings_nav_animation_disable_subtitle),
                         checked = state.navAnimationDisabled,
                         onCheckedChange = { vm.put(HawkConfig.NAV_ANIMATION_DISABLED, it) },
@@ -133,6 +137,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.LAST) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_nav_live_hidden),
+                        leadingIconRes = R.drawable.ic_pref_nav_live_hidden,
                         subtitle = stringResource(R.string.settings_nav_live_hidden_subtitle),
                         checked = state.navLiveHidden,
                         onCheckedChange = { vm.put(HawkConfig.NAV_LIVE_HIDDEN, it) },
@@ -146,6 +151,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.FIRST) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_auto_switch_line),
+                        leadingIconRes = R.drawable.ic_pref_auto_switch_line,
                         checked = state.autoSwitchLine,
                         onCheckedChange = { vm.put(HawkConfig.AUTO_SWITCH_LINE, it) },
                     )
@@ -153,6 +159,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_m3u8_purify),
+                        leadingIconRes = R.drawable.ic_pref_m3u8_purify,
                         checked = state.m3u8Purify,
                         onCheckedChange = { vm.put(HawkConfig.M3U8_PURIFY, it) },
                     )
@@ -160,6 +167,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSwitchRow(
                         title = stringResource(R.string.settings_danmu_switch),
+                        leadingIconRes = R.drawable.ic_pref_danmu,
                         checked = state.danmuOpen,
                         onCheckedChange = { vm.put(HawkConfig.DANMU_OPEN, it) },
                     )
@@ -167,6 +175,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsRow(
                         title = stringResource(R.string.settings_danmu_api),
+                        leadingIconRes = R.drawable.ic_pref_danmu_api,
                         // 不显示接口链接本身:填过什么只有编辑弹窗里可见
                         valueText = stringResource(if (state.danmuApi.isEmpty()) R.string.common_not_set else R.string.common_set),
                         onClick = { danmuApiDialog = true },
@@ -175,6 +184,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSliderRow(
                         title = stringResource(R.string.settings_long_press_speed),
+                        leadingIconRes = R.drawable.ic_pref_long_press_speed,
                         value = sliderSpeed.toFloat(),
                         valueText = "${sliderSpeed}x",
                         valueRange = 2f..10f,
@@ -190,6 +200,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.MIDDLE) {
                     SettingsSliderRow(
                         title = stringResource(R.string.settings_buffer_time),
+                        leadingIconRes = R.drawable.ic_pref_buffer_time,
                         value = sliderBuffer.toFloat(),
                         valueText = "${sliderBuffer}x",
                         valueRange = 1f..10f,
@@ -205,6 +216,7 @@ fun PreferenceSettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel =
                 SettingsCard(SettingsCardPosition.LAST) {
                     SettingsSliderRow(
                         title = stringResource(R.string.settings_search_threads),
+                        leadingIconRes = R.drawable.ic_pref_search_threads,
                         value = sliderThreads.toFloat(),
                         valueText = "$sliderThreads",
                         valueRange = 16f..64f,
@@ -245,6 +257,7 @@ private fun CollectColumnsRow(columns: Int, onSelect: (Int) -> Unit) {
     val selectedIndex = if (columns == 3) 0 else 1
     SettingsOptionMenuRow(
         title = stringResource(R.string.settings_collect_columns),
+        leadingIconRes = R.drawable.ic_pref_collect_columns,
         valueText = options[selectedIndex],
         options = options,
         selectedIndex = selectedIndex,
@@ -263,6 +276,7 @@ private fun LanguageRow() {
     var restarting by remember { mutableStateOf(false) }
     SettingsOptionMenuRow(
         title = stringResource(R.string.settings_language),
+        leadingIconRes = R.drawable.ic_pref_language,
         subtitle = stringResource(R.string.settings_language_subtitle),
         valueText = stringResource(languageLabelRes(current)),
         options = available.map { stringResource(languageLabelRes(it)) },

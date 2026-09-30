@@ -1842,6 +1842,39 @@ P1 最后两组。至此**调度层(会话/取流/解析/嗅探/重试/换线/�
 **发现并修复 4 处**
 1. 🔴 **写 KV 后立即 kill 会丢语言设置**:`KV.java` 自带注释(实测结论)= MMKV 异步写、约 1s 才落盘、2.4.2 无同步写 flag ⇒ `restartApp` 改为 `Handler.postDelayed(1200ms)` 后再 `startActivity + killProcess`(延迟期间界面仍在,不引入黑屏)。spec §4.3/§9-7 增对应坑。
 2. 🟡 `AppManager.snapshot()` 成死代码(原为 recreate 方案新增,改造后全仓无人调用)⇒ 删除;并修 `LanguageManager.set()` 的过期注释(原写"页面重建由调用方遍历 snapshot 逐个 recreate")。
+
+## 主题设置页顶部手机样机预览(2026-10-01,用户要求)
+
+**背景(用户给了一张参考 App 的主题页截图,问"这种手机展示是怎么做出来的,切换了主题后还能跟随应用自动取色")**:参考图里那台"手机"不是图片/截图,而是**用 Compose 画的骨架 UI**(圆角矩形 + 圆形 + 胶囊条);它能跟着取色的原因很朴素 —— 色块全部读 `MaterialTheme.colorScheme` 的语义 token,主题一变读它的组件自然重组重绘(本项目 `AppThemeState` 是 `mutableStateOf` 单例,`AVBoxTheme` 由它算 `ColorScheme`,所以零额外代码)。
+
+**改造(六轮迭代:通用骨架 → 首页复刻 → 简约版 → 分区回补 → 扁平加宽 → 收窄留白定稿)**:
+- 新增 `ui/components/PhoneMockupPreview.kt`:**168×308dp 的 `Surface`(比例 0.545;底 `surfaceContainer` + 1dp `outlineVariant` 描边、**内容四边留白 10dp**、圆角 26dp、无投影)**。**定稿版式 = 首页的简约缩略**:顶部源胶囊 70×16(logo 圆 + 文字条)+ 右侧 16dp 圆钮 ×2 → **列表分区行**(3 条 20×7 tab 条 + 选中 `primary` + 2dp 指示条,无筛选图标)→ 3 列 × 3 行占位卡片(**3:4**、圆角 7dp、行距 10 / 列距 5、**无角标无标题条**)→ 底部悬浮导航胶囊(26dp 高、**4 槽**、选中槽加宽 1.5 倍为 `primaryContainer` 胶囊 + `onPrimaryContainer` 图标与标签条,其余 `onSurfaceVariant@50%` 圆点;四周同样 10dp,与末行卡片留 6dp 净空不重叠)。
+- **第五轮(2026-10-01 用户:"手机边框不要有阴影,material 的扁平化风格宽一点,现在和遥控器似的")**:①删掉机身 6dp `shadowElevation`,改由 1dp 描边 + 色阶分层;②整机从 140×288(0.49)加宽到 178×314(0.57),内部固定元素同步放大一档(胶囊 58×14→74×16、圆钮 14→16、分区条 16×6→20×7、导航 24→26 等);③**占位卡片比例由 2:3 改为 3:4** —— 3 列 3 行 + 2:3 会把整机逼成细长条(与"加宽"不可兼得),3:4 是同一批数字下能取到的最接近海报感的比例。悬浮导航的投影**保留**(上一轮用户点名要的立体感,本次只点名机身)。
+- **第六轮(2026-10-01 用户带真机截图反馈:"太宽了一点点,还有内容控件距离屏幕边缘要有距离,不要贴着")**:①整机 178×314(0.57)→ **168×308(0.545)**,宽 -5.6%、比例收紧(对齐参考 App 约 0.53 的观感);②**内容四边留白 6dp → 10dp**(约占机身宽 6%),行距 8→10dp、源胶囊 74→70,`NavMargin` 常量删除 —— 悬浮导航四周直接复用同一个 10dp,和卡片/分区行左右对齐,任何控件都不再贴边。
+- **用户口径沿革(别再往回加/减)**:①通用骨架(头像/卡片行/FAB)被否 → ②"照本 App **首页**版式画";复刻分割线 / 分类 tab / chip / 角标后被否 → ③"简约、不要太多横向、卡片不要胶囊评分、内容区只展示占位卡片、五个 tab 下放、悬浮胶囊要有立体感且**不要和占位卡片颜色融为一体**" → ④"**顶部列表分区加回来、内容只展示三排卡片、tab 改为 4 个**" → ⑤"**机身不要阴影 / 要扁平 / 要更宽**"。当前组合 = 扁平机身 + 顶部分区行 + 无分割线·筛选图标·chip·角标·标题条 + 3 排 3:4 卡片 + 底部 4 槽悬浮胶囊。
+- **立体感与不融合的做法**:悬浮导航底 = `surfaceContainerHigh`(浅/深 N-92/N-17)≠ 占位卡片的 `cardContainer`(N-98/N-24),叠 4dp `shadow` + 1dp `outlineVariant@50%` 描边;占位卡片保持平面。机身另加 6dp `shadowElevation` 让样机整体浮在卡面上。
+- `ui/page/ThemeSettingsPage.kt` 首卡插入 `SettingsCard(SettingsCardPosition.SINGLE)` 包裹的居中样机(卡内垂直留白 24dp),置于顶栏留白之后、`主题色彩` 分组之前。
+- **刻意不接 `previewScheme`(与 `PresetSeedCard` 的差别)**:色卡要预览"每个候选种子色",样机预览的是**当前生效主题**,因此直接读 `MaterialTheme.colorScheme`,不引 `produceState`、不建缓存。尺寸不随窗口分档缩放(手机应用,大屏居中即可)。
+
+**验证**:六轮均 `assembleDebug` 绿(唯一告警是既有 `Slider` 弃用,非本次引入),均已装包到 vivo `10AF1J04JX0016G`。真机走查归用户,判据:①一眼能认出是首页的简约缩略(顶部源胶囊 + 列表分区行 + 三排占位卡片 + 底部四个 tab);②机身是**扁平**的(只有 1dp 描边,无外投影);③整机比例合适(168×308、0.545),既不像遥控器、也不偏宽;④**任何控件都不贴屏幕边缘**(源胶囊/分区行/卡片/导航四周都有 10dp 留白,导航与卡片左右对齐);⑤悬浮导航**明显浮起**、与占位卡片不同色(浅色下应能看出比卡片暗一档 + 投影 + 描边);⑥浅/深两档切换、自定义种子色与风格切换时样机**即时**变色。
+
+## 播放设置页行首图标(2026-10-01,用户要求)
+
+**背景(用户:"给播放设置页面的选项加上图标,在标题的左侧,图标大小 24dp,不要和设置页一样用圆形容器包裹,只留图标",并指向仓库根的 `.tubiao/`)**:**该目录里正好是 13 个 SVG,与播放设置页的 13 行一一对应**(用户按页面备好的素材)。
+
+**改造**:
+- **图标转换**:一次性 Python 脚本(临时放 `app/build/`,跑完即删)按项目既有写法批量转 VectorDrawable:`<group android:translateY="960">` 还原 SVG viewBox 的 y 负偏移、`viewport 960×960`、`fillColor #FFFFFFFF`(着色实际由 Compose `Icon` 的 tint 覆盖)、注释标明来源 —— 与 `ic_filter.xml` / `ic_tab_*.xml` 的口径一致。文件名:`ic_play_kernel` / `ic_play_render` / `ic_play_scale` / `ic_play_decode` / `ic_play_anime4k` / `ic_play_prewarm` / `ic_play_tunnel` / `ic_play_aac` / `ic_music_page` / `ic_preload_next` / `ic_preload_duration` / `ic_play_cache` / `ic_cache_size`。
+- **组件**:`ui/components/SettingsGroup.kt` 新增私有 `RowLeadingIcon`(24dp `Icon` + 16dp `Spacer`,`onSurfaceVariant`、禁用 38% alpha、`contentDescription = null`),给 `SettingsRow` / `SettingsSwitchRow` / `SettingsSliderRow` 各加可选参数 `leadingIconRes`(默认 null ⇒ 其余页面逐像素不变);`SettingsOptionMenuRow`(`OptionMenu.kt`)加同名字段透传给 `SettingsRow`。**滑块行改为外层 `Row` + 内层 `Column(weight(1f))`**,让图标与「标题 + 滑轨」整体对齐(只缩标题会让滑轨仍顶到最左,不好看)。既有 `iconRes`(40dp 圆底徽标,设置 tab 在用)**未动** —— 与 `leadingIconRes` 是两个槽位。
+- **页面**:`ui/page/PlaySettingsPage.kt` 13 行全部传 `leadingIconRes`(整文件写回,保持 `// i18n: keep` 标记与既有中文注释原样)。
+- **返工(同日,用户带真机截图:"范围滑块这里的卡片是怎么回事,不会自己变大吗")**:第一版把滑块行改成**外层 `Row` + 图标在外**,坏在两点 —— ①图标落在卡片 16dp 内边距**之外**,直接贴住卡片左缘(其余行的图标都在 16dp 处);②滑轨被整体推右,左 48dp / 右 8dp 不对称,轨道不再铺满卡片,那一块看着和上下行对不齐。**改法 = 外层回到 `Column`,图标放进标题行内部**(与标题同行、同在 16dp 内边距内,标题因此与其它行逐像素对齐),滑轨回到原来的 8dp 内边距铺满卡片。教训:给行加"行首元素"时,元素必须落在**行既有内边距之内**,否则会连带挤动行内其它元素。
+
+**验证**:`assembleDebug` 绿(仅既有 javac deprecation 提示);IDE 诊断 0;已装包到 vivo `10AF1J04JX0016G`。真机走查归用户,判据:①13 行标题左侧都有 24dp 图标、无圆底;②图标为 `onSurfaceVariant` 灰调,且解码方式 / Anime4K 在"内核 = 外部播放器"置灰时图标一并变淡;③滑块行(预载时长 / 缓存容量)图标与标题、滑轨对齐;④其余页面(设置 tab 的圆底徽标行)外观未变。
+
+**第二批(同日,用户把 `.tubiao` 换成新素材 + "将剩下的图标也做了")**:新素材 15 颗,正好 = **偏好设置页 14 行 + 主题设置页「自定义主题」行**。同法批量转出:`ic_pref_language` / `ic_pref_collect_columns` / `ic_pref_history_merge` / `ic_pref_incognito` / `ic_pref_gesture` / `ic_pref_nav_animation` / `ic_pref_nav_live_hidden` / `ic_pref_auto_switch_line` / `ic_pref_m3u8_purify` / `ic_pref_danmu` / `ic_pref_danmu_api` / `ic_pref_long_press_speed` / `ic_pref_buffer_time` / `ic_pref_search_threads` / `ic_theme_custom`。代码侧:`PreferenceSettingsPage` 14 行全部传 `leadingIconRes`(其中 `LanguageRow` / `CollectColumnsRow` 两个页面私有 composable 直接写在内部调用点上);`ThemeSettingsPage.CustomThemeSwitchRow` 因自带内边距(卡内已有 `ThemeCard` 的 padding)不能换用 `SettingsSwitchRow`,故把 `RowLeadingIcon` 由 `private` 改 **`internal`** 直接调用 —— **不要**为此把 `RowLeadingIcon` 改成 public 或复制一份。验证:`assembleDebug` 绿、IDE 诊断 0;装包时用户手机端安装确认被拒(`INSTALL_FAILED_ABORTED: User rejected permissions`),**未重试**(不操控对方界面),APK 已就绪待用户自行安装。
+
+**配置管理页图标(2026-10-01,用户带两张截图:"配置管理页面的图标取消掉容器,然后给跟随点播源也加上图标,复用点播源卡片的链接图标")**:①订阅源卡片左侧由 40dp `SettingsIconBadge`(primaryContainer 圆底)换成 **24dp 裸图标** `RowLeadingIcon(R.drawable.ic_subscribe_source, enabled = true)`(原 badge 后的 `Spacer(16.dp)` 一并去掉,避免双间距),`SettingsIconBadge` 的 import 随之移除(该文件只有这一处用它;它现在仅剩设置 tab 在用);②直播段首项「跟随点播源」卡(`FollowVodCard`)的 `SettingsSwitchRow` 加 `leadingIconRes = R.drawable.ic_subscribe_source` —— 与源卡片同一颗链接图标,不新增 drawable。验证:`assembleDebug` 绿、IDE 诊断 0、**装包成功**(上一次的 `User rejected permissions` 系设备端确认弹窗被拒,重跑即过)。
+
+**液态玻璃效果行图标(2026-10-01,用户第三批素材:"还有一个")**:`.tubiao` 换成单颗 `液态玻璃效果.svg` ⇒ 转 `ic_theme_liquid_glass.xml`,挂在主题设置页「应用效果」组首卡「液态玻璃效果」标题行的 `Text` 之前(`RowLeadingIcon`,24dp 裸图标,右端「重置」按钮不动)—— 与「自定义主题」行构成该页仅有的两颗行首图标。
 3. 🟡 `restartApp` 的 null 分支:原写法"launchIntent 为 null 也照杀"⇒ 会变成"退出而不重启";改为 null 直接 return(不杀,语言已写 KV,下次冷启动生效)。
 4. 🟡 spec 修订记录那行仍写 AlarmManager 方案(与 §4.3 冲突)⇒ 更新为最终做法 + 实测反例。
 

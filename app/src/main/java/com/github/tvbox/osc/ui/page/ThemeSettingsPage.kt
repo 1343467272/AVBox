@@ -53,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.ui.components.AppTopBarScaffold
 import com.github.tvbox.osc.ui.components.CapsuleSegmentedButton
+import com.github.tvbox.osc.ui.components.PhoneMockupPreview
+import com.github.tvbox.osc.ui.components.RowLeadingIcon
 import com.github.tvbox.osc.ui.components.SegmentOption
 import com.github.tvbox.osc.ui.components.SettingsCard
 import com.github.tvbox.osc.ui.components.SettingsCardPosition
@@ -114,6 +116,17 @@ fun ThemeSettingsScreen(onNavigateBack: () -> Unit) {
         ) {
             Spacer(Modifier.height(topPad - 20.dp))
 
+            SettingsCard(SettingsCardPosition.SINGLE) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PhoneMockupPreview()
+                }
+            }
+
             SettingsGroup(title = stringResource(R.string.theme_color)) {
                 ThemeCard(SettingsCardPosition.FIRST) {
                     CustomThemeSwitchRow(
@@ -163,6 +176,7 @@ fun ThemeSettingsScreen(onNavigateBack: () -> Unit) {
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            RowLeadingIcon(R.drawable.ic_theme_liquid_glass, enabled = true)
                             Text(
                                 text = stringResource(R.string.theme_liquid_glass),
                                 style = MaterialTheme.typography.titleMedium,
@@ -275,6 +289,7 @@ private fun CustomThemeSwitchRow(checked: Boolean, onCheckedChange: (Boolean) ->
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        RowLeadingIcon(R.drawable.ic_theme_custom, enabled = true)
         Text(
             text = stringResource(R.string.theme_custom_theme),
             style = MaterialTheme.typography.titleMedium,

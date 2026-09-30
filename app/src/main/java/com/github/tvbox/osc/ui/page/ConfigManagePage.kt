@@ -73,7 +73,7 @@ import com.github.tvbox.osc.ui.components.SegmentStyle
 import com.github.tvbox.osc.ui.components.SettingsCard
 import com.github.tvbox.osc.ui.components.SettingsCardPosition
 import com.github.tvbox.osc.ui.components.SettingsGroup
-import com.github.tvbox.osc.ui.components.SettingsIconBadge
+import com.github.tvbox.osc.ui.components.RowLeadingIcon
 import com.github.tvbox.osc.ui.components.SettingsOptionRow
 import com.github.tvbox.osc.ui.components.SettingsSwitchRow
 import com.github.tvbox.osc.ui.components.TopBarActionBox
@@ -520,6 +520,7 @@ private fun FollowVodCard(
     SettingsCard(position = SettingsCardPosition.SINGLE, modifier = modifier) {
         SettingsSwitchRow(
             title = stringResource(R.string.live_follow_vod_source),
+            leadingIconRes = R.drawable.ic_subscribe_source,
             subtitle = subtitle,
             checked = checked,
             onCheckedChange = { next -> if (next) onFollow() },
@@ -553,8 +554,7 @@ private fun SubscribeCard(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SettingsIconBadge(iconRes = R.drawable.ic_subscribe_source)
-            Spacer(Modifier.width(16.dp))
+            RowLeadingIcon(R.drawable.ic_subscribe_source, enabled = true)
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

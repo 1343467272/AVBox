@@ -44,9 +44,8 @@ import java.util.Map;
 import xyz.doikki.videoplayer.player.VideoView;
 
 /**
- * 播放会话与派生数据层:播什么(vod/sourceKey/sourceBean/播放器配置)、进度与字幕缓存键、
- * 线路/剧集匹配、清晰度、投屏地址改写、header 提取;视图交互一律经 {@link PlaybackViewBridge}。
- * 取流/解析调度见 {@link PlayUrlResolver},尝试/意图状态见 {@link PlaybackAttemptState}。
+ * 播放会话与派生数据层:播什么(vod/sourceKey/sourceBean/播放器配置)、进度与缓存键、清晰度、
+ * 投屏地址改写;视图交互经 {@link PlaybackViewBridge},取流/解析调度见 {@link PlayUrlResolver}。
  */
 public class PlaybackController {
 
@@ -88,20 +87,18 @@ public class PlaybackController {
 
     /**
      * 开启一次播放会话:接管页面组装的 {@link PlaybackSession} 并初始化播放器配置。
-     * 调用方随后需自行把 {@link #playerCfg()} 刷到控制器(原 `initPlayerCfg` 末尾那次调用)。
+     * 调用方随后需自行把 {@link #playerCfg()} 刷到控制器。
      */
     public void startSession(PlaybackSession session) {
         // **会话边界清场**:在途的解析/嗅探/取流/超时属于上一个会话,其结果不得作用到新会话。
-        // 收尾必须放在会话边界而非"页面销毁":两者先后不确定,"快速返回再进入"时旧页面会把新会话
-        // 刚发起的取流一起撤掉。
+        // 收尾放在会话边界而非"页面销毁":"快速返回再进入"时旧页面会把新会话刚发起的取流一起撤掉。
         cancelInFlight();
-        // 作废上一条"播完待撤会话"的待判消息(见 handlePendingCompletionDrop),避免落到新会话上。
+        // 作废上一条"播完待撤会话"的待判消息,避免落到新会话上
         timeouts.cancelPendingCompletionDrop();
         // 代际复位:上一会话的迟到回调不得作用到新会话
         resolver.resetGen();
-        // 封面属于上一个会话的内容,换内容必须清:playArtwork 只写一次(见 updateMusicSession 的 isEmpty 守卫)、
-        // currentArtwork 只在取流结果里被覆盖 ⇒ 影视源不给 cover 时会残留上一首的值("音乐 → 影视 → 再进音乐页")。
-        // 同片接管不能清,否则封面会白到下一次取流结果。
+        // 封面属于上一个会话:换内容必须清(playArtwork 只写一次、currentArtwork 只在取流结果里覆盖),
+        // 否则影视源不给 cover 时会残留上一首的值("音乐 → 影视 → 再进音乐页");同片接管不能清。
         if (currentSession == null
                 || !TextUtils.equals(currentSession.playbackKey(), session.playbackKey())) {
             music.clearArtworks();
@@ -112,12 +109,9 @@ public class PlaybackController {
         // 本次会话的内容尚未真正交给播放器:先清掉"已起播内容"标记 ——
         // 否则"切到 B 但取流失败(播放器里其实还是 A)"后重进 B,会被 D6 误判成同片接管(播错内容)
         startedPlaybackKey = null;
-        // 会话级状态的统一复位。
-        // 这些字段原来的复位点全在 play() 里,而 **D6 同片接管不走 play()** —— 退出页面再进同一部时
-        // 会带着上一轮的陈旧值:
-        //  · playbackStarted 陈旧 true ⇒ 续播失败被 errorWithRetry 静默吞掉(黑屏、无提示、不重试);
-        //  · switchStopPending 残留 ⇒ 在途取流结果被静默丢弃;
-        //  · m3u8 代理地址残留 ⇒ 投屏地址可能拿到上一部的源地址。
+        // 会话级状态的统一复位:这些字段的复位点原本只在 play() 里,而 **D6 同片接管不走 play()** ⇒
+        // playbackStarted 陈旧会吞掉续播失败(黑屏不重试)、switchStopPending 残留会丢在途取流结果、
+        // m3u8 残留会让投屏拿到上一部的源地址。
         st.beginSession();
         clearM3u8ProxyUrl();
         this.vod = session.vod();
@@ -217,7 +211,7 @@ public class PlaybackController {
 
     // ==================== 清晰度 ====================
 
-    /** 发布/清空清晰度列表(旧 publishQuality:仅改内存态 + EventBus 广播,不启动播放) */
+    /** 发布/清空清晰度列表(仅改内存态 + EventBus 广播,不启动播放) */
     public void publishQuality(JSONObject info) {
         try {
             JSONArray urls = new JSONArray(info == null ? "" : info.optString("url"));
@@ -270,10 +264,7 @@ public class PlaybackController {
 
     // ==================== 播放请求头 ====================
 
-    /**
-     * 提取播放请求头:与预载侧共用 `PlayerHelper.extractPlayHeaders` —— 两侧逐字一致才满足预载读盘
-     * 守卫(`PreloadManagerHolder.isPreloadTargetUrl`),否则预缓存数据不命中、退化成网络重下。
-     */
+    /** 提取播放请求头:与预载侧共用 `PlayerHelper.extractPlayHeaders`,两侧逐字一致才满足预载读盘守卫,否则预缓存不命中 */
     public static HashMap<String, String> extractHeaders(JSONObject object) {
         return PlayerHelper.extractPlayHeaders(object);
     }
@@ -747,10 +738,8 @@ public class PlaybackController {
 
     /**
      * 最近一次**通过校验**的起播请求所属的代际(仅主线程读写):{@link #goPlayUrl} 入口签发,
-     * 该方法的 UI 落地闭包用它比对 —— 排队期(回调 → runOnUi)若换了集,排队中的旧地址会被丢弃。
-     *
-     * <p>签发点必须在 {@code goPlayUrl} 入口(不能用"解析产物入口"的字段串):M3U8 净化结果是主线程
-     * 直接进 {@code goPlayUrl} 的,否则会带着过期字段被误判为陈旧。
+     * UI 落地闭包用它比对 —— 排队期(回调 → runOnUi)若换了集,排队中的旧地址会被丢弃。
+     * 签发点必须在入口(不能用解析产物入口的字段):M3U8 净化是主线程直接进 goPlayUrl 的。
      */
     private int playUrlGeneration;
 
@@ -760,10 +749,9 @@ public class PlaybackController {
     /** 当前会话(页面 setData 交进来的那一份;D6 接管与"已起播内容"判定都基于它) */
     private PlaybackSession currentSession;
     /**
-     * 最近一次**真正把内容交给播放器**的会话归属键(D6 接管的唯一可信依据)。
-     *
-     * <p>与"会话"区分开:`startSession` 只是登记要播什么,取流可能失败、也可能被外部播放器接走 ——
-     * 那些情况下播放器里的内容**不属于**该会话,D6 必须拒绝接管(真机 bug:点播页播着直播)。
+     * 最近一次**真正把内容交给播放器**的会话归属键(D6 接管的唯一可信依据):
+     * `startSession` 只是登记要播什么,取流失败或被外部播放器接走时播放器里的内容不属于该会话,
+     * D6 必须拒绝接管(真机 bug:点播页播着直播)。
      */
     private String startedPlaybackKey;
 
@@ -782,12 +770,12 @@ public class PlaybackController {
         return startedPlaybackKey;
     }
 
-    /** 建立取流结果观察者(预载协调器仍归页面) */
+    /** 建立取流结果观察者 */
     public void initFetch() {
         fetch.init();
     }
 
-    /** 页面销毁时注销观察者(对应原 hostDestroy 的 removeObserver) */
+    /** 页面销毁时注销观察者 */
     public void releaseFetch() {
         fetch.release();
     }
@@ -879,10 +867,8 @@ public class PlaybackController {
 
     /**
      * 把当前会话的标题下发到视图(播放器顶栏 / 暂停浮层)。
-     *
-     * <p>单独抽成方法是因为 D6「同片接管」**不经过** {@link #play(boolean)} —— 播放器里已经是这一集,
-     * 不再取流重播;而标题原先只在 play() 里下发,导致"退出详情页 → 重新进入同一部"顶栏标题为空
-     * (顶栏标题为空的场景)。接管路径必须自己补一次。
+     * D6「同片接管」**不经过** {@link #play(boolean)},而标题原先只在 play() 里下发 ⇒ 接管路径必须自己补一次,
+     * 否则"退出详情页 → 重新进入同一部"顶栏标题为空。
      */
     public void publishTitle() {
         if (view == null || vod() == null) return;
@@ -922,9 +908,8 @@ public class PlaybackController {
         }
         EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_REFRESH, vod()));
         if (reusePlayer) {
-            // 复用播放器时提示已由上一集留着,这里强制写一次空态(空文案 + loading,不判页面存活):
-            // 走 view.showTip 而非页面 setTip —— 提示层状态本来就归视图桥;页面/音乐页初始化都会先 hide(),
-            // 所以即使当时页面已销毁,也不会把旧态留给下一页
+            // 复用播放器时提示已由上一集留着,这里强制写一次空态(走 view.showTip 而非页面 setTip):
+            // 提示层状态归视图桥,页面/音乐页初始化都会先 hide(),旧态不会留给下一页
             if (view != null) view.showTip("", true, false);
         } else if (view != null) {
             view.showTip(str(R.string.player_getting_info), true, false);
@@ -1018,10 +1003,9 @@ public class PlaybackController {
     }
 
     /**
-     * 解析/嗅探产物入口:入口校验挡"回调已跑起来"的旧结果(此时若已切集,连 RefreshEvent 播放地址与
-     * 换线超时都不该被改写);{@link #goPlayUrl} 里那道校验挡"回调 → UI 线程排队"期间的切集。
-     *
-     * <p>自动重试/重播兜底/自动换线走的都是 2 参 {@link #playUrl}(与 goPlayUrl 同帧同代际)⇒ 不会误杀。
+     * 解析/嗅探产物入口:入口校验挡"回调已跑起来"的旧结果(已切集时连 RefreshEvent 播放地址与换线超时都不该被改写);
+     * {@link #goPlayUrl} 里那道校验挡"回调 → UI 线程排队"期间的切集。
+     * 自动重试/重播兜底/自动换线走的都是 2 参 {@link #playUrl}(与 goPlayUrl 同帧同代际)⇒ 不会误杀。
      */
     private void playUrl(int gen, String url, HashMap<String, String> headers) {
         if (!resolver.isParseResultCurrent(gen)) {
@@ -1118,10 +1102,8 @@ public class PlaybackController {
                 } else {
                     view.applyPlayerConfigToView(0);
                 }
-                // 纯音频 URL 预判:音乐直链没有视频帧,SurfaceView 渲染会"洞穿"应用窗口 ——
-                // 任务快照里播放器区域变白、回前台透视桌面(详见 MyVideoView.switchRenderToTexture)。
-                // 这里直接改用 TextureView 起播,补住「起播 → 轨道信息就绪」之间退后台的空窗;
-                // 误判(音频后缀实为视频)无功能损失,TextureView 照常渲染画面。
+                // 纯音频 URL 预判:音乐直链没有视频帧,SurfaceView 会"洞穿"应用窗口(任务快照变白/回前台透视桌面),
+                // 改用 TextureView 起播补住「起播 → 轨道信息就绪」的空窗;误判无功能损失(详见 MyVideoView.switchRenderToTexture)。
                 if (looksLikeAudioUrl(url)) {
                     view.useTextureRenderForAudio();
                 }
@@ -1172,9 +1154,8 @@ public class PlaybackController {
     }
 
     /**
-     * 播放状态变化驱动预载评估(页面状态回调里调用):
-     * STATE_PLAYING 正片稳定 → 延迟评估;STATE_BUFFERING 弱网 → 让路(清数据 + 冷却);
-     * STATE_BUFFERED 缓冲结束 → 补一次评估(dkplayer 的 STATE_PLAYING 只在首帧发一次,不补枪则拖一次进度条就永久停摆)。
+     * 播放状态变化驱动预载评估(页面状态回调里调用):STATE_PLAYING 延迟评估、STATE_BUFFERING 让路、
+     * STATE_BUFFERED 补一次评估(dkplayer 的 STATE_PLAYING 只在首帧发一次,不补枪则拖一次进度条就永久停摆)。
      */
     public void onPlayerStateForPreload(int playState) {
         preload.onPlayerState(playState);
@@ -1291,7 +1272,7 @@ public class PlaybackController {
         music.stopMusicSession();
     }
 
-    /** 页面销毁:清会话标记 + 停通知 + 收预载(对应原 hostDestroy 的音乐/预载段) */
+    /** 页面销毁:清会话标记 + 停通知 + 收预载 */
     public void onHostDestroy() {
         st.clearSessionFlags();
         timeouts.cancelPendingCompletionDrop();

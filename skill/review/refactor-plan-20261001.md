@@ -1,6 +1,6 @@
 ---
 name: AVBox 渐进式重构 Spec（VM 归一与上帝类收尾专项）
-status: 执行中（2026-10-01：V1–V5 已全部落地并过两轮复核【V5 含 1 处阻断级构造期 NPE 修复】；**V5b 继续拆分已落地（主类 1806→1320，+3 协作者）**；均待真机走查；D1/D2/D3/V6 已拍板；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
+status: 执行中·**结构拆分已收尾**（2026-10-01：V1–V5 已落地并过两轮复核【V5 含 1 处阻断级构造期 NPE 修复】；V5b 继续拆分 + 注释精简已落地（主类 1806→1320，+3 协作者）并过**第四轮逻辑复核**（1 处低危语义漂移已修、3 项登记）；**唯余真机走查**；D1/D2/D3/V6 已拍板；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
 source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveData/StateFlow 各半、viewmodel/ 名不副实）② 上帝类残留（PlaybackController / ComposeVideoController / PlayContainer / ApiConfig）③ VM 持 View 与 static 可变缓存 ④ 业务逻辑写进 Composable。审查结论：四问题全部属实（数字 ±5% 出入见 §2）
 ---
 
@@ -270,6 +270,8 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - 语义等价改写（登记）：`restoreAutoSwitchedDecode`/`trySoftDecodeFallback`/`autoRetry`/`tryNextLine` 等把"字段多次读"归一为"入口一次局部读"；`initPlayerCfg` 改为"局部 cfg 构建完再 `setPlayerCfg`"（原实现"先换引用再逐条填"，最终状态一致；差异仅在构造窗口内被其它线程读到旧对象 —— 主线程独占，不可达）。
 - 仍留主类（理由不变）：`webPlayUrl`/`webHeaderMap`/`webUserAgent` 三字段、进度键与 `progressOwner`、投屏地址改写、解析门面转发。若还要更低（<1300）：可把 header 工具三方法搬进 `PlayerHelper`（约 -20）与投屏地址改写独立（约 -25），边际收益已低。
 - 注释精简后的复核（2026-10-01 第三轮，按 `SKILL.md`）：diff **非注释行 0**（只动注释）；i18n 卡口 **0 处**（`// i18n: keep` 随代码搬到 delegate 仍生效）；主类 30 个私有成员**无死代码**；`{@link #x}` 引用全有效（主类 7 处 + 8 个拆出类逐个扫描）；构建 + **468 例**单测绿。**修掉 V5b 遗留的 2 处失效注释引用**（`handlePendingCompletionDrop`/`updateMusicSession` 已随簇搬到 delegate），并删/改了 4 处过程叙事（"旧 publishQuality"、"对应原 hostDestroy 的…"、"原 initPlayerCfg 末尾那次调用"、"预载协调器仍归页面"）。
+- **逻辑复核（2026-10-01 第四轮，针对 V5b 三簇的跨对象语义，独立复核）**：结论 = **三簇搬迁逻辑等价、可收尾**（无 阻断/高/中 级发现；A 异常路径逐分支等价、B 可变引用的"多次读→一次读"在本调用上下文不可观察、C Host 字段/方法一一对应无错位、D 时序/NPE 与 E 并发路径均安全）。抓到并修掉 **1 处本轮引入的低危语义漂移**（`9602aa7`）：`tryNextLine` 的换线 toast 闭包在原实现里捕获**字段**（`runOnUi` 执行时读最新桥），拆分后变成捕获局部快照 ⇒ 若闭包期间 page↔headless 换桥，会打到已摘除的旧页面；已改回读执行时的 `host.view()`（另两处同类闭包原本就用 `aliveView` 快照，保持不动）。
+  - 登记不改（低危/风格/约束）：① `updateMusicSession`/`stopMusicSession` 等"字段多次读→入口一次读"—— 入口全在主线程、换桥只发生在 attach/detach，同一方法执行期内不可达；② 主类 Host 里 `quality()`/`progressKey()` 直返字段、`sourceBean()` 走方法 —— 当前恒等，将来给 getter 加防御时 delegate 会静默旁路；③ `timeouts`(369) 的 Callback 引用后声明的 `music`、`retry` Host 引用后声明的 `fetch`/`music` —— 方法体前向引用合法且运行期安全，但**不得**从字段初始化式/构造期做同步分发（会读到 null）；④ 8 个协作者无单测（播放层依赖 Android 运行时），豁免理由 = 逐簇归一化比对 + 构建/单测 + 真机走查。
 
 **原设计记录（本次执行按上述落地）**：
 

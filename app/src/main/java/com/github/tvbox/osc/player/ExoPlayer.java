@@ -10,6 +10,8 @@ import android.view.SurfaceHolder;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.player.effect.PictureEffects;
+import com.github.tvbox.osc.player.effect.RedrawPolicy;
+import com.github.tvbox.osc.player.effect.ReplayableCacheVideoRenderer;
 import com.github.tvbox.osc.util.TrackMemory;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.LOG;
@@ -24,6 +26,7 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackGroup;
 import androidx.media3.common.Tracks;
+import androidx.media3.common.VideoFrameProcessor;
 import androidx.media3.common.VideoSize;
 import androidx.media3.common.text.Cue;
 import androidx.media3.common.text.CueGroup;
@@ -72,6 +75,11 @@ public class ExoPlayer extends ExoMediaPlayer {
     private volatile boolean pictureHdrSource;
     /** media3 的 Player 有线程校验,效果与重绘信令一律落主线程 */
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    /** 上一次推给内核的输出几何:只有变了才需要补重绘 */
+    private int lastOutputWidth;
+    private int lastOutputHeight;
+    /** 重绘已排队:同一帧内的连发合并成一次 */
+    private boolean redrawScheduled;
     /** 点播磁盘缓存标记(第二期「边播边缓存」,由 MyVideoView 注入;直播页恒 false) */
     private boolean useDiskCache;
 
@@ -267,6 +275,9 @@ public class ExoPlayer extends ExoMediaPlayer {
      */
     public void notifyVideoOutputResolution(int width, int height) {
         if (mInternalPlayer == null || width <= 0 || height <= 0) return;
+        boolean sizeChanged = width != lastOutputWidth || height != lastOutputHeight;
+        lastOutputWidth = width;
+        lastOutputHeight = height;
         for (Renderer renderer : capturedVideoRenderers) {
             try {
                 mInternalPlayer.createMessage(renderer)
@@ -277,6 +288,38 @@ public class ExoPlayer extends ExoMediaPlayer {
                 LOG.e("ExoPlayer", "echo-picture-output-resolution failed", th);
             }
         }
+        // 暂停态换几何(退出全屏回小窗/转屏):信令更新了输出尺寸,但合成仍停在旧几何那一帧上
+        if (RedrawPolicy.shouldRedrawOnGeometry(sizeChanged, isPlaying(), redrawReady())) {
+            redrawVideoFrame();
+        }
+    }
+
+    /** 能重绘的前提:效果链已挂 && 视频渲染器带可重放缓存 */
+    private boolean redrawReady() {
+        if (!videoEffectsOpen) return false;
+        for (Renderer renderer : capturedVideoRenderers) {
+            if (renderer instanceof ReplayableCacheVideoRenderer) return true;
+        }
+        return false;
+    }
+
+    /** 让内核按当前参数/几何重绘最后一帧(暂停态唯一能更新画面的手段);同一帧内多次请求合并成一次 */
+    public void redrawVideoFrame() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(this::redrawVideoFrame);
+            return;
+        }
+        if (redrawScheduled || !redrawReady()) return;
+        redrawScheduled = true;
+        mainHandler.post(() -> {
+            redrawScheduled = false;
+            if (mInternalPlayer == null || !videoEffectsOpen) return;
+            try {
+                mInternalPlayer.setVideoEffects(VideoFrameProcessor.REDRAW);
+            } catch (Throwable th) {
+                LOG.e("ExoPlayer", "echo-picture-redraw failed", th);
+            }
+        });
     }
 
     /** 下发画质效果(调色)列表,由 {@link PictureEffects} 调用;失败只留痕,不让调色把播放带崩 */
@@ -359,11 +402,11 @@ public class ExoPlayer extends ExoMediaPlayer {
             public long getDelayUs() {
                 return internalSubtitleDelayUs;
             }
-        }, capturedVideoRenderers)
+        }, capturedVideoRenderers, dynamicScheduling)
                 .setEnableDecoderFallback(true)
                 // 音频硬解优先:MediaCodec 不支持的格式(AC3/DTS 类)才落到 ffmpeg 软解兜底
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                .setEnableMediaCodecVideoRendererDurationToProgressUs(dynamicScheduling);
+                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
+        // 动态调度开关由自建渲染器带回,见 replaceWithReplayableRenderer
         factory.forceDisableMediaCodecAsynchronousQueueing();
         LOG.i("echo-exo-disable-async-codec-queue");
         LOG.i("echo-exo-video-dynamic-scheduling: " + dynamicScheduling);
@@ -806,12 +849,14 @@ public class ExoPlayer extends ExoMediaPlayer {
         private final SubtitleDelayProvider subtitleDelayProvider;
         /** 收集本工厂创建的视频渲染器(帧率匹配策略需要按渲染器实例下发消息) */
         private final List<Renderer> videoRendererSink;
+        private final boolean enableDurationToProgressUs;
 
         SubtitleOffsetRenderersFactory(Context context, SubtitleDelayProvider subtitleDelayProvider,
-                                       List<Renderer> videoRendererSink) {
+                                       List<Renderer> videoRendererSink, boolean enableDurationToProgressUs) {
             super(context);
             this.subtitleDelayProvider = subtitleDelayProvider;
             this.videoRendererSink = videoRendererSink;
+            this.enableDurationToProgressUs = enableDurationToProgressUs;
         }
 
         @Override
@@ -824,11 +869,56 @@ public class ExoPlayer extends ExoMediaPlayer {
             
             super.buildVideoRenderers(context, extensionRendererMode, EXO_VIDEO_CODEC_SELECTOR, enableDecoderFallback,
                     eventHandler, eventListener, allowedJoiningTimeMs, out);
+            replaceWithReplayableRenderer(context, mediaCodecSelector, enableDecoderFallback, eventHandler,
+                    eventListener, allowedJoiningTimeMs, firstRendererIndex, out);
             if (videoRendererSink != null) {
                 for (int i = firstRendererIndex; i < out.size(); i++) {
                     videoRendererSink.add(out.get(i));
                 }
             }
+        }
+
+        /**
+         * 把 super 建的默认 MediaCodecVideoRenderer 换成带可重放帧缓存的子类。构建设置须与上游 1.11.1 的
+         * {@code DefaultRenderersFactory.createMediaCodecVideoRenderer} 逐项对齐(升级 media3 时回来对账);
+         * 被换下的实例未 init/enable、不持编解码器与显示面,丢弃安全。
+         */
+        private void replaceWithReplayableRenderer(Context context, MediaCodecSelector mediaCodecSelector,
+                                                  boolean enableDecoderFallback, android.os.Handler eventHandler,
+                                                  androidx.media3.exoplayer.video.VideoRendererEventListener eventListener,
+                                                  long allowedJoiningTimeMs, int firstRendererIndex,
+                                                  ArrayList<Renderer> out) {
+            for (int i = firstRendererIndex; i < out.size(); i++) {
+                Renderer renderer = out.get(i);
+                if (!(renderer instanceof androidx.media3.exoplayer.video.MediaCodecVideoRenderer)
+                        || renderer instanceof ReplayableCacheVideoRenderer) {
+                    continue;
+                }
+                long lateThresholdToDropDecoderInputUs =
+                        androidx.media3.exoplayer.video.MediaCodecVideoRenderer.DEFAULT_LATE_THRESHOLD_TO_DROP_DECODER_INPUT_US;
+                androidx.media3.exoplayer.video.MediaCodecVideoRenderer.Builder builder =
+                        new androidx.media3.exoplayer.video.MediaCodecVideoRenderer.Builder(context)
+                                .setCodecAdapterFactory(getCodecAdapterFactory())
+                                .setMediaCodecSelector(mediaCodecSelector)
+                                .setAllowedJoiningTimeMs(allowedJoiningTimeMs)
+                                .setEnableDecoderFallback(enableDecoderFallback)
+                                .setEventHandler(eventHandler)
+                                .setEventListener(eventListener)
+                                .setMaxDroppedFramesToNotify(MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY)
+                                .experimentalSetParseAv1SampleDependencies(true)
+                                .experimentalSetLateThresholdToDropDecoderInputUs(lateThresholdToDropDecoderInputUs)
+                                .setEarlySchedulingThresholdUs(
+                                        androidx.media3.exoplayer.video.MediaCodecVideoRenderer.DEFAULT_EARLY_SCHEDULING_THRESHOLD_US)
+                                .setEnableDurationToProgressUs(enableDurationToProgressUs);
+                if (android.os.Build.VERSION.SDK_INT >= 34) {
+                    builder = builder.experimentalSetEnableMediaCodecBufferDecodeOnlyFlag(false);
+                }
+                out.set(i, new ReplayableCacheVideoRenderer(builder, lateThresholdToDropDecoderInputUs));
+                LOG.i("echo-exo-video-renderer: replayable cache on");
+                return;
+            }
+            // 未换成功:保持上游默认渲染器,暂停态重绘随之失效(redrawReady 会挡掉),不影响播放
+            LOG.i("echo-exo-video-renderer: media codec renderer not found, redraw disabled");
         }
 
         @Override

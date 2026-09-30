@@ -20,13 +20,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import xyz.doikki.videoplayer.player.AbstractPlayer;
 
-/**
- * 音轨/视频轨选择:轨道列表弹窗与切轨(切轨后 200ms 复位,代次守卫防旧回调落到新内核)。
- */
 final class TrackSelectorDelegate {
 
     interface Host {
-        /** 当前播放器(可能为 null:内核未就绪/已释放) */
         MyVideoView player();
 
         Context context();
@@ -47,7 +43,6 @@ final class TrackSelectorDelegate {
                 && left.trackId == right.trackId;
     }
 
-    /** 切轨/换内核后作废在途的 200ms 复位回调 */
     void invalidatePendingSwitch() {
         trackSwitchSeq.incrementAndGet();
     }

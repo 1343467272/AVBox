@@ -330,7 +330,7 @@ final class PlaybackRetryDelegate {
         final long preProgress = Math.max(savedProgress, view == null ? 0 : view.currentPosition());
         LOG.i("echo-autoRetry switch line: " + vod.playFlag + " -> " + flagToSwitch);
         if (view != null && view.isPageAlive()) {
-            view.runOnUi(() -> view.toast(PlaybackController.str(R.string.player_switch_line, flagToSwitch)));
+            view.runOnUi(() -> host.view().toast(PlaybackController.str(R.string.player_switch_line, flagToSwitch)));
         }
         vod.playFlag = flagToSwitch;
         vod.playIndex = nextIndex;

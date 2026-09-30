@@ -128,52 +128,8 @@ public class PlaybackController {
         initPlayerCfg();
     }
 
-    /**
-     * 初始化/补全播放器配置(内核 pl、渲染 pr/sc/sp/st/et)。
-     * 与原实现一致:优先沿用 vod.playerCfg 里已存的值,缺失项回落全局设置。
-     */
     public void initPlayerCfg() {
-        try {
-            playerCfg = new JSONObject(vod.playerCfg);
-        } catch (Throwable th) {
-            playerCfg = new JSONObject();
-        }
-        try {
-            if (!playerCfg.has("pl")) {
-                // sourceBean 可能为空(切源窗口期 / 源被删):
-                // 原写法在这里 NPE,而本块 catch(Throwable) 是空的 —— 会静默跳过下面
-                // pr/sc/sp/st/et 全部设置,播放器配置只剩半截。改为退回全局播放器设置。
-                int sourcePlayerType = sourceBean == null ? -1 : sourceBean.getPlayerType();
-                playerCfg.put("pl", (sourcePlayerType == -1) ? (int) KV.get(HawkConfig.PLAY_TYPE, 2) : sourcePlayerType);
-            }
-            // 0 非法、1 为已移除的 IJK 内核 —— 一并归一到 EXO(老源配置/播放记录里可能还是 1)
-            int configuredType = playerCfg.optInt("pl", 2);
-            if (configuredType == 0 || configuredType == 1) {
-                playerCfg.put("pl", 2);
-            }
-            playerCfg.put("pr", KV.get(HawkConfig.PLAY_RENDER, 1));
-            // 解码方式以**全局设置**为准,只有用户在本剧播放器里显式选过(exoSet,见 ComposeVideoController)
-            // 才按剧记忆 —— 否则播放记录里持久化的旧 "exo" 会一直压过设置页的新值,
-            // "设置里改成软解、这部剧却永远硬解"。
-            if (playerCfg.optInt("exoSet", 0) == 0) {
-                playerCfg.put("exo", KV.get(HawkConfig.EXO_DECODE, "硬解码")); // i18n: keep
-            }
-            if (!playerCfg.has("sc")) {
-                playerCfg.put("sc", KV.get(HawkConfig.PLAY_SCALE, 0));
-            }
-            if (!playerCfg.has("sp")) {
-                playerCfg.put("sp", 1.0f);
-            }
-            if (!playerCfg.has("st")) {
-                playerCfg.put("st", 0);
-            }
-            if (!playerCfg.has("et")) {
-                playerCfg.put("et", 0);
-            }
-        } catch (Throwable th) {
-            // 与原实现一致:补全失败不阻断播放(配置保持已解析出的部分)
-            LOG.d("PlaybackController", "initPlayerCfg fill-up failed, keep parsed part");
-        }
+        config.initPlayerCfg();
     }
 
     // ==================== 进度与缓存键 ====================
@@ -437,6 +393,34 @@ public class PlaybackController {
         }
     });
 
+    /** 播放器配置(见 PlaybackConfigDelegate) */
+    private final PlaybackConfigDelegate config = new PlaybackConfigDelegate(new PlaybackConfigDelegate.Host() {
+        @Override
+        public VodInfo vod() {
+            return PlaybackController.this.vod;
+        }
+
+        @Override
+        public SourceBean sourceBean() {
+            return PlaybackController.this.sourceBean;
+        }
+
+        @Override
+        public JSONObject playerCfg() {
+            return PlaybackController.this.playerCfg;
+        }
+
+        @Override
+        public void setPlayerCfg(JSONObject cfg) {
+            PlaybackController.this.playerCfg = cfg;
+        }
+
+        @Override
+        public PlaybackAttemptState attemptState() {
+            return st;
+        }
+    });
+
     /** 解析/嗅探调度(见 PlayUrlResolver) */
     private final PlayUrlResolver resolver = new PlayUrlResolver(new PlayUrlResolver.Host() {
         @Override
@@ -523,73 +507,16 @@ public class PlaybackController {
     }
 
     public void setAllowSwitchPlayer(boolean allow) {
-        st.allowSwitchPlayer = allow;
-        if (!allow) {
-            // 用户手动切内核:自动切内核态作废 —— ①用户的选择要能落库(playerCfgForPersist 不再回填原值)
-            // ②后续换线也不再自动回滚成"自动切换前的内核"(用户的选择优先)。
-            // ⚠️ 调用方必须在 updatePlayerCfg()(落库)**之前**调用本方法,否则本次落库仍会带回填值。
-            st.autoSwitchedPlayerType = -1;
-        }
+        config.setAllowSwitchPlayer(allow);
     }
 
-    /**
-     * 用户手动选过解码方式(播放器解码按钮):本次播放不再自动回退软解,且"自动软解"态作废 ——
-     * 后者是为了让用户显式选的值能正常落进播放记录(见 {@link #playerCfgForPersist()})。
-     */
     public void setAllowDecodeFallback(boolean allow) {
-        if (allow) return;
-        st.hasAutoSwitchedDecode = true;
-        st.autoSwitchedDecodeOld = null;
+        config.setAllowDecodeFallback(allow);
     }
 
-    /**
-     * 落库用的播放器配置快照:**自动容错态不得进入播放记录**。
-     *
-     * <p>自动软解(exo)只是本次会话的临时回退,但覆盖层任一设置改动都会经
-     * {@code PlayContainer.updatePlayerCfg()} 把当时的 playerCfg 整体写进记录/发 EventBus ——
-     * 于是临时回退变成"按剧记忆",把用户的设置永久顶掉。这里返回剔除自动态后的**副本**,
-     * 内存中的 {@link #playerCfg()} 不受影响(播放仍按自动态跑)。
-     */
     @Nullable
     public JSONObject playerCfgForPersist() {
-        if (playerCfg == null) return null;
-        try {
-            JSONObject copy = new JSONObject(playerCfg.toString());
-            if (st.autoSwitchedPlayerType >= 0) {
-                copy.put("pl", st.autoSwitchedPlayerType);
-            }
-            // 只看"自动态是否仍在生效"(autoSwitchedDecodeOld),不看每次播放的阻断标记 hasAutoSwitchedDecode ——
-            // 后者会被 beginNewPlay(换集)复位,若一并作为条件,换集后下一次落库就会把自动软解写进记录
-            if (st.autoSwitchedDecodeOld != null) {
-                copy.put(st.autoSwitchedDecodeKey, st.autoSwitchedDecodeOld);
-            }
-            return copy;
-        } catch (Throwable th) {
-            return playerCfg;
-        }
-    }
-
-    /**
-     * 未按剧锁定时,让 cfg 的解码键跟随全局设置(换集入口调用)。
-     *
-     * <p>背景:cfg 里的 "exo" 是**会话开始时**由 {@link #initPlayerCfg()} 从全局写下的副本;
-     * 用户在换集期间去设置页改了解码方式,不刷新的话要等下一部片才生效 ——
-     * 这里在换集入口重写一次,让本次换集即按最新设置起播。
-     *
-     * <p>两种不能刷新:①按剧锁定(exoSet == 1,用户显式选过);②**自动软解态**
-     * (autoSwitchedDecodeOld != null)是本次会话的回退结果,用全局值顶掉就等于把回退作废。
-     */
-    private void syncDecodeFromGlobal() {
-        if (playerCfg == null) return;
-        boolean autoExo = st.autoSwitchedDecodeOld != null && "exo".equals(st.autoSwitchedDecodeKey);
-        try {
-            if (playerCfg.optInt("exoSet", 0) == 0 && !autoExo) {
-                playerCfg.put("exo", KV.get(HawkConfig.EXO_DECODE, "硬解码")); // i18n: keep
-            }
-        } catch (Throwable th) {
-            // 与 initPlayerCfg 一致:刷新失败不阻断播放
-            LOG.d("PlaybackController", "syncDecodeFromGlobal failed, keep current cfg");
-        }
+        return config.playerCfgForPersist();
     }
 
     /** 用户自救(重播/切解析/切内核/切解码)后:允许再兜一次底 */
@@ -1188,7 +1115,7 @@ public class PlaybackController {
 
         stopParse();
         beginNewPlay();
-        syncDecodeFromGlobal();
+        config.syncDecodeFromGlobal();
         setWebPlayUrl(null);
         setWebHeaderMap(null);
         initParseLoadFound();
@@ -1598,11 +1525,7 @@ public class PlaybackController {
     public boolean selectQuality(int position) {
         return music.selectQuality(position);
     }
-
-    /**
-     * 常见纯音频直链后缀预判(仅用于起播前选渲染视图;误判无功能损失 —— TextureView 照常渲染视频)。
-     * 注意只看去 query/fragment 后的后缀:音乐直链常带签名参数(.mp3?sign=...), playlist(m3u8) 绝不能命中。
-     */
+    
     public static boolean looksLikeAudioUrl(String url) {
         if (url == null || url.isEmpty()) return false;
         String lower = url.toLowerCase();

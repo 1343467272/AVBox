@@ -1,6 +1,6 @@
 ---
 name: AVBox 渐进式重构 Spec（VM 归一与上帝类收尾专项）
-status: 执行中（2026-10-01：V1–V4 已落地并过审查轮、待走查；D1/D2/D3/V6 已拍板；V5 待做；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
+status: 执行中（2026-10-01：V1–V4 已落地并过审查轮；**V5 已落地（6 个本地 commit，逐簇结论见 V5 节）、审查轮未做**；V1–V5 均待真机走查；D1/D2/D3/V6 已拍板；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
 source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveData/StateFlow 各半、viewmodel/ 名不副实）② 上帝类残留（PlaybackController / ComposeVideoController / PlayContainer / ApiConfig）③ VM 持 View 与 static 可变缓存 ④ 业务逻辑写进 Composable。审查结论：四问题全部属实（数字 ±5% 出入见 §2）
 ---
 
@@ -33,6 +33,8 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 | `SourceViewModel.java` | 168 行门面 | 7 个 `MutableLiveData` 通道 + `static sortCache`/`extendCache` + `spThreadPool` 别名 |
 | `observeForever` 手动配对 | **9 处 / 5 文件** | `DetailViewModel`(131/217)、`HomeViewModel`(110–112/393，持 3+1 实例)、`PartitionListViewModel`(51/66 两实例)、`SearchViewModel`(302)、`PlaybackController`(1039) |
 | `viewmodel/` 包 | 11 文件 | 真正的 ViewModel 仅 2 个（`SourceViewModel`/`SubtitleViewModel`），其余 9 个为 Loader/Resolver/Helper/Parser |
+
+> **V5 落地后（2026-10-01）**：`PlaybackController` **1806 行**（超时/预载/取流观察三簇拆出）、`PlayContainer` **1337 行**（音轨选择拆出）、`ComposeVideoController` **1214 行**（手势拆出）；新增 5 个协作者与逐簇结论见 V5 节。
 
 # 3. 问题清单（映射用户提法 → 根因）
 
@@ -195,6 +197,50 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 
 ## V5｜播放三件套结构拆分（消问题 ②a；风险最高，最后做）
 
+**执行状态（2026-10-01）**：已落地（6 个本地 commit，未推远程；全程"只搬位置不改逻辑"，逐簇做归一化多重集比对 + 构建 + 单测）：
+
+| commit | 簇 | 交付与行数 |
+| --- | --- | --- |
+| `f1e11f7` | ComposeVideoController 手势 | 新增 `player/controller/GestureController.kt`（260 行：`OnGesture`/`OnDoubleTap`/`OnTouch` 三接口实现 + 滑动/长按倍速/触摸守卫）；宿主 1423 → 1214 行 |
+| `806ce04` | PlaybackController 超时 | 新增 `player/PlaybackTimeouts.java`（80 行：3 MSG + 2 毫秒常量 + Handler + 投递/撤销）；宿主留 `start*/cancel*` 薄转发与三个 `handle*` 判定 |
+| `1efa5ea` | PlaybackController 预载 | 新增 `player/PlaybackPreload.java`（103 行：协调器/就绪回调/评估驱动/起播前结果消费/作废）；宿主留 4 个转发 + `Host` 匿名实现 |
+| `5f26c88` | PlaybackController 取流观察 | 新增 `player/PlaybackFetch.java`（239 行：107 行匿名 Observer 具名化为 `handlePlayResult` + 字幕/歌词地址 + 弹幕搜索搬迁）；主类 **2016 → 1806 行** |
+| `a97bc5b` | PlayContainer 音轨选择 | 新增 `ui/player/TrackSelectorDelegate.java`（158 行：音/视频轨弹窗 + 200ms 复位 + 代次守卫）；容器 1422 → 1337 行 |
+| `aa144b1` | 注释规范化 | 新文件里两条 `BugReview #N:` 前缀去掉（保留其解释）；存量 `BugReview #32`（ComposeVideoController）未动 |
+
+**逐簇结论（"拆出 / 留下 + 豁免理由"二选一）**：
+
+- **PlaybackController 侧**：
+  - 超时 / 预载 / 取流观察 —— **已拆出**（上表）。
+  - 嗅探 —— **已收边，无新类**：WebView/脚本/嗅探链在 P0–P1 已属 `PlayUrlResolver`（794 行，`Host` 回调）；剩余 `webPlayUrl`/`webHeaderMap`/`webUserAgent` 三字段**留主类**（被重试阶梯 4 处、起播入口 3 处、投屏 2 处、`PlayUrlResolver.Host` 与外部页面共享，访问器已是公开面；搬走只增转接）。
+  - 进度继承 —— **留下并豁免**：`progressKey`/`progressOwner` 是"会话归属"判定的组成部分（`isStalePlayResult` 的迟到回包守卫、`play()` 的落盘与解除接管、`PlaybackFetch` 的字幕/歌词/弹幕键绑定），`inheritProgress*` 与 `play()` 的 pendingInherit 消费同链；拆出只把字段访问换成跨对象契约，收益 ~90 行、风险中。
+  - 主类 600 行软目标**未达**（1806 行）：剩余主体是"会话数据 + 调度状态机 + 音乐会话"，按 spec"不为行数硬拆"以簇归属收口；如后续再拆，候选是"音乐会话/媒体通知"簇（~300 行，spec 未列，需另立）。
+- **PlayContainer 侧**：
+  - 音轨选择段 —— **已拆出**（`TrackSelectorDelegate`；`isSameTrack` 改包级 static 供字幕轨选择复用）。
+  - 挂摘/生命周期段 —— **留下**：服务化挂摘协议的页面侧本体（与 `PlaybackEngine`/`PageHost` 双向，拆出收益为负）。
+  - 全屏旋转段 —— **留下**：~40 行薄转发，状态与 `mActivity`/`mController` 同生命周期。
+  - 弹幕装配段 —— **留下**：~45 行薄转发（逻辑已在 `DanmuLoadController`）。
+  - 控制器装配段 —— **留下**：装配面本体（建控制器/监听器/`surfaceSlot`）。
+  - 字幕/歌词装配段（~330 行）—— **留下并豁免**：① 与 `mController` 三个字幕视图及 `mVideoView` 的轨道/cue 接口同体；② 决策链三合一守卫（`subtitleDecisionSeq` 代次 + `isAttached` 页面存活 + `scheduler.progressKey`/`trackMemoryKey` 会话键）是"当前容器的会话事实"，跨对象拆出会变成跨对象契约；③ 服务化后其职责本就是"视图 + 装配"；④ 本文件已两轮拆分（1839→1424→1407→1337），边际收益低于回归风险。
+  - 提示层 / 预载 Toast / 投屏 / 媒体会话回调 / 播放控制转发 / 会话接管（D6）—— **留下**：均为薄转发或页面 API 面（各 10–130 行）。
+- **ComposeVideoController 侧**：
+  - 手势簇 —— **已拆出**（`GestureController`）。
+  - `PlayerControlApi`/`PlayerActions` 的 UI 构建与回调转发簇 —— **留下**：30 个 `onXxxClicked` 是 3–8 行"回调转发 + `keepControlsAlive`/`hideBottom` + `fastClickAllowed`"，与 `PlayerUiState`/`VodControlListener`/`uiHandler`/`playerConfig` 全共享；拆出要求宿主暴露这些共享状态，等价于双向引用。
+
+**验证**：每簇 `assembleDebug` + `testDebugUnitTest` 全绿（**468 例 / 0 失败**，与 V4 后基线同数——纯搬移不带行为变化）。逐簇"旧 → 新"归一化多重集比对（去空白 + 去 `host.`/`controller.` 前缀 + 字段读归一），missing 全部为登记的预期形式转换：
+
+- 手势簇 3 = `onTouchEvent` 壳 / `super` 调用留宿主 / `LOG.e` tag 换新类名。
+- 超时簇 = 常量值与 13 个调用点逐条映射核对（7×撤销 + 2×清超时 + 2×发超时 + 2×复合入口），非多重集比对。
+- 预载簇 4 = 冗余判空归一 + `initFetch`→`ensureFetch` + 两个参数名。
+- 取流簇 7 = `st` 字段→方法（`isSwitchStopPending`/`setUserPickedLine`）、字段写→setter（`webPlayUrl`/`currentArtwork`）、`deliverPlayResult`→`deliver`、`cancelPlayRequest` 去 public（含 2 条脚本归一化 artifact）。
+- 音轨簇 2 = `isSameTrack` 去 private/加 static + 调用点加类限定。
+- ⚠️ 登记的语义等价改写（非回归，但要说清）：`PlaybackPreload.onPlayerState` 与 `PlaybackFetch.handlePlayResult` 里"字段两次读 + 冗余判空"归一为"一次局部读"（调用点与字段替换全在主线程，无并发窗口）。
+- 新增协作者的宿主注入沿用两种既有形态：`PlaybackTimeouts.Callback`/`PlaybackPreload.Host` 用接口；`PlaybackFetch`/`TrackSelectorDelegate` 包级持有宿主引用（同 `PlaybackAttemptState` 同包先例）。
+- i18n 卡口（`.codebuddy/tools/i18n_gate.py`）复跑：**ui 0 处 + 非 ui 0 处**（新文件未引入未外置文案；`PlaybackFetch` 的 `"歌词"` 带 `// i18n: keep`）。
+- **未做**：装机走查——设备离线（`adb devices` 空，与 V1–V4 同因）。走查判据 = `avbox-playback-service-spec.md` §4 的 1–14 全清单，本轮重点覆盖：手势（单击/双击/长按倍速/横滑 seek/亮度音量/预览态横滑）、三处超时（取流超时换线 / 20s 起播超时 / 播完延后撤会话）、预载（命中起播 / 下一集就绪 Toast / 弱网让路）、取流结果（切集换线换源迟到回包丢弃 / 字幕歌词弹幕 / 封面）、音轨与视频轨切换。
+
+**原设计记录（本次执行按上述落地）**：
+
 - **`PlaybackController` 2016 → 主类 ≤600 量级（软目标）**，按旧 spec 阶段 7 登记的簇 + 实测字段分布：
   | 簇 | 证据（行号） | 去向 |
   | --- | --- | --- |
@@ -273,12 +319,13 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - `observeForever` 面：`Select-String '\.observeForever\('` 全库。
 - VM 持 View 引用面：`Select-String 'PlayContainer\?|View\b'` 限 `**/viewmodel/**` 与页面 VM。
 
-# 附录 B. 关键代码坐标（执行时直接定位；**V1–V4 落地后已订正**）
+# 附录 B. 关键代码坐标（执行时直接定位；**V1–V5 落地后已订正**）
 
 - `DetailViewModel` 播放指令流：`DetailPlaybackCommands.kt`（指令/事实/全屏判定）；收集点 `DetailScreen.kt:73–83`；设备事实 `DetailActivity.playbackFacts()`。
 - `DetailViewModel` 详情代次（V4）：`detailRequestToken` 声明与自增（`loadDetail` **早退之前**）、`loadDetailInternal` 沿用当代；判据 `DetailResponseGuard.kt`；回包盖章 `DetailLoader`（每条出口）+ `SourceResultParser.json/xml` 的 5 参重载 + `AbsXml.detailToken`。
 - `observeForever` 现存 **3 处 / 2 文件**（全在播放层）：`PlaybackController.java` playResult（挂/摘配对 `releaseFetch()`）、`PreloadCoordinator.java` preloadResult（挂/摘配对 `destroy()`）。页面层其余全部经 `sourcedata/LiveDataFlow.kt` 的 `observeAsFlow()`。
 - 运行期状态：`SourceRuntimeState.java` 的 `sortCache`（access-order + 上限 5）/`extendCache`/`clearRuntimeCache()`；唯一清理调用点 `HomeViewModel.reload()`；spider 线程池真身 `SourceHelper.SPIDER_POOL`（门面 `spThreadPool` 别名已删）。
 - `ConfigManagePage`：`ConfigManageViewModel`（状态 + 14 方法）；页面留 UI 开关与 `badgeText`。
-- `PlaybackController` 簇坐标：超时 437–444 / 嗅探 1025–1027 / 取流观察 1039–1040 + 匿名 Observer 1075 / 预载 1614–1615 / 进度继承 81–99（行号随 V5 拆分变动）。
+- `PlaybackController` V5 后结构：超时 → `PlaybackTimeouts.java`（3 MSG/2 常量/Handler 全在彼）；预载 → `PlaybackPreload.java`（含起播前结果消费 `consumeResult`）；取流观察 → `PlaybackFetch.java`（`handlePlayResult` + 字幕/歌词地址 + 弹幕搜索）；进度继承与 `webPlayUrl`/`webHeaderMap`/`webUserAgent` 三字段留主类（豁免理由见 V5 节）。
+- `ComposeVideoController` 手势 → `player/controller/GestureController.kt`（`attach()` 在 `initView` 装配、`setOnTouchListener` 挂委托；委托经 `host` 读 `state`/`previewMode`/`curPlayState`/`playerConfig`/`speedOld`/`wrapper`）；`PlayContainer` 音/视频轨 → `ui/player/TrackSelectorDelegate.java`（`isSameTrack` 为包级 static，字幕轨选择复用）。
 - `HomeViewModel`：三通道收集器 + `PartitionLoader`（`observeScope` 必须是 `SupervisorJob(parent) + Main.immediate`，见代码注释里的两个坑）。

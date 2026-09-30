@@ -655,6 +655,8 @@ class ComposeVideoController @JvmOverloads constructor(
         keepControlsAlive()
         try {
             val cfg = playerConfig ?: return
+            // 值没变(重复点当前档)只刷新显式选择标记,不重建内核:重建会中断播放并清掉已试线路
+            val unchanged = cfg.optString("exo") == value
             cfg.put("exo", value) // i18n: keep
             // 记一个显式选择标记:否则设置页的新值会被播放记录里的旧值压住
             cfg.put("exoSet", 1)
@@ -662,7 +664,7 @@ class ComposeVideoController @JvmOverloads constructor(
             listener?.setAllowDecodeFallback(false)
             updatePlayerCfgState()
             listener?.updatePlayerCfg()
-            listener?.replay(false)
+            if (!unchanged) listener?.replay(false)
         } catch (e: JSONException) {
             LOG.e("ComposeVideoController", e)
         }

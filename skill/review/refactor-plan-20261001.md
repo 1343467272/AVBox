@@ -165,14 +165,20 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
   - `DetailViewModel.detailRequestToken`:**只在"发起新的内容请求"时自增**（换片/换源/重试,即 `loadDetail`）;**fallback 换候选站不自增**（同一代内多候选,谁先回都算当前,与旧"换实例只在换片/换源时发生"一致）。
   - 判据抽成纯函数 `DetailResponseGuard.isCurrent(requestToken, responseToken)`(null = 无代次信息,不采信),单测 6 例锁行为 —— 含**换源但同 vodId** 那一格:源 A/源 B 命中同一部片时 `sourceKey` 会变而 `vodId` 可能相同,内容比对分不出来,只有代次能分（这正是"换实例"的技术替代）。
 - **播放层的 2 处为何不在本阶段收口（登记理由）**:`PlaybackController`(Java,自持 `SourceViewModel`)与 `PreloadCoordinator`(Java,构造器里挂 `preloadResult`)都不是页面 VM,`observeForever` 是它们与门面之间的自然写法;两者**都已有配对清理**(`releaseFetch()` / `destroy()`),不存在 V4 要消的"漏配对即泄漏"形态。V4 若把它们也搬成 flow,就要在 `player` 模块引入协程作用域与生命周期,收益不匹配。归 **V5**(`PlaybackController` 拆簇时一并具名化 + 补配对清理检查),`PreloadCoordinator` 同批评估。
-- **验证**：`assembleDebug` + `testDebugUnitTest` 全绿（**60 类 / 466 例 / 0 失败** = V3 基线 458 + 代次守卫 8 例）。
+- **验证**：`assembleDebug` + `testDebugUnitTest` 全绿（**60 类 / 465 例 / 0 失败**；代次守备用例 7 条 —— 首版 6 条、审查轮补 2 条后删掉 1 条同义重复）。
 - **审查轮（两轮独立复核）抓到 3 处真回归（已修）** —— 全部是本阶段引入、且前两笔审查轮从未出现的类型：
   1. **代次自增时机有洞（高）**：首版把 `nextDetailRequestToken()` 写在 `loadDetail` 的**早退之后**，于是"空 id / `msearch:` 占位 / 源不在当前订阅"这三类换片只改内容不换代 —— 上一代的迟到回包被守卫放行，而同源不同片时 `sourceKey` 比对也拦不住 ⇒ 旧片顶掉新页、并可能按新页的 vodId 写脏历史。**旧实现的 `rebindDetailSource()` 是无条件执行的，所以这是严格退化**。修法:自增提到早退之前，并把判据抽成 `DetailResponseGuard.isUnloadableTarget` + 用例，让这条分支也有测试。
   2. **子作用域丢 Dispatcher（阻断级）**：`CoroutineScope(viewModelScope.coroutineContext[Job]!!)` 只带 Job，`launch` 兜底成 `Dispatchers.Default`，而 `observeForever` 内部有 `assertMainThread` ⇒ 首页首次建 `PartitionLoader` 即抛，分区/推荐永久 Loading。
   3. **`cancel()` 打到父作用域（高）**：同一行复用父 Job，`release()` 的 `cancel()` 会连 `viewModelScope` 一起取消 —— 而 `loadHome()` **每次换源都 release 旧 loader** ⇒ 首页切源后永久 loading。
   - 2/3 修法:`SupervisorJob(parent) + Dispatchers.Main.immediate`（`HomeViewModel.PartitionLoader` 与 `PartitionListViewModel` 各一处），两个坑都写进代码注释（最容易再犯的地方）。
   - **教训（已进 §9 流程）**：这三条都属"单测跑不到、只有读协程语义/路径枚举才能发现"的类型 —— `observeForever` 的主线程断言在纯 JVM 单测里根本不执行，所以"全绿"不能当通过。凡"给页面 VM 造作用域"的改动，必须显式检查**继承了什么 Dispatcher**与**cancel 会打到谁**；凡"判据前有早退"的改动，必须检查**早退分支是否也走了那条判据的更新步骤**。
-  - 其余审查发现:测试里 3 例是同义重复（已删/改写为带反例的形态）；`observeAsFlow` 的 `trySend` 静默丢弃与注释口径已订正（并写明播放层是 `observeForever` 的登记例外）；`PushDetailResolver` 的 3 个 post 投的是**被原地改写的同一对象**（代次不会被冲掉，已核实非回归，未加冗余兜底）；活规范 §4.4 与附录 B 坐标已同步。
+  - 其余审查发现:测试里 3 例是同义重复（已删/改写为带反例的形态,后又删 1 例与「反向不等」完全同构的"同源不同片"用例——代次判据本身分不出场景,那条注释已并入相邻用例）；`observeAsFlow` 的 `trySend` 静默丢弃与注释口径已订正（并写明播放层是 `observeForever` 的登记例外）；`PushDetailResolver` 的 3 个 post 投的是**被原地改写的同一对象**（代次不会被冲掉，已核实非回归，未加冗余兜底）；活规范 §4.4 与附录 B 坐标已同步。
+- **收尾审查轮（第 3 轮,两轮独立复核）**：结论 **0 阻断 / 0 高**，两处"中"已收口 ——
+  1. **`rollbackManualSwitch` 改内容不换代次**：两位审查者对严重度判断不同（一位记高、一位记口味），我按代码核到**今天拦得住**（回包 `sourceKey` 是被弃源、而该方法刚把它恢复成上一部的 key，`onDetailResult` 的 `sourceKey` 比对会拦），但那是"靠两个字段恰好不相等"的巧合 ⇒ 已补 `nextDetailRequestToken()`，把"内容改写就得换代"变成与 `loadDetail` 同一条协议。**当前不构成真回归，是防未来的结构性收口。**
+  2. **`loadDetailInternal` 读字段取代次**：改为**显式传参**（`loadNextFallbackCandidate` 调用点传 `detailRequestToken`），避免将来在中间插入换代时被静默读错。
+  3. `PartitionLoader.observeScope` 是**一次性**作用域（取消后不能再 launch），而 `loaders` 表可能 `getOrPut` 复用同一个 loader ⇒ 已在 `release()` 写明"调用方必须先清表/摘除再 release"的顺序不变量（当前两个调用点都满足）。
+- **登记为已知行为变化（非回归,但要说清）**：换片后**不再取消在途详情请求**（`cancelTag("detail")` 只在 fallback 超时与 `destroyEngine`）,旧实现里这些回包投给已摘观察者的旧 LiveData 实例、无人处理,现在会真正投递到页面再由代次守卫丢弃 ⇒ 差别是**推送链路的 `checkPush`(15s 阻塞)与讯雷解析会在已被切走的片上继续跑完**。另有两条同源差异:`detailResult` 在页面存活期始终有活跃观察者（旧实现换实例后旧通道无观察者）;观察者注册从"构造期同步"变成"`launch` 内注册"(靠 `Main.immediate` 仍同步,但保障从语言保证变成 Dispatcher 语义)。
+- **登记为不修（既有问题,非本阶段引入）**：`DetailViewModel.retry()` 全库无调用方（死代码,首版提交说明把它当"换代路径"引用属误述）;详情**初始加载没有超时兜底**（只有 fallback 候选有 6s）,某源回调永不返回时会停在 Loading;`cancelDetailTimeout()` 实际是 `removeCallbacksAndMessages(null)`（清光 handler 全部消息,不止超时）。
 - 未做：装机走查 —— `adb` 不在 PATH。走查判据（本阶段最关键的一组）：详情页快进快出连点（迟到回包不串片,尤其**换到另一个源但同一部片**）、fallback 自动换站期间旧回包不串、搜索聚合并发、`HomeViewModel` sort/rec/action 三通道互不串扰、首页下拉刷新与分区翻页仍正常。
 
 **原设计记录（本次执行按上述落地）**：

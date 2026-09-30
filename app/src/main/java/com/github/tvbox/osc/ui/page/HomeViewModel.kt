@@ -417,6 +417,9 @@ class HomeViewModel : ViewModel() {
             pending?.invoke(LoaderResult(stale = true, absXml = null))
             pending = null
             busy = false
+            // 释放即弃用:observeScope 是一次性的(取消后不能再 launch),所以调用方必须**先把它从
+            // `loaders` 表里摘掉/清表再 release** —— 否则后续 requestPartition 会 getOrPut 取回它,
+            // pending 永远等不到回包、该分区永停 Loading。当前两个调用点(loadHome/onCleared)都是先 clear 再 release。
             observeScope.cancel()
         }
     }

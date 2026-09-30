@@ -548,6 +548,10 @@ class DetailViewModel : ViewModel() {
         val snapshot = switchSnapshot ?: return false
         if (snapshot.vodInfo.seriesMap?.get(snapshot.vodInfo.playFlag).isNullOrEmpty()) return false
         switchSnapshot = null
+        // 换代次:内容标识从"被弃源"换回"上一部",被弃源的在途回包必须就此作废。
+        // 今天即使不换也拦得住(回包 sourceKey 是被弃源,而这里刚恢复成上一部的 key,第 322 行会拦),
+        // 但那是"靠两个字段恰好不相等"的巧合 —— 内容改写就得换代,与 loadDetail 同一条协议。
+        nextDetailRequestToken()
         vodInfo = snapshot.vodInfo
         vodId = snapshot.vodId
         sourceKey = snapshot.sourceKey
@@ -608,20 +612,26 @@ class DetailViewModel : ViewModel() {
             vodPicture = video.pic ?: vodPicture
             publishSourceChips()
             scheduleDetailTimeout()
-            loadDetailInternal(video.id.orEmpty(), video.sourceKey.orEmpty())
+            // 传 field 而不是捕获一次:候选站与发起请求同属一代(这一代由 loadDetail 或 rollback 定下)
+            loadDetailInternal(video.id.orEmpty(), video.sourceKey.orEmpty(), detailRequestToken)
             return
         }
         publishSourceChips()
         if (!sourcesSearching.value) finishFallbackWithoutResult()
     }
 
-    /** fallback 换候选站:沿用当前代次(同一代内多个候选,谁先回都算当前) */
-    private fun loadDetailInternal(vid: String, key: String) {
+    /**
+     * fallback 换候选站:沿用**当前这一代**(同一代内多个候选,谁先回都算当前)。
+     *
+     * token 由调用方显式传入而不是在这里读字段:若将来有人在这中间插入换代(例如把 rollback 也接进 fallback),
+     * 读字段会把"发起时那一代"悄悄改掉,而显式传参会在编译期逼调用方表态。
+     */
+    private fun loadDetailInternal(vid: String, key: String, requestToken: Int) {
         vodId = vid
         sourceKey = key
         firstsourceKey = key
         collected.value = RoomDataManger.isVodCollect(sourceKey, vodId)
-        sourceViewModel.getDetail(sourceKey, vodId, true, detailRequestToken)
+        sourceViewModel.getDetail(sourceKey, vodId, true, requestToken)
     }
 
     private fun finishFallbackWithoutResult() {

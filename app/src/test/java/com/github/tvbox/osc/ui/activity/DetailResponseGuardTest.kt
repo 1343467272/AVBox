@@ -31,17 +31,9 @@ class DetailResponseGuardTest {
 
     @Test
     fun responseAheadOfCurrentGenerationIsDropped() {
-        // 反向不等同样丢(不假设回包一定"落后")
+        // 反向不等同样丢(不假设回包一定"落后");顺带锁住"同源不同片"那一格:
+        // 源 A 与源 B 命中同一部片时 sourceKey 会变而 vodId 可能相同,内容比对分不出来,只有代次能分
         assertFalse(DetailResponseGuard.isCurrent(requestToken = 7, responseToken = 8))
-    }
-
-    @Test
-    fun sameVodFromAnotherSourceIsStillDroppedWhenStale() {
-        // 这条是换实例语义的技术替代:源 A 与源 B 命中同一部片 ⇒ sourceKey 会变、vodId 可能相同,
-        // 内容比对分不出来,代次可以
-        val currentGeneration = 3
-        val staleResponseGeneration = 2
-        assertFalse(DetailResponseGuard.isCurrent(currentGeneration, staleResponseGeneration))
     }
 
     @Test

@@ -15,6 +15,7 @@ import com.github.tvbox.osc.event.RefreshEvent
 import com.github.tvbox.osc.util.DefaultConfig
 import com.github.tvbox.osc.util.HomeSettings
 import com.github.tvbox.osc.util.LanguageManager
+import com.github.tvbox.osc.viewmodel.SourceRuntimeState
 import com.github.tvbox.osc.viewmodel.SourceViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
@@ -147,7 +148,7 @@ class HomeViewModel : ViewModel() {
     }
 
     fun reload() {
-        SourceViewModel.clearRuntimeCache()
+        SourceRuntimeState.clearRuntimeCache()
         loadHome()
     }
 

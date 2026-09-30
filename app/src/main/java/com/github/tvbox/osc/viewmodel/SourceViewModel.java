@@ -16,16 +16,11 @@ import com.google.gson.Gson;
 
 import org.json.JSONObject;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-
 /**
  * 站点取数门面:对外只暴露通道 + 入口方法,取数实现按职责分在同包 Loader 里。
  *
- * <p>门面自己只保留跨 Loader 共享的东西:7 个结果通道、站点取数线程池、sortCache/extendCache
- * 与 {@link #clearRuntimeCache()} —— 缓存与通道的归属集中在一处,换源清理才有唯一出口。
+ * <p>门面自己只保留跨 Loader 共享的东西:7 个结果通道;运行期状态(homeContent 缓存、extend 缓存、
+ * 线程池)统一归 {@link SourceRuntimeState},换源清理因此仍有唯一出口。
  *
  * @author pj567
  */
@@ -38,22 +33,6 @@ public class SourceViewModel extends ViewModel {
     public MutableLiveData<JSONObject> playResult;
     /** 下一集预解析专用通道（预载方案,与 playResult 独立 seq 防串扰,规格 §5.2） */
     public MutableLiveData<JSONObject> preloadResult;
-
-    /** 站点取数线程池(spider 阻塞调用);池本身在 {@link SourceHelper},这里保留门面入口 */
-    public static final ExecutorService spThreadPool = SourceHelper.SPIDER_POOL;
-
-    //homeContent缓存，最多存储5个sourceKey的AbsSortXml对象
-    // access-order 的 LinkedHashMap:连 get 都会改结构,而读写它的是多个池线程 ⇒ 所有访问都在
-    // 这把锁(监视器就是 map 本身)下,持锁期间不做 IO,否则链表会在并发下损坏
-    private static final Map<String, AbsSortXml> sortCache = new LinkedHashMap<String, AbsSortXml>(5, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Entry<String, AbsSortXml> eldest) {
-            return size() > 5;
-        }
-    };
-
-    /** extend(站点扩展参数)解析结果缓存,键是原始 extend 的 MD5 */
-    private static final ConcurrentHashMap<String, String> extendCache = new ConcurrentHashMap<>();
 
     private final Gson gson;
     private final PushDetailResolver pushDetailResolver;
@@ -75,19 +54,11 @@ public class SourceViewModel extends ViewModel {
         gson = new Gson();
         pushDetailResolver = new PushDetailResolver(gson, detailResult);
         resultParser = new SourceResultParser(gson, searchResult, detailResult, pushDetailResolver);
-        listLoader = new ListLoader(gson, extendCache, listResult, resultParser);
-        sortLoader = new SortLoader(gson, extendCache, sortCache, sortResult, listLoader, resultParser);
-        detailLoader = new DetailLoader(gson, extendCache, detailResult, resultParser);
-        searchLoader = new SearchLoader(gson, extendCache, searchResult, resultParser);
-        playLoader = new PlayLoader(gson, extendCache, playResult, preloadResult);
-    }
-
-    /** 换源/换配置后清掉运行期缓存(分类结构与 extend 都与源绑定) */
-    public static void clearRuntimeCache() {
-        synchronized (sortCache) {
-            sortCache.clear();
-        }
-        extendCache.clear();
+        listLoader = new ListLoader(gson, SourceRuntimeState.extendCache, listResult, resultParser);
+        sortLoader = new SortLoader(gson, SourceRuntimeState.extendCache, SourceRuntimeState.sortCache, sortResult, listLoader, resultParser);
+        detailLoader = new DetailLoader(gson, SourceRuntimeState.extendCache, detailResult, resultParser);
+        searchLoader = new SearchLoader(gson, SourceRuntimeState.extendCache, searchResult, resultParser);
+        playLoader = new PlayLoader(gson, SourceRuntimeState.extendCache, playResult, preloadResult);
     }
 
     public void getSort(final String sourceKey) {
@@ -117,7 +88,7 @@ public class SourceViewModel extends ViewModel {
             return;
         }
         if (sourceBean.getType() == 3) {
-            spThreadPool.execute(new Runnable() {
+            SourceHelper.SPIDER_POOL.execute(new Runnable() {
                 @Override
                 public void run() {
                     try {

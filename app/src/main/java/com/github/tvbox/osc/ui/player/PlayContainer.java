@@ -156,6 +156,9 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
     /**
      * 清晰度切换结果回调。能否切只取决于控制器当前清晰度表(见 `PlaybackController.selectQuality`),
      * 页面拿不到这个判定(V2 起详情页 VM 不再持容器引用)⇒ 由容器把结果回写页面状态。
+     *
+     * 契约:仅在受理后回调一次,与 `selectQuality` 同线程同步返回(不 post);置 null 即解绑。
+     * 页面侧必须用主线程调用 `selectQuality`,否则回调会从非主线程写页面状态。
      */
     public interface OnQualitySelectedListener {
         void onQualitySelected(int position);
@@ -238,6 +241,8 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
     public void hostDestroy() {
         LOG.i("echo-music destroy: hostDestroy enter");
         PlayerTipBridge.clearTipStateListener(tipStateListener);
+        // 页面回调随页面一起摘掉:容器比 VM 长寿时(页面销毁但 VM 尚未 cleared)不留方法引用
+        qualitySelectedListener = null;
         if (engine != null && !handedOver) engine.detach(this);
         cancelPreloadToast();
         if (EventBus.getDefault().isRegistered(this)) {

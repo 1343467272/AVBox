@@ -45,25 +45,28 @@ internal object DetailPlaybackCommands {
      * 全屏形态决策,返回 `(fullScreen, rotating)`。逐字保留旧 `DetailViewModel.setFullScreen` 的判据:
      *
      * ```
-     * full       = requested
      * landNow    = 窗口方向 == LANDSCAPE
      * landTarget = requested && !portraitVideo
-     * rotating   = requested && (landTarget != landNow)   // 退全屏是旧实现的短路分支,恒 false
+     * rotating   = landTarget != landNow
      * ```
      *
-     * `rotating` 的含义是「系统旋转就位前先按目标形态铺版」(`DetailScreen`: `fullBox = if (rotating) isLandscapeNow else full`),
-     * 所以:竖屏窗口 + 横屏视频 ⇒ 置位;竖屏视频 ⇒ 目标形态非横屏 ⇒ 不置位(留在竖屏窗口只换版式,
-     * 真正的锁竖屏在 `DetailActivity.applyFullscreen` 的 `SENSOR_PORTRAIT` 分支);退全屏一律清零。
+     * **退全屏不是短路分支**:`requested=false` 时 `landTarget` 恒 false,于是 `rotating = landNow` ——
+     * 窗口还横着退全屏必须置位,`fullBox`(= `if (rotating) isLandscapeNow else full`)才会保持全屏形态
+     * 直到系统旋转落地,这正是 2026-09-13 真机验证过的「横屏按返回:画面保持全屏样转回竖屏,
+     * 不再缩小靠左上跳」(`skill/history/features.md` 的「全屏/退出全屏旋转过渡修复 A+B」,
+     * 另见 features.md 记的「不要为它盲改判据」)。写成 `if (!requested) return false to false` 会退回那个已修的观感缺陷。
      *
-     * 只搬位置不改逻辑,真值组合见 `DetailPlaybackCommandsTest`。
+     * `rotating` 的进全屏侧:竖屏窗口 + 横屏视频 ⇒ 置位;竖屏视频 ⇒ 目标形态非横屏 ⇒ 不置位
+     * (竖屏→竖屏不触发 `onConfigurationChanged`,置位会永不复位 —— 见 features.md 的「rotating 语义」条,
+     * 真正的锁竖屏在 `DetailActivity.applyFullscreen` 的 `SENSOR_PORTRAIT` 分支)。
+     *
+     * 真值表 6 格全部锁在 `DetailPlaybackCommandsTest`。
      */
     fun fullScreenState(
         requested: Boolean,
         facts: DetailPlaybackFacts,
     ): Pair<Boolean, Boolean> {
-        // 退全屏是旧实现的短路分支(landTarget 恒 false ⇒ rotating 恒 false),不是同一条比较
-        if (!requested) return false to false
-        val landscapeTarget = !facts.portraitVideo
-        return true to (landscapeTarget != facts.landscape)
+        val landscapeTarget = requested && !facts.portraitVideo
+        return requested to (landscapeTarget != facts.landscape)
     }
 }

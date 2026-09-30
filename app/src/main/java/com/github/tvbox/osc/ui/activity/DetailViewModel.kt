@@ -1,7 +1,6 @@
 package com.github.tvbox.osc.ui.activity
 
 import android.content.Intent
-import android.os.Bundle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.tvbox.osc.api.ApiConfig
@@ -78,8 +77,15 @@ class DetailViewModel : ViewModel() {
      *
      * 用带缓冲的 Channel 而非 SharedFlow:指令源可能是页面存活之前的调用
      * (`DetailActivity.init` 里 `initFromIntent` → `applyTarget` 早于 `setContent`),
-     * 缓冲保证「先发后收」不丢,顺序即旧实现的直调顺序。指令本身都带自守卫
-     * (`stopForContentSwitch` 无归属内容时不动、清提示无在途换源时不动),晚到消费无副作用。
+     * 缓冲保证「先发后收」不丢,顺序即旧实现的直调顺序(单消费者,`receiveAsFlow` 不做广播)。
+     *
+     * 与旧直调的差别只有「晚一次主线程派发」(≤1 帧):达到终态所需的主线程交接点与旧实现完全相同,
+     * 所以 `switchSource` 里先发的 [PlaybackCommand.StopForSourceSwitch] 仍排在同一批的
+     * [PlaybackCommand.ClearSourceSwitchTip] 之前(后者在换源回包结算时才发,中间隔着一次网络往返)。
+     *
+     * 指令大多带自守卫(`stopForContentSwitch` 无归属内容时不动、清提示无在途换源时不动),
+     * 但 [PlaybackCommand.StopForSourceSwitch] **没有**守卫(只有 `mVideoView == null`)——
+     * 它的安全性来自「发出点必然是用户点击换源」,不要把这个通道复用到别的页面或第二个消费者上。
      */
     private val playbackCommandChannel = Channel<PlaybackCommand>(Channel.BUFFERED)
     val playbackCommands: Flow<PlaybackCommand> = playbackCommandChannel.receiveAsFlow()
@@ -226,6 +232,9 @@ class DetailViewModel : ViewModel() {
 
     /**
      * 进/退全屏。设备事实由 UI 当帧传入(见 `DetailPlaybackFacts`),VM 不再读 View 状态。
+     *
+     * 退全屏同样走这里(不是单独清位):`rotating` 必须按「目标形态 ≠ 当前形态」重算,
+     * 横屏窗口退全屏要置位才能保持全屏样直到旋转落地(见 [DetailPlaybackCommands.fullScreenState])。
      */
     fun onFullScreenToggleRequested(requested: Boolean, facts: DetailPlaybackFacts) {
         if (requested) {
@@ -242,12 +251,6 @@ class DetailViewModel : ViewModel() {
         val (full, rotating) = DetailPlaybackCommands.fullScreenState(requested, facts)
         fullScreen.value = full
         this.rotating.value = rotating
-    }
-
-    /** 换片/换源时 UI 直接退回竖屏形态(不经决策:没有"进全屏"的成功判定要跑) */
-    fun exitFullScreen() {
-        fullScreen.value = false
-        rotating.value = false
     }
 
     fun bumpRevision() {
@@ -805,7 +808,14 @@ class DetailViewModel : ViewModel() {
         qualitySelected.value = position
     }
 
-    /** 播放层下行指令:指令来自主线程事件(点击/回包),缓冲 Channel 的 trySend 不阻塞 */
+    /**
+     * 播放层下行指令:指令来自主线程事件(点击/回包),缓冲 Channel 的 trySend 不阻塞。
+     *
+     * `trySend` 的失败分支不处理:按构造无处可失败(见 [playbackCommandChannel]),而
+     * `Channel.close()` 会让仍在收集的页面拿到 `ClosedReceiveChannelException`
+     * (本页的正常时序是「组合先销毁(Activity.onDestroy → releasePlayContainer)、
+     * 再 VM.onCleared」,但那是时序巧合,不该让通道关闭成为崩点)。
+     */
     private fun sendCommand(command: PlaybackCommand) {
         playbackCommandChannel.trySend(command)
     }

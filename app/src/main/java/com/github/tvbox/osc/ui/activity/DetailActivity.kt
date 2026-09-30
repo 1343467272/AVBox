@@ -82,7 +82,7 @@ class DetailActivity : BaseActivity(), PageHost {
                 val container = playContainer
                 if (fullScreen) {
                     if (container != null && container.onBackPressed()) return
-                    vm.exitFullScreen()
+                    vm.onFullScreenToggleRequested(false, playbackFacts())
                 } else {
                     if (vm.backToPreviousTarget()) {
                         pendingEpisodeSync = false
@@ -110,7 +110,7 @@ class DetailActivity : BaseActivity(), PageHost {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingEpisodeSync = false
-        vm.exitFullScreen()
+        vm.onFullScreenToggleRequested(false, playbackFacts())
         vm.pushTargetFromIntent(intent)
     }
 

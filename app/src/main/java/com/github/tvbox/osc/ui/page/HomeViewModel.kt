@@ -1,6 +1,5 @@
 package com.github.tvbox.osc.ui.page
 
-import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.tvbox.osc.R
@@ -17,7 +16,10 @@ import com.github.tvbox.osc.util.HomeSettings
 import com.github.tvbox.osc.util.LanguageManager
 import com.github.tvbox.osc.sourcedata.SourceRuntimeState
 import com.github.tvbox.osc.sourcedata.SourceViewModel
+import com.github.tvbox.osc.sourcedata.observeAsFlow
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -92,25 +94,21 @@ class HomeViewModel : ViewModel() {
     var defaultLiveLaunched = false
     var lastBackTime = 0L
 
-    private val sortObserver = Observer<AbsSortXml> { absXml: AbsSortXml? -> onSortResult(absXml) }
-
-    private val recObserver = Observer<AbsSortXml> { absXml: AbsSortXml? -> onRecResult(absXml) }
-
     val actionMessages = MutableSharedFlow<String>(
         extraBufferCapacity = 8,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
-    private val actionObserver = Observer<JSONObject?> { json ->
-        val msg = json?.optString("msg").orEmpty()
-        if (msg.isNotEmpty()) actionMessages.tryEmit(msg)
-    }
-
     init {
         EventBus.getDefault().register(this)
-        sortViewModel.sortResult.observeForever(sortObserver)
-        recViewModel.sortResult.observeForever(recObserver)
-        actionViewModel.actionResult.observeForever(actionObserver)
+        scope.launch { sortViewModel.sortResult.observeAsFlow().collect { onSortResult(it) } }
+        scope.launch { recViewModel.sortResult.observeAsFlow().collect { onRecResult(it) } }
+        scope.launch {
+            actionViewModel.actionResult.observeAsFlow().collect { json ->
+                val msg = json?.optString("msg").orEmpty()
+                if (msg.isNotEmpty()) actionMessages.tryEmit(msg)
+            }
+        }
         sources.value = ApiConfig.get().getSwitchSourceBeanList()
         currentSource.value = ApiConfig.get().getHomeSourceBean()
         scope.launch {
@@ -131,10 +129,8 @@ class HomeViewModel : ViewModel() {
     }
 
     override fun onCleared() {
+        // 观察者随 viewModelScope 取消自动摘除(桥接器的 awaitClose)
         EventBus.getDefault().unregister(this)
-        sortViewModel.sortResult.removeObserver(sortObserver)
-        recViewModel.sortResult.removeObserver(recObserver)
-        actionViewModel.actionResult.removeObserver(actionObserver)
         val staleLoaders = ArrayList(loaders.values)
         loaders.clear()
         staleLoaders.forEach { it.release() }
@@ -383,15 +379,18 @@ class HomeViewModel : ViewModel() {
         var released: Boolean = false
             private set
 
-        private val observer = Observer<AbsXml> { abs: AbsXml? ->
-            val current = pending
-            pending = null
-            busy = false
-            current?.invoke(LoaderResult(stale = false, absXml = abs))
-        }
+        /** 收集作用域随本 loader 生命周期:release() 取消它即摘掉观察者(等价旧 removeObserver) */
+        private val observeScope = CoroutineScope(viewModelScope.coroutineContext[Job]!!)
 
         init {
-            svm.listResult.observeForever(observer)
+            observeScope.launch {
+                svm.listResult.observeAsFlow().collect { abs ->
+                    val current = pending
+                    pending = null
+                    busy = false
+                    current?.invoke(LoaderResult(stale = false, absXml = abs))
+                }
+            }
         }
 
         fun request(page: Int, onDone: (LoaderResult) -> Unit) {
@@ -406,7 +405,7 @@ class HomeViewModel : ViewModel() {
             pending?.invoke(LoaderResult(stale = true, absXml = null))
             pending = null
             busy = false
-            svm.listResult.removeObserver(observer)
+            observeScope.cancel()
         }
     }
 }

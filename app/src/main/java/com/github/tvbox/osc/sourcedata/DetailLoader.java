@@ -51,6 +51,14 @@ final class DetailLoader {
     }
 
     void getDetail(String sourceKey, String urlid, boolean fallback) {
+        getDetail(sourceKey, urlid, fallback, null);
+    }
+
+    /**
+     * @param requestToken 详情代次(V4):回包原样带回去,由页面判"是否属于当前这一代";
+     *                     null = 不判代次(老调用点)。
+     */
+    void getDetail(String sourceKey, String urlid, boolean fallback, final Integer requestToken) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             // 同 getSort:t0/1/4 的 extend 拉取会阻塞
             final String key = sourceKey;
@@ -58,7 +66,7 @@ final class DetailLoader {
             SourceHelper.PREPARE_POOL.execute(new Runnable() {
                 @Override
                 public void run() {
-                    getDetail(key, id, fallback);
+                    getDetail(key, id, fallback, requestToken);
                 }
             });
             return;
@@ -83,7 +91,7 @@ final class DetailLoader {
     
         SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
         if (PushUrlParser.isPushFallback(sourceKey, sourceBean)) {
-            detailResult.postValue(createPushDetail(urlid, sourceKey));
+            detailResult.postValue(createPushDetail(urlid, sourceKey, requestToken));
             return;
         }
         if (sourceBean == null) {
@@ -91,22 +99,22 @@ final class DetailLoader {
             // 一条属于旧源(已失效 key)的条目;或订阅源被删。此处返回空 AbsXml(与末尾
             // 未知 type 分支同形状),详情页走空态,而不是在下面 sourceBean.getType() 处 NPE
             LOG.i("echo--getDetail--source-null--" + sourceKey);
-            detailResult.postValue(createEmptyDetail(sourceKey));
+            detailResult.postValue(createEmptyDetail(sourceKey, requestToken));
             return;
         }
         int type = sourceBean.getType();
         if (type == 3) {
-            getDetailFromSpider(sourceBean, id, fallback);
+            getDetailFromSpider(sourceBean, id, fallback, requestToken);
         } else if (type == 0 || type == 1|| type == 4) {
-            getDetailFromApi(sourceBean, id, fallback);
+            getDetailFromApi(sourceBean, id, fallback, requestToken);
         } else {
-            detailResult.postValue(createEmptyDetail(sourceKey));
+            detailResult.postValue(createEmptyDetail(sourceKey, requestToken));
         }
     }
 
 
     /** type 3:爬虫 detailContent;换源回退(fallback)时超时收紧 */
-    private void getDetailFromSpider(final SourceBean sourceBean, final String id, final boolean fallback) {
+    private void getDetailFromSpider(final SourceBean sourceBean, final String id, final boolean fallback, final Integer requestToken) {
         
         SourceHelper.SPIDER_POOL.execute(new Runnable() {
             @Override
@@ -127,14 +135,14 @@ final class DetailLoader {
                     }
                 }, fallback ? 6_000L : sourceBean.getPlayTimeoutSeconds() * 1000L, "echo--getDetail--" + sourceBean.getKey());
 //                    LOG.i("echo--getDetail--result:" + json);
-                resultParser.json(detailResult, json, sourceBean.getKey());
+                resultParser.json(detailResult, json, sourceBean.getKey(), "", requestToken);
             }
         });
     
     }
 
     /** type 0/1/4:站点接口(带 extend);type 0 走 XML */
-    private void getDetailFromApi(final SourceBean sourceBean, final String id, final boolean fallback) {
+    private void getDetailFromApi(final SourceBean sourceBean, final String id, final boolean fallback, final Integer requestToken) {
         // 回调里要按 type 分流 xml/json,值语义与调用点一致(原为捕获上层局部量)
         final int type = sourceBean.getType();
         
@@ -164,33 +172,35 @@ final class DetailLoader {
                     public void onSuccess(Response<String> response) {
                         if (type == 0) {
                             String xml = response.body();
-                            resultParser.xml(detailResult, xml, sourceBean.getKey());
+                            resultParser.xml(detailResult, xml, sourceBean.getKey(), "", requestToken);
                         } else {
                             String json = response.body();
                             LOG.i(json);
-                            resultParser.json(detailResult, json, sourceBean.getKey());
+                            resultParser.json(detailResult, json, sourceBean.getKey(), "", requestToken);
                         }
                     }
 
                     @Override
                     public void onError(Response<String> response) {
                         super.onError(response);
-                        resultParser.json(detailResult, "", sourceBean.getKey());
+                        resultParser.json(detailResult, "", sourceBean.getKey(), "", requestToken);
                     }
                 });
     
     }
 
     /** 空详情(源不存在 / 未知 type):详情页按空态渲染,不带任何影片数据 */
-    private static AbsXml createEmptyDetail(String sourceKey) {
+    private static AbsXml createEmptyDetail(String sourceKey, Integer requestToken) {
         AbsXml data = new AbsXml();
         data.sourceKey = sourceKey;
+        data.detailToken = requestToken;
         return data;
     }
 
-    private AbsXml createPushDetail(String url, String sourceKey) {
+    private AbsXml createPushDetail(String url, String sourceKey, Integer requestToken) {
         AbsXml data = new AbsXml();
         data.sourceKey = sourceKey;
+        data.detailToken = requestToken;
         Movie movie = new Movie();
         movie.videoList = new ArrayList<>();
         Movie.Video video = new Movie.Video();

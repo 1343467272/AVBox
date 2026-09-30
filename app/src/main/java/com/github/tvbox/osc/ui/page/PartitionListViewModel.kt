@@ -1,18 +1,20 @@
 package com.github.tvbox.osc.ui.page
 
-import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.tvbox.osc.bean.AbsXml
 import com.github.tvbox.osc.bean.Movie
 import com.github.tvbox.osc.bean.MovieSort
 import com.github.tvbox.osc.sourcedata.SourceViewModel
+import com.github.tvbox.osc.sourcedata.observeAsFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import org.json.JSONObject
 import kotlin.coroutines.resume
 
 class PartitionListVM : ViewModel() {
@@ -50,17 +52,20 @@ class PartitionListVM : ViewModel() {
 
     private val actionViewModel = SourceViewModel()
 
-    private val actionObserver = Observer<JSONObject?> { json ->
-        val msg = json?.optString("msg").orEmpty()
-        if (msg.isNotEmpty()) actionMessages.tryEmit(msg)
-        refresh()
-    }
-
     init {
-        actionViewModel.actionResult.observeForever(actionObserver)
+        scope.launch {
+            actionViewModel.actionResult.observeAsFlow().collect { json ->
+                val msg = json?.optString("msg").orEmpty()
+                if (msg.isNotEmpty()) actionMessages.tryEmit(msg)
+                refresh()
+            }
+        }
     }
 
     private class LoaderResult(val stale: Boolean, val absXml: AbsXml?)
+
+    /** 收集作用域随 loader 生命周期:release() 取消它即摘掉观察者(等价旧 removeObserver) */
+    private val loaderScope = CoroutineScope(scope.coroutineContext[Job]!!)
 
     private val loader = object {
         private val svm = SourceViewModel()
@@ -72,22 +77,22 @@ class PartitionListVM : ViewModel() {
         var busy: Boolean = false
             private set
 
-        private val observer = Observer<AbsXml> { abs: AbsXml? ->
-            val current = pending
-            pending = null
-            busy = false
-            current?.invoke(LoaderResult(false, abs))
-        }
-
         init {
-            svm.listResult.observeForever(observer)
+            loaderScope.launch {
+                svm.listResult.observeAsFlow().collect { abs ->
+                    val current = pending
+                    pending = null
+                    busy = false
+                    current?.invoke(LoaderResult(false, abs))
+                }
+            }
         }
 
         fun release() {
             pending?.invoke(LoaderResult(true, null))
             pending = null
             busy = false
-            svm.listResult.removeObserver(observer)
+            loaderScope.cancel()
         }
 
         fun request(page: Int, data: MovieSort.SortData, onDone: (LoaderResult) -> Unit) {
@@ -99,8 +104,8 @@ class PartitionListVM : ViewModel() {
     }
 
     override fun onCleared() {
+        // 观察者随 viewModelScope/loaderScope 取消自动摘除(桥接器的 awaitClose)
         loader.release()
-        actionViewModel.actionResult.removeObserver(actionObserver)
     }
 
     fun runAction(video: Movie.Video) {

@@ -150,6 +150,10 @@ final class SourceResultParser {
     }
 
     AbsXml xml(MutableLiveData<AbsXml> result, String xml, String sourceKey, String searchToken) {
+        return xml(result, xml, sourceKey, searchToken, null);
+    }
+
+    AbsXml xml(MutableLiveData<AbsXml> result, String xml, String sourceKey, String searchToken, Integer detailToken) {
         try {
             XStream xstream = listXStream.get();
             if (xml.contains("<year></year>")) {
@@ -160,6 +164,7 @@ final class SourceResultParser {
             }
             AbsXml data = (AbsXml) xstream.fromXML(xml);
             SourceHelper.absXml(data, sourceKey, searchToken);
+            data.detailToken = detailToken;
             if (searchResult == result) {
                 EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_SEARCH_RESULT, data));
             } else if (result != null) {
@@ -176,9 +181,7 @@ final class SourceResultParser {
                 postEmptySearchResult(result, sourceKey, searchToken);
             } else if (result != null) {
                 if (result == detailResult) {
-                    AbsXml data = new AbsXml();
-                    data.sourceKey = sourceKey;
-                    result.postValue(data);
+                    result.postValue(createEmptyDetail(sourceKey, detailToken));
                 } else {
                     result.postValue(null);
                 }
@@ -192,11 +195,16 @@ final class SourceResultParser {
     }
 
     AbsXml json(MutableLiveData<AbsXml> result, String json, String sourceKey, String searchToken) {
+        return json(result, json, sourceKey, searchToken, null);
+    }
+
+    AbsXml json(MutableLiveData<AbsXml> result, String json, String sourceKey, String searchToken, Integer detailToken) {
         try {
             AbsJson absJson = gson.fromJson(json, new TypeToken<AbsJson>() {
             }.getType());
             AbsXml data = absJson.toAbsXml();
             SourceHelper.absXml(data, sourceKey, searchToken);
+            data.detailToken = detailToken;
             if (searchResult == result) {
                 EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_SEARCH_RESULT, data));
             } else if (result != null) {
@@ -213,9 +221,7 @@ final class SourceResultParser {
                 postEmptySearchResult(result, sourceKey, searchToken);
             } else if (result != null) {
                 if (result == detailResult) {
-                    AbsXml data = new AbsXml();
-                    data.sourceKey = sourceKey;
-                    result.postValue(data);
+                    result.postValue(createEmptyDetail(sourceKey, detailToken));
                 } else {
                     result.postValue(null);
                 }
@@ -233,6 +239,14 @@ final class SourceResultParser {
         } else if (result != null) {
             postSearchResult(result, data);
         }
+    }
+
+    /** 解析失败的空详情:与 DetailLoader 的同名出口同形状,且带代次(V4) */
+    private static AbsXml createEmptyDetail(String sourceKey, Integer detailToken) {
+        AbsXml data = new AbsXml();
+        data.sourceKey = sourceKey;
+        data.detailToken = detailToken;
+        return data;
     }
 
     private void postSearchResult(final MutableLiveData<AbsXml> result, final AbsXml data) {

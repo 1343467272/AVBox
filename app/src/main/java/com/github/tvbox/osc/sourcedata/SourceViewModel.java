@@ -81,6 +81,13 @@ public class SourceViewModel extends ViewModel {
         detailLoader.getDetail(sourceKey, urlid, fallback);
     }
 
+    /**
+     * V4:详情回包带代次(原"换实例"隔离迟到回包的替代)。`requestToken=null` 表示不判代次(老调用点)。
+     */
+    public void getDetail(String sourceKey, String urlid, boolean fallback, Integer requestToken) {
+        detailLoader.getDetail(sourceKey, urlid, fallback, requestToken);
+    }
+
     public void action(String sourceKey, String action) {
         SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
         if (sourceBean == null || action == null) {

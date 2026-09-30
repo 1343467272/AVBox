@@ -13,6 +13,8 @@ import java.io.Serializable;
 public class AbsXml implements Serializable {
     public String sourceKey;
     public String searchToken;
+    /** 详情代次(V4):发起详情请求时代入,回包原样带回;非详情通道为 null */
+    public Integer detailToken;
 
     @XStreamAlias("list")
     public Movie movie;

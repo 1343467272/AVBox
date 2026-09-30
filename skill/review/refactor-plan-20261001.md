@@ -1,6 +1,6 @@
 ---
 name: AVBox 渐进式重构 Spec（VM 归一与上帝类收尾专项）
-status: 执行中（2026-10-01：V1/V2/V3 已落地并过审查轮、待走查；D1/D2/D3/V6 已拍板；V4–V5 待做；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
+status: 执行中（2026-10-01：V1–V4 已落地并过审查轮、待走查；D1/D2/D3/V6 已拍板；V5 待做；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
 source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveData/StateFlow 各半、viewmodel/ 名不副实）② 上帝类残留（PlaybackController / ComposeVideoController / PlayContainer / ApiConfig）③ VM 持 View 与 static 可变缓存 ④ 业务逻辑写进 Composable。审查结论：四问题全部属实（数字 ±5% 出入见 §2）
 ---
 
@@ -51,7 +51,7 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 
 1. `ConfigManagePage.kt` 的 Composable 只含 UI 组合与事件转发；订阅/切源/黑名单/副本清理全在 `ConfigManageViewModel`。
 2. 全库 ViewModel（含页面级）**零 View 类型引用**、**零 static 可变字段**（`spThreadPool` 类常量除外，见 D2 说明）。
-3. `observeForever` 全库 ≤1 文件（观察桥接器内部）；Kotlin 侧页面 VM 只见 Flow。
+3. `observeForever` 全库 ≤1 文件（观察桥接器内部，**播放层除外**，见 V4 执行状态里的登记理由）；Kotlin 侧页面 VM 只见 Flow。
 4. `com.github.tvbox.osc.viewmodel` 包不复存在——整包改名 `com.github.tvbox.osc.sourcedata`（D1 已拍板）。
 5. `PlaybackController` 按簇拆出 ≥3 个可单测协作者，主类 ≤600 行量级（软目标）；107 行匿名 `Observer` 具名化。
 6. `PlayContainer` / `ComposeVideoController` 按簇评估，拆或不拆给逐簇结论（不为行数硬拆，V5 出口条件是"每个簇有归属与单测/豁免理由"）。
@@ -148,6 +148,27 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - **Commit**：外迁一笔、改名一笔。
 
 ## V4｜LiveData 观察侧收口（消问题 ①a + ①b）
+
+**执行状态（2026-10-01）**：
+
+- 已落地（2 个本地 commit）：桥接器一笔、页面 VM 逐一改造一笔（本次两笔都改完）。
+- **实测面修正（计划里的数字是旧的）**：全库 `observeForever` 实际只有 **3 处 / 2 文件**,且都在播放层 —— `PlaybackController.java:1177/1183`（playResult）、`PreloadCoordinator.java:112/166`（preloadResult）。页面 VM 侧只有 `DetailViewModel` 2 处（init 挂 + `rebindDetailSource` 重挂）与 `HomeViewModel` 4 处（3 个 VM 通道 + `PartitionLoader` 内部）,`PartitionListViewModel` 2 处（`actionViewModel` + 匿名 loader）。**`SearchViewModel` 一处都没有** —— 它的搜索结果是走 EventBus `TYPE_SEARCH_RESULT`（本 spec 立项时统计的"9 处 / 5 文件"里那一处早就不存在了,立项数据需以实跑为准的又一例）。`SubtitleSheets.kt:297` 用的是**生命周期感知**的 `observe(lifecycleOwner, …)`（带 `onDispose` 摘除）,不是手动配对,本来就不在收口范围内。
+- **终态口径（改写 §4 第 3 条,原表述与播放层现实冲突）**:**页面层**（Kotlin 页面 VM + 组合层）零手动配对，全库唯一 `observeForever` 在桥接器 `LiveDataFlow.kt`；**播放层**（`Player` 包内 Java）保留 `observeForever`,理由见下,归 V5 一并收口。
+- **落地内容**：
+  1. 新增 `sourcedata/LiveDataFlow.kt`:`LiveData<T>.observeAsFlow()`,用 `callbackFlow` + `awaitClose { removeObserver }`。观察者挂在收集协程上 —— `viewModelScope` 取消即摘除,漏配对从"人肉纪律"变成"结构保证"。
+  2. `DetailViewModel`:单实例 + 代次（见下）,删除 `rebindDetailSource`（换实例的手法整体消失）。
+  3. `HomeViewModel`:3 个通道（sort/rec/action）改 flow 收集;内部类 `PartitionLoader` 的 `svm.listResult` 改 flow,**收集作用域 = `CoroutineScope(viewModelScope.coroutineContext[Job]!!)`**,`release()` 里 `cancel()`,等价旧的 `removeObserver`。
+  4. `PartitionListViewModel`:同样处理 `actionViewModel.actionResult` 与匿名 loader（`loaderScope` 随 `onCleared` → `release()` 取消）。
+  5. `SearchViewModel`:无需改动（见上,它本来就没有手动配对）。
+- **`rebindDetailSource` → 单实例 + 代次（本阶段核心,已落地）**：
+  - `AbsXml` 新增 `detailToken`（非详情通道恒 null）;`SourceViewModel.getDetail(..., Integer requestToken)` → `DetailLoader.getDetail(..., requestToken)` 在**每一条出口**都盖章(爬虫/接口/解析失败/空详情/push 合成);`SourceResultParser.json/xml` 新增带 `detailToken` 的重载,并在解析成功后赋值。`checkPush`/`checkThunder` 原地改写同一个对象,故盖章不会被后处理冲掉。
+  - `DetailViewModel.detailRequestToken`:**只在"发起新的内容请求"时自增**（换片/换源/重试,即 `loadDetail`）;**fallback 换候选站不自增**（同一代内多候选,谁先回都算当前,与旧"换实例只在换片/换源时发生"一致）。
+  - 判据抽成纯函数 `DetailResponseGuard.isCurrent(requestToken, responseToken)`(null = 无代次信息,不采信),单测 6 例锁行为 —— 含**换源但同 vodId** 那一格:源 A/源 B 命中同一部片时 `sourceKey` 会变而 `vodId` 可能相同,内容比对分不出来,只有代次能分（这正是"换实例"的技术替代）。
+- **播放层的 2 处为何不在本阶段收口（登记理由）**:`PlaybackController`(Java,自持 `SourceViewModel`)与 `PreloadCoordinator`(Java,构造器里挂 `preloadResult`)都不是页面 VM,`observeForever` 是它们与门面之间的自然写法;两者**都已有配对清理**(`releaseFetch()` / `destroy()`),不存在 V4 要消的"漏配对即泄漏"形态。V4 若把它们也搬成 flow,就要在 `player` 模块引入协程作用域与生命周期,收益不匹配。归 **V5**(`PlaybackController` 拆簇时一并具名化 + 补配对清理检查),`PreloadCoordinator` 同批评估。
+- **验证**：`assembleDebug` + `testDebugUnitTest` 全绿（**60 类 / 464 例 / 0 失败** = V3 基线 458 + 代次守卫 6 例）。
+- 未做：装机走查 —— `adb` 不在 PATH。走查判据（本阶段最关键的一组）：详情页快进快出连点（迟到回包不串片,尤其**换到另一个源但同一部片**）、fallback 自动换站期间旧回包不串、搜索聚合并发、`HomeViewModel` sort/rec/action 三通道互不串扰、首页下拉刷新与分区翻页仍正常。
+
+**原设计记录（本次执行按上述落地）**：
 
 - **终态（D2 已拍板：分域 + 单桥接器）**：**按语言分域**——`sourcedata` 包内 Java 侧继续 LiveData（Java 写 `StateFlow` 无语言便利，重写 9 文件违反"不重写 Java→Kotlin"且收益/风险比不成立）；Kotlin 侧页面 VM（`DetailViewModel`/`HomeViewModel`/`SearchViewModel`/`PartitionListViewModel`）只见 Flow。
 - **修改**：

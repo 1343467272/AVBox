@@ -19,6 +19,7 @@ import com.github.tvbox.osc.util.HistoryWriter
 import com.github.tvbox.osc.util.LOG
 import com.github.tvbox.osc.util.SearchHelper
 import com.github.tvbox.osc.sourcedata.SourceViewModel
+import com.github.tvbox.osc.sourcedata.observeAsFlow
 import com.lzy.okgo.OkGo
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -92,12 +93,18 @@ class DetailViewModel : ViewModel() {
     private var vodPicture = ""
     private var fromCollect = false
 
-    private var sourceViewModel = SourceViewModel()
-    private val detailObserver = androidx.lifecycle.Observer<AbsXml> { onDetailResult(it) }
+    private val sourceViewModel = SourceViewModel()
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val navStack = DetailNavStack()
     private var searchJob: Job? = null
     private var detailBuildToken = 0
+
+    /**
+     * 详情请求代次(V4),替代原「换 `SourceViewModel` 实例」的迟到回包隔离:每次发起新的内容请求
+     * (换片/换源/重试)自增并随请求下传,回包代次不符即丢。**fallback 换站不自增** ——
+     * 同一代内的候选站谁先回都算当前。
+     */
+    private var detailRequestToken = 0
 
     private val fallbackCandidates = ArrayList<Movie.Video>()
     private val candidateKeys = HashSet<String>()
@@ -130,7 +137,12 @@ class DetailViewModel : ViewModel() {
 
     init {
         EventBus.getDefault().register(this)
-        sourceViewModel.detailResult.observeForever(detailObserver)
+        // 单实例 + 代次(D2/V4):不再换 SourceViewModel 实例,迟到回包由回包自带的代次丢弃
+        viewModelScope.launch {
+            sourceViewModel.detailResult.observeAsFlow().collect { data ->
+                if (DetailResponseGuard.isCurrent(detailRequestToken, data?.detailToken)) onDetailResult(data)
+            }
+        }
     }
 
     fun initFromIntent(intent: Intent?) {
@@ -168,7 +180,6 @@ class DetailViewModel : ViewModel() {
     private fun applyTarget(target: DetailNavStack.Target) {
         cancelInFlightContent()
         resetContentState()
-        rebindDetailSource()
         sendCommand(PlaybackCommand.StopForContentSwitch)
         sendCommand(PlaybackCommand.SetEpisodeSheetOpen(false))
         fromCollect = target.fromCollect
@@ -211,13 +222,6 @@ class DetailViewModel : ViewModel() {
         fallbackEpisodeIndex = -1
         usedSourceKeys.clear()
         resetEngineState(keepChips = false)
-    }
-
-    /** 换数据源实例:同源不同片的迟到回包只回到旧实例(无观察者),不会串进当前内容 */
-    private fun rebindDetailSource() {
-        sourceViewModel.detailResult.removeObserver(detailObserver)
-        sourceViewModel = SourceViewModel()
-        sourceViewModel.detailResult.observeForever(detailObserver)
     }
 
     /** 进/退全屏。事实当帧由 UI 传入(见 `DetailPlaybackFacts`);退全屏也走这里:`rotating` 要按目标方向重算 */
@@ -282,8 +286,14 @@ class DetailViewModel : ViewModel() {
             return
         }
         pageState.value = PageState.Loading
-        sourceViewModel.getDetail(sourceKey, vodId)
+        sourceViewModel.getDetail(sourceKey, vodId, false, nextDetailRequestToken())
     }
+
+    /**
+     * 开新的一代并返回它。只有"发起新的内容请求"才自增:换片、换源、重试;
+     * fallback 候选站(见 [loadDetailInternal])沿用当前代次。
+     */
+    private fun nextDetailRequestToken(): Int = ++detailRequestToken
 
     fun retry() {
         if (vodId.isEmpty()) return
@@ -602,12 +612,13 @@ class DetailViewModel : ViewModel() {
         if (!sourcesSearching.value) finishFallbackWithoutResult()
     }
 
+    /** fallback 换候选站:沿用当前代次(同一代内多个候选,谁先回都算当前) */
     private fun loadDetailInternal(vid: String, key: String) {
         vodId = vid
         sourceKey = key
         firstsourceKey = key
         collected.value = RoomDataManger.isVodCollect(sourceKey, vodId)
-        sourceViewModel.getDetail(sourceKey, vodId, true)
+        sourceViewModel.getDetail(sourceKey, vodId, true, detailRequestToken)
     }
 
     private fun finishFallbackWithoutResult() {
@@ -952,7 +963,7 @@ class DetailViewModel : ViewModel() {
     }
 
     override fun onCleared() {
-        sourceViewModel.detailResult.removeObserver(detailObserver)
+        // 观察者不再手工摘:桥接器的 awaitClose 随 viewModelScope 取消执行
         EventBus.getDefault().unregister(this)
         destroyEngine()
         super.onCleared()

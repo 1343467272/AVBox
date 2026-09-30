@@ -2,6 +2,10 @@ package com.github.tvbox.osc.player.effect
 
 import androidx.media3.common.Effect
 import com.github.tvbox.osc.player.ExoPlayer
+import com.github.tvbox.osc.player.effect.anime4k.Anime4kEffect
+import com.github.tvbox.osc.player.effect.anime4k.Anime4kSettings
+import com.github.tvbox.osc.player.effect.anime4k.Anime4kStatus
+import com.github.tvbox.osc.player.effect.anime4k.Anime4kTier
 import com.github.tvbox.osc.util.HawkConfig
 import com.github.tvbox.osc.util.KV
 import com.github.tvbox.osc.util.LOG
@@ -35,7 +39,8 @@ object PictureEffects {
     /** 效果实例复用:调参只改实例内的 volatile 参数 */
     private val colorTone = ColorToneAdjustEffect()
     private val detail = DetailAdjustEffect()
-    private val activeEffects: List<Effect> = listOf(colorTone, detail)
+    private val anime4k = Anime4kEffect()
+    private val activeEffects: List<Effect> = listOf(colorTone, detail, anime4k)
 
     /** 当前在出画的内核实例(实时调参打给它) */
     private var current: WeakReference<ExoPlayer>? = null
@@ -48,6 +53,11 @@ object PictureEffects {
 
     /** 「按住对比」中:临时按恒等参数出画(不落库) */
     private var comparing = false
+
+    /** 本集链里 Anime4K 是否参与、参与的哪个档位/去模糊:任一者变了都要重播(效果列表挂上后恒定) */
+    private var anime4kOpened = false
+    private var anime4kTierOpened: Anime4kTier = Anime4kTier.default
+    private var anime4kDeblurOpened = false
 
     // ==================== 参数读写 ====================
 
@@ -76,6 +86,9 @@ object PictureEffects {
         return if (preset.adjustable) custom() else PictureProfile.of(preset)
     }
 
+    /** 本集是否需要挂链:调色非恒等 或 Anime4K 开着 */
+    private fun wanted(): Boolean = !applied().isNoOp || Anime4kSettings.enabled()
+
     // ==================== 面板入口 ====================
 
     fun selectPreset(preset: PicturePreset) {
@@ -101,10 +114,11 @@ object PictureEffects {
         setCustom(PictureProfile.OFF)
     }
 
-    /** 按住对比:true = 临时看原图 */
+    /** 按住对比:true = 临时看原图(绕的是整条链 —— 调色 + Anime4K) */
     fun compare(original: Boolean) {
         if (comparing == original) return
         comparing = original
+        Anime4kStatus.setBypass(original)
         push()
     }
 
@@ -116,6 +130,7 @@ object PictureEffects {
      */
     fun onPrepare(player: ExoPlayer, tunnelingBlocked: Boolean) {
         comparing = false
+        Anime4kStatus.setBypass(false)
         if (KV.get(HawkConfig.PLAYER_IS_LIVE, false)) {
             current = null
             LOG.i("echo-picture-effects skip: live")
@@ -128,10 +143,16 @@ object PictureEffects {
             return
         }
         val profile = applied()
+        val tier = Anime4kTier.current()
+        val anime4kWanted = Anime4kSettings.enabled()
+        anime4k.tier = if (anime4kWanted) tier else null
+        anime4kOpened = anime4kWanted
+        anime4kTierOpened = tier
+        anime4kDeblurOpened = Anime4kSettings.deblur()
         colorTone.setProfile(profile)
         detail.setProfile(profile)
         // 链挂着 ⟺ 当前参数非恒等:关闭(参数回恒等)只表示"下次起播不再挂链",绝不下发空列表摘链
-        val enabled = !profile.isNoOp
+        val enabled = !profile.isNoOp || anime4kWanted
         openedThisSession = enabled
         if (enabled) player.applyVideoEffects(activeEffects)
     }
@@ -139,6 +160,36 @@ object PictureEffects {
     /** 内核释放:摘掉引用,后续调参只落库、等下次起播生效 */
     fun onPlayerReleased(player: ExoPlayer) {
         if (current?.get() === player) current = null
+    }
+
+    // ==================== 送屏画布 ====================
+
+    /** 显示侧推给管线的输出尺寸(`MSG_SET_VIDEO_OUTPUT_RESOLUTION` 那个数):Anime4K 链末按它出画 */
+    @Volatile
+    private var outputCanvas: IntArray? = null
+
+    fun setOutputCanvas(width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        outputCanvas = intArrayOf(width, height)
+    }
+
+    /** (宽, 高);没推过时 null = 链末回落源尺寸 */
+    fun outputCanvas(): IntArray? = outputCanvas
+
+    /** Anime4K 链在本机构建失败(编译不过/资产读不到):面板补一行"本次已跳过";隧道/HDR 属既定跳过、不提示 */
+    fun anime4kUnavailable(): Boolean {
+        val player = current?.get() ?: return false
+        return Anime4kSettings.enabled() && !tunneling && !player.isPictureHdrSource() &&
+            Anime4kStatus.unavailable()
+    }
+
+    /** 链末锐化强度改动:链每帧现读 ⇒ 播放中下一帧就变;暂停态补一次重绘(不必重播本集) */
+    fun setAnime4kSharpen(value: Float) {
+        Anime4kSettings.setSharpen(value)
+        val player = current?.get() ?: return
+        if (RedrawPolicy.shouldRedrawOnParams(player.isPlaying, player.isPictureEffectsActive)) {
+            player.redrawVideoFrame()
+        }
     }
 
     /** 当前不可调色的原因(内核实例缺失时不下结论) */
@@ -149,7 +200,7 @@ object PictureEffects {
             hdr = player.isPictureHdrSource(),
             pipeOpen = openedThisSession,
             effectsActive = player.isPictureEffectsActive(),
-            hasLook = !applied().isNoOp,
+            hasLook = wanted(),
         )
     }
 
@@ -157,7 +208,11 @@ object PictureEffects {
     fun consumeRestartNeeded(): Boolean {
         val player = current?.get() ?: return false
         if (tunneling || player.isPictureHdrSource()) return false
-        return restartNeeded(!applied().isNoOp, openedThisSession, preset() == PicturePreset.Original)
+        val anime4kWanted = Anime4kSettings.enabled()
+        if (anime4kWanted != anime4kOpened) return true
+        if (anime4kWanted && Anime4kTier.current() != anime4kTierOpened) return true
+        if (anime4kWanted && Anime4kSettings.deblur() != anime4kDeblurOpened) return true
+        return restartNeeded(wanted(), openedThisSession, preset() == PicturePreset.Original)
     }
 
     /** 上一条的口径本体(独立出来供 JVM 单测):开=有效果但本集没挂链;关=已回恒等、挂着链且预置是「原始」 */
@@ -178,7 +233,7 @@ object PictureEffects {
             }
             return
         }
-        if (profile.isNoOp) return
+        if (!wanted()) return
         player.applyVideoEffects(activeEffects)
     }
 }

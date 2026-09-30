@@ -275,6 +275,8 @@ public class ExoPlayer extends ExoMediaPlayer {
      */
     public void notifyVideoOutputResolution(int width, int height) {
         if (mInternalPlayer == null || width <= 0 || height <= 0) return;
+        // 送屏画布尺寸:Anime4K 链末要按它出画(否则链内 2x 会被管线缩放器再抹一遍,放大成果到不了屏幕)
+        PictureEffects.INSTANCE.setOutputCanvas(width, height);
         boolean sizeChanged = width != lastOutputWidth || height != lastOutputHeight;
         lastOutputWidth = width;
         lastOutputHeight = height;

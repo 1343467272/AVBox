@@ -166,7 +166,7 @@ fun PlayerBottomBar(
 }
 
 /** 覆盖层胶囊底色的不透明度。底栏时间胶囊与手势提示药丸（`PlayerLayers.HintPill`）共用同一值，
- *  避免两处各写一个数后慢慢漂开（2026-09-28 用户要求手势提示「和左下角进度展示胶囊一样」）。 */
+ *  避免两处各写一个数后慢慢漂开（手势提示要与左下角进度胶囊同值）。 */
 internal const val OVERLAY_PILL_ALPHA = 0.2f
 
 private const val PILL_DIVIDER_ALPHA = 0.3f
@@ -413,7 +413,7 @@ private fun PlayerSeekRow(
         }
 
     Canvas(seekModifier) {
-        // (2026-09-14 BugFix) progress/buffered 计算移入绘制块：拖拽期间
+        // progress/buffered 计算移入绘制块：拖拽期间
         // seekPreviewPositionMs 每帧写入、播放期间 position 每秒写入，绘制期读取
         // 只触发本 Canvas 重绘；组合期求值会令 PlayerSeekRow 每帧/每秒重组
         val progress: Float = when {

@@ -12,7 +12,7 @@ import com.github.tvbox.osc.player.effect.PictureProfile
 import xyz.doikki.videoplayer.player.VideoView
 
 /**
- * 播放器控制层集中状态容器（Compose 化改造 §4.2）。
+ * 播放器控制层集中状态容器。
  *
  * dkplayer 侧只读状态由事件桥写入；控制层自身 UI 状态由 ComposeVideoController 的
  * 意图方法写入。Compose 通过 mutableStateOf 直接观察，替代旧实现中的
@@ -27,7 +27,7 @@ class PlayerUiState {
     var position: Int by mutableStateOf(0)
     var bufferedPercent: Int by mutableStateOf(0)
     var locked: Boolean by mutableStateOf(false)
-    /** dkplayer 侧 show/hide（§3.3 桥接；锁定状态下不下发） */
+    /** dkplayer 侧 show/hide（锁定状态下不下发） */
     var showing: Boolean by mutableStateOf(false)
 
     // —— 控制层自身 UI 状态 ——
@@ -65,7 +65,7 @@ class PlayerUiState {
     var netSpeedTopRight: String by mutableStateOf("")
     var netSpeedCenter: String by mutableStateOf("")
 
-    // —— 顶部栏元素可见性（逐元素照搬 msg 1002/1003 的规则，§7.8） ——
+    // —— 顶部栏元素可见性（与 msg 1002/1003 的规则一致） ——
     /** mTopRoot1：片名 + 分辨率 */
     var topLeftVisible: Boolean by mutableStateOf(false)
     /** mTopRoot2 容器：init 后一旦显示过就保持可见（旧实现如此） */
@@ -241,6 +241,17 @@ class PictureParamsState(
     val tuning: PictureProfile,
     /** 当前不可调色的原因（面板显示一行说明；None = 可用） */
     val unavailableReason: PictureEffectUnavailableReason,
+    val anime4kTierText: String,
+    val anime4kEnabled: Boolean,
+    /** 本机链构建失败（编译不过 / 资产读不到）：Anime4K 组下补一行"本次已跳过" */
+    val anime4kUnavailable: Boolean,
+    /** 链末锐化强度（0~1，滑条，改动即时生效、不必重播） */
+    val anime4kSharpen: Float,
+    /** 链内去模糊（Deblur_DoG）；改它要重播本集（链的 pass 组成变了） */
+    val anime4kDeblur: Boolean,
+    val onAnime4kToggled: (Boolean) -> Unit,
+    val onAnime4kSharpenChanged: (Float) -> Unit,
+    val onAnime4kDeblurToggled: (Boolean) -> Unit,
     val onPresetSelected: (PicturePreset) -> Unit,
     val onTuningChanged: (PictureProfile) -> Unit,
     val onReset: () -> Unit,
@@ -267,7 +278,7 @@ class SubtitleSheetState(
     val onSelectInternal: () -> Unit,
     val onSelectLocal: () -> Unit,
     val onSelectRemote: () -> Unit,
-    /** 外挂字幕文字样式(2026-09-12 补回丢失逻辑):0=样式一 白色,1=样式二 粉色(#FFB6C1) */
+    /** 外挂字幕文字样式:0=样式一 白色,1=样式二 粉色(#FFB6C1) */
     val onSelectStyle: (Int) -> Unit = {},
     /** 字号按钮只写了设置,需播放层立即按当前形态(预览 0.6×/全屏 1×)应用到字幕视图 */
     val onTextSizeChange: () -> Unit = {},
@@ -291,7 +302,7 @@ class CastSheetState(
 
 /**
  * 控制层意图集（UI → 控制器）。由 ComposeVideoController 实现。
- * 命名与 §5.3 按钮清单一一对应。
+ * 命名与播放器按钮清单一一对应。
  */
 interface PlayerActions {
     // 底栏显隐
@@ -336,7 +347,7 @@ interface PlayerActions {
     // 解析
     fun onParseSelected(position: Int)
 
-    // 进度条（§5.3：拖拽中不回写；滚轮/方向键步进）
+    // 进度条（拖拽中不回写；滚轮/方向键步进）
     fun onSeekStarted()
     fun onSeekPreview(progress: Int)
     fun onSeekFinished(progress: Int)

@@ -131,6 +131,7 @@
     <string name="common_vod">VOD</string>
     <string name="common_live">Live</string>
     <string name="common_off">Off</string>
+    <string name="common_on">On</string>
     <string name="common_confirm">OK</string>
     <string name="common_cancel">Cancel</string>
     <string name="common_save">Save</string>
@@ -170,6 +171,15 @@
     <!-- Picture settings panel -->
     <string name="player_menu_picture">Picture</string>
     <string name="player_picture_preset">Preset</string>
+    <string name="player_anime4k_title">Anime4K</string>
+    <string name="player_anime4k_tier_light">Light</string>
+    <string name="player_anime4k_tier_standard">Standard</string>
+    <string name="player_anime4k_tier_high">High</string>
+    <string name="player_anime4k_tier_ultra">Ultra</string>
+    <string name="player_anime4k_tier_upscale">Upscale only</string>
+    <string name="player_anime4k_unavailable">This level is unavailable on this device - skipped this time</string>
+    <string name="player_anime4k_sharpen">Enhance sharpness</string>
+    <string name="player_anime4k_deblur">Deblur</string>
     <string name="player_picture_preset_natural">Natural</string>
     <string name="player_picture_preset_vivid">Vivid</string>
     <string name="player_picture_preset_clear">Clear</string>
@@ -377,6 +387,8 @@
     <string name="settings_play_render">Rendering</string>
     <string name="settings_play_scale">Video Scaling</string>
     <string name="settings_play_decode">Decoding Mode</string>
+    <string name="settings_play_anime4k">Anime4K Enhancement</string>
+    <string name="settings_play_anime4k_subtitle">VOD only; live and HDR sources are skipped</string>
     <string name="settings_play_tunnel">Tunnel Mode</string>
     <string name="settings_play_kernel_prewarm">Player Engine Prewarm</string>
     <string name="settings_play_kernel_prewarm_subtitle">Pre-create the player engine and keep it resident for faster start-up</string>

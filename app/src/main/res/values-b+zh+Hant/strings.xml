@@ -131,6 +131,7 @@
     <string name="common_vod">隨選</string>
     <string name="common_live">直播</string>
     <string name="common_off">關閉</string>
+    <string name="common_on">開啟</string>
     <string name="common_confirm">確定</string>
     <string name="common_cancel">取消</string>
     <string name="common_save">儲存</string>
@@ -170,6 +171,15 @@
     <!-- 畫質參數面板 -->
     <string name="player_menu_picture">畫質參數</string>
     <string name="player_picture_preset">預設</string>
+    <string name="player_anime4k_title">Anime4K</string>
+    <string name="player_anime4k_tier_light">輕量增強</string>
+    <string name="player_anime4k_tier_standard">標準</string>
+    <string name="player_anime4k_tier_high">高</string>
+    <string name="player_anime4k_tier_ultra">極高</string>
+    <string name="player_anime4k_tier_upscale">純放大</string>
+    <string name="player_anime4k_unavailable">目前檔位在本機無法使用，本次播放已自動略過</string>
+    <string name="player_anime4k_sharpen">增強銳度</string>
+    <string name="player_anime4k_deblur">去模糊</string>
     <string name="player_picture_preset_natural">自然</string>
     <string name="player_picture_preset_vivid">豔麗</string>
     <string name="player_picture_preset_clear">清晰</string>
@@ -377,6 +387,8 @@
     <string name="settings_play_render">畫面渲染</string>
     <string name="settings_play_scale">畫面縮放</string>
     <string name="settings_play_decode">解碼方式</string>
+    <string name="settings_play_anime4k">Anime4K 畫質增強</string>
+    <string name="settings_play_anime4k_subtitle">僅隨選生效，直播 / HDR 來源自動跳過</string>
     <string name="settings_play_tunnel">隧道模式</string>
     <string name="settings_play_kernel_prewarm">核心預熱</string>
     <string name="settings_play_kernel_prewarm_subtitle">啟動後預先建立並常駐，加快起播</string>

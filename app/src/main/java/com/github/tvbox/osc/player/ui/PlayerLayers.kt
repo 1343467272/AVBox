@@ -47,7 +47,7 @@ import com.github.tvbox.osc.player.state.PlayerUiState
  * loading / tv_play_load_net_speed / tv_back / tv_lock / play_speed_3_container）。
  * 视觉：提示类浮层（seek 提示 / 亮度音量提示 / 长按倍速）统一为**半透明黑药丸 + 白字**
  * —— 4dp 轻投影、无描边、尺寸内容自适应，底色透明度取 [OVERLAY_PILL_ALPHA]（与底栏左下角
- * 那颗时间胶囊同值，2026-09-28 用户要求两者一致）。三处位置也统一，见 [HintPillLayer]。
+ * 那颗时间胶囊同值）。三处位置也统一，见 [HintPillLayer]。
  */
 
 private val PillShape = RoundedCornerShape(50)
@@ -59,7 +59,7 @@ private fun HintPill(modifier: Modifier, content: @Composable RowScope.() -> Uni
             .shadow(4.dp, PillShape)
             .background(Color.Black.copy(alpha = OVERLAY_PILL_ALPHA), PillShape)
             // 垂直内距 vs_5：胶囊高度主要由内容撑(图标盒/文字行高)，内距只补一点呼吸感 ——
-            // 2026-09-28 用户「胶囊的高度能否矮一点」，与图标盒一起把 80mm 收到 60mm
+            // 胶囊高度与图标盒一起把 80mm 收到 60mm
             .padding(horizontal = playerDim(R.dimen.vs_20), vertical = playerDim(R.dimen.vs_5)),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
@@ -69,7 +69,7 @@ private fun HintPill(modifier: Modifier, content: @Composable RowScope.() -> Uni
 /**
  * 提示药丸的统一落点：水平居中 + 屏幕上部（顶部下移 `vs_60`，落在屏幕上方四分之一区域内）。
  * seek / 亮度音量 / 长按倍速三处共用 —— 原先只有 seek 在这里，另两处在屏幕正中，同类提示位置不一
- * （2026-09-28 用户要求统一到 seek 提示的位置）。
+ * （统一到 seek 提示的位置）。
  */
 @Composable
 private fun HintPillLayer(content: @Composable RowScope.() -> Unit) {
@@ -192,7 +192,7 @@ fun PlayerSeekHint(state: PlayerUiState) {
 }
 
 /** loading（PREPARING/BUFFERING 显示，替代旧 vod_control_loading ProgressBar）；
- *  指示器下方实时网速（2026-09-12 用户需求）：复用 1s 轮询刷新的 netSpeedTopRight，
+ *  指示器下方实时网速：复用 1s 轮询刷新的 netSpeedTopRight，
  *  拖动进度条/缓冲时用户可直观看到取流速度 */
 @Composable
 fun PlayerLoadingLayer(state: PlayerUiState) {

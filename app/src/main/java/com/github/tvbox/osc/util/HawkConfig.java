@@ -178,4 +178,10 @@ public class HawkConfig {
     public static final String PICTURE_TEMPERATURE = "picture_temperature";
     public static final String PICTURE_SHARPNESS = "picture_sharpness";
     public static final String PICTURE_SHADOW_LIFT = "picture_shadow_lift";
+    public static final String ANIME4K_ENABLED = "anime4k_enabled";
+    public static final String ANIME4K_TIER = "anime4k_tier";
+    // Anime4K 链末锐化强度(0~1,只锐化亮度且钳在邻域范围内)
+    public static final String ANIME4K_SHARPEN = "anime4k_sharpen";
+    // Anime4K 链内去模糊(Deblur_DoG,1x 上 4 个 pass;改它要重播本集)
+    public static final String ANIME4K_DEBLUR = "anime4k_deblur";
 }

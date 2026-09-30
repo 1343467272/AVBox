@@ -70,6 +70,7 @@ import com.github.tvbox.osc.ui.activity.ThemeSettingsActivity
 import com.github.tvbox.osc.util.FileUtils
 import com.github.tvbox.osc.util.HistoryHelper
 import com.github.tvbox.osc.util.HistoryMerge
+import com.github.tvbox.osc.player.effect.anime4k.Anime4kTier
 import com.github.tvbox.osc.util.HawkConfig
 import com.github.tvbox.osc.util.MusicSettings
 import com.github.tvbox.osc.util.OkGoHelper
@@ -84,6 +85,7 @@ data class SettingsState(
     val playRender: Int,
     val playScale: Int,
     val exoDecode: String,
+    val anime4kTier: Anime4kTier,
     val kernelPrewarm: Boolean,
     val playTunnel: Boolean,
     val preferAac: Boolean,
@@ -167,6 +169,7 @@ class SettingsViewModel : ViewModel() {
         playRender = KV.get(HawkConfig.PLAY_RENDER, 1),
         playScale = KV.get(HawkConfig.PLAY_SCALE, 0),
         exoDecode = KV.get(HawkConfig.EXO_DECODE, "硬解码"), // i18n: keep
+        anime4kTier = Anime4kTier.current(),
         kernelPrewarm = KV.get(HawkConfig.KERNEL_PREWARM, false),
         playTunnel = KV.get(HawkConfig.PLAY_TUNNEL, false),
         preferAac = KV.get(HawkConfig.PLAY_PREFER_AAC, false),

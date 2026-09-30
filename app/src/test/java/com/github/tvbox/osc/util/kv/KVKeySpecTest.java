@@ -14,26 +14,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * 生产类型登记表的**结构**测试(纯 JVM:不实例化 MMKV、不碰任何 Android 存储)。
- *
- * <p>存在理由:`KVKeySpec` 的集合类型靠匿名 `TypeToken` 子类的泛型签名恢复
- * (`TypeToken.getSuperclassTypeParameter` 读的是 class 的 Signature 属性)。R8 只保留了
- * `-keepattributes Signature`,而 `TypeToken` 子类那条规则带 `allowoptimization` ——
- * 所以"release 下泛型签名是否还在"必须**在 R8 后的字节码上**验证,不能只看 debug。
- *
- * <p>跑法:debug 基线 = `gradlew :app:testDebugUnitTest`。
- * ⚠️ 原写的 `:app:testReleaseUnitTest` 在当前 AGP 配置下**已不存在**(工程里只有 testDebugUnitTest),
- * release/R8 验证改为对产物 dex 做静态检查(2026-09-13 实测有效):
- * <pre>
- *   dexdump -a &lt;classes*.dex&gt; | findstr /C:"annotation/Signature"
- * </pre>
- * 判据:每个 `* extends TypeToken` 的匿名子类都应带
- * `VISIBILITY_SYSTEM Ldalvik/annotation/Signature; value={...}`。
- * ⚠️ 不要用"在 dex 里搜完整签名串"的方式判断 —— D8 会把签名**拆成片段**存储
- * (如 "Lcom/google/gson/reflect/TypeToken&lt;" "Ljava/util/HashMap&lt;" "Ljava/lang/String;" "&gt;;&gt;;"),
- * 完整字符串在池里根本不存在,直接搜索必然落空(2026-09-13 亲测踩坑)。
- */
 public class KVKeySpecTest {
 
     private final KVKeySpec spec = new KVKeySpec();
@@ -129,12 +109,18 @@ public class KVKeySpecTest {
                 spec.typeOf(com.github.tvbox.osc.util.HawkConfig.PICTURE_SHADOW_LIFT));
     }
 
-    /**
-     * 2026-09-13 修复的回归锁:直播源配置的 header/ua 由 ApiConfig 写入的是 HashMap&lt;String,String&gt;,
-     * 一旦登记成 String,读取侧 Gson 会用 String 解析对象原文抛错、被 KV.get(key)(quiet 副本)静默吞成
-     * null —— 症状是直播源的 UA/Referer 全部失效。此测试跑真实 KVKeySpec 注册表 + KVDecoder 往返,
-     * 保证"写入类型 == 登记类型"。
-     */
+    @Test
+    public void anime4kKeys_areRegistered() {
+        assertEquals(TypeToken.get(String.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.ANIME4K_TIER));
+        assertEquals(TypeToken.get(Boolean.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.ANIME4K_ENABLED));
+        assertEquals(TypeToken.get(Float.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.ANIME4K_SHARPEN));
+        assertEquals(TypeToken.get(Boolean.class).getType(),
+                spec.typeOf(com.github.tvbox.osc.util.HawkConfig.ANIME4K_DEBLUR));
+    }
+
     @Test
     public void liveWebHeader_roundTripDecodesAsStringMap() {
         com.github.tvbox.osc.util.kvcodec.KVDecoder decoder =

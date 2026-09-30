@@ -47,7 +47,7 @@ class ComposeLiveController(
         /** 播放状态变化(驱动自动换源状态机) */
         fun onPlayStateChanged(playState: Int)
 
-        /** 左右快滑:direction -1=左滑(上一频道) / 1=右滑(下一频道)(§4.5 切台手势) */
+        /** 左右快滑:direction -1=左滑(上一频道) / 1=右滑(下一频道) */
         fun onHorizontalFling(direction: Int)
 
         /** 亮度/音量手势指示器(旧 BaseController msg 100 无展示位,此处补齐,空实现亦可) */
@@ -105,7 +105,7 @@ class ComposeLiveController(
     }
 
     /**
-     * 是否允许"上下滑调亮度/音量"(2026-09-13「禁用手势控制」设置项)。
+     * 是否允许"上下滑调亮度/音量"(「禁用手势控制」设置项)。
      * 直播侧的手势只有亮度/音量与左右快滑切台(走 onFling),故只在这一处收口。
      */
     private fun canChangeBrightnessVolume(event: MotionEvent): Boolean {

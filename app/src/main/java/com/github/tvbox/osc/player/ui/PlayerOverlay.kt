@@ -51,7 +51,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 /**
- * 播放器控制层根 Composable（Compose 化改造 §3.3 方案 C1）。
+ * 播放器控制层根 Composable。
  * 层级顺序照搬 player_vod_control_view.xml 的 z-order（自底向上）：
  * 加载/错误遮罩 → 顶部栏 → 底部菜单 → 暂停浮层 → 亮度/音量提示 → seek 提示 → loading → 中央网速 →
  * 返回键 → 右侧竖排（旋转/锁）→ 长按倍速。原生字幕视图是控制器的直接子 View（位于 Compose 层之下），
@@ -202,7 +202,7 @@ internal fun playerTextSize(@DimenRes id: Int): TextUnit {
 
 /**
  * 播放器覆盖层控件距屏幕边缘的距离：compact（screenWidthDp < 600，竖屏详情页预览态）16dp；
- * medium/expanded（横屏全屏、平板、折叠展开）48dp（2026-09-26 用户要求由 24dp 提至 48dp）。
+ * medium/expanded（横屏全屏、平板、折叠展开）48dp。
  * 备注：边距与手势带无关 —— dkplayer 的 `PlayerUtils.isEdge()` 已忽略四边各 40dp 内的视频手势。
  */
 @Composable

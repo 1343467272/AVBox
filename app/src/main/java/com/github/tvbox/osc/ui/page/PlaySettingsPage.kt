@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.player.PlaybackService
+import com.github.tvbox.osc.player.effect.anime4k.Anime4kTier
 import com.github.tvbox.osc.ui.components.AVBoxAlertDialog
 import com.github.tvbox.osc.ui.components.AppTopBarScaffold
 import com.github.tvbox.osc.ui.components.LocalSheetDismiss
@@ -114,7 +115,7 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                         onSelect = { idx -> vm.put(HawkConfig.PLAY_SCALE, scales[idx].first) },
                     )
                 }
-                SettingsCard(SettingsCardPosition.LAST) {
+                SettingsCard(SettingsCardPosition.MIDDLE) {
                     // 解码方式:软解 = 系统软件解码器 c2.android.*(仅视频渲染器);
                     // 内核选外部播放器时该设置不生效,行置灰
                     val codec = state.exoDecode
@@ -133,6 +134,20 @@ fun PlaySettingsScreen(onNavigateBack: () -> Unit, vm: SettingsViewModel = viewM
                         options = decodeLabels,
                         selectedIndex = if (codec == DecodeSoft) 1 else 0,
                         onSelect = { idx -> vm.put(HawkConfig.EXO_DECODE, if (idx == 1) DecodeSoft else DecodeHard) },
+                    )
+                }
+                SettingsCard(SettingsCardPosition.LAST) {
+                    val tiers = Anime4kTier.entries
+                    val labels = tiers.map { stringResource(it.labelRes) }
+                    val selected = tiers.indexOf(state.anime4kTier).coerceAtLeast(0)
+                    SettingsOptionMenuRow(
+                        title = stringResource(R.string.settings_play_anime4k),
+                        subtitle = stringResource(R.string.settings_play_anime4k_subtitle),
+                        valueText = labels[selected],
+                        enabled = state.playType == 2,
+                        options = labels,
+                        selectedIndex = selected,
+                        onSelect = { idx -> vm.put(HawkConfig.ANIME4K_TIER, tiers[idx].name) },
                     )
                 }
             }

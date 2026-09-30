@@ -72,6 +72,10 @@ public final class KVKeySpec implements KVDecoder.TypeRegistry {
         register(HawkConfig.THEME_PALETTE_STYLE, "");
         // 画质参数(调色)预置名(PicturePreset 枚举名)
         register(HawkConfig.PICTURE_PRESET, "");
+        register(HawkConfig.ANIME4K_TIER, "");
+        // Anime4K 链末锐化强度(0~1,默认见 Anime4kSettings.DEFAULT_SHARPEN)
+        register(HawkConfig.ANIME4K_SHARPEN, 1.0f);
+        register(HawkConfig.ANIME4K_DEBLUR, false);
         register(HawkConfig.HOME_HOT, "");
         register(HawkConfig.HOME_HOT_DAY, "");
         // 迅雷伪造设备标识(2026-09-15 由独立 SP `rand_thunder_id` 迁入;调用侧带 "" 默认值,登记用于类型自检)
@@ -120,6 +124,7 @@ public final class KVKeySpec implements KVDecoder.TypeRegistry {
         register(HawkConfig.NAV_LIVE_HIDDEN, false);
         register(HawkConfig.PLAY_TUNNEL, false);
         register(HawkConfig.PLAY_PREFER_AAC, false);
+        register(HawkConfig.ANIME4K_ENABLED, false);
         register(HawkConfig.KERNEL_PREWARM, false);
         register(HawkConfig.EXO_VIDEO_DYNAMIC_SCHEDULING, false);
         register(HawkConfig.PRELOAD_NEXT_EPISODE, false);

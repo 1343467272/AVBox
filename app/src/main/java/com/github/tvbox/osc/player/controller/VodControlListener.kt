@@ -47,7 +47,7 @@ interface VodControlListener {
 
     /**
      * 用户手动选过解码方式(播放器解码按钮):本次播放不再自动回退软解,且"自动软解"态作废
-     * (用户的选择要能落进播放记录;与 setAllowSwitchPlayer 同理,2026-09-15)
+     * (用户的选择要能落进播放记录;与 setAllowSwitchPlayer 同理)
      */
     fun setAllowDecodeFallback(isAllow: Boolean)
 }

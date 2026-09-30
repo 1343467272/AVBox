@@ -28,6 +28,8 @@ import com.github.tvbox.osc.player.state.LockVisibility
 import com.github.tvbox.osc.player.state.ParamsChoice
 import com.github.tvbox.osc.player.state.ParamsSheetState
 import com.github.tvbox.osc.player.effect.PictureEffects
+import com.github.tvbox.osc.player.effect.anime4k.Anime4kSettings
+import com.github.tvbox.osc.player.effect.anime4k.Anime4kTier
 import com.github.tvbox.osc.player.state.PictureParamsState
 import com.github.tvbox.osc.player.state.PlayerActions
 import com.github.tvbox.osc.player.state.PlayerUiState
@@ -80,7 +82,7 @@ class ComposeVideoController @JvmOverloads constructor(
 
     private lateinit var state: PlayerUiState
 
-    // —— 原生字幕视图（§5.4：PlayContainer 直接操作，保留 View 引用） ——
+    // —— 原生字幕视图（PlayContainer 直接操作，保留 View 引用） ——
     private lateinit var mSubtitleView: SimpleSubtitleView
     private lateinit var mLyricView: SimpleSubtitleView
     private lateinit var mExoSubtitleView: SubtitleView
@@ -225,7 +227,7 @@ class ComposeVideoController @JvmOverloads constructor(
         val composeView = ComposeView(context).apply {
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
             // 全屏 reparent(DecorView) 后 detach 时 composition 会释放并重建，
-            // 状态全部保存在 PlayerUiState（控制器持有），重建无感（§7.6）
+            // 状态全部保存在 PlayerUiState（控制器持有），重建无感
             setContent {
                 // 视频覆盖层挂在纯黑播放页:状态栏图标外观仍由宿主 Activity 断言,主题不接管
                 AVBoxTheme(manageStatusBarIcons = false) {
@@ -359,7 +361,7 @@ class ComposeVideoController @JvmOverloads constructor(
     }
 
     /** seek 提示（替代旧 updateSeekUI + msg 1000/1001，UI 侧 1s 自动隐藏）。
-     *  只显示目标时间 —— 总时长在底栏时间胶囊里已有，提示里再带一份是冗余（2026-09-28 用户要求）。 */
+     *  只显示目标时间 —— 总时长在底栏时间胶囊里已有，提示里再带一份是冗余。 */
     private fun updateSeekUiHint(curr: Int, seekTo: Int) {
         state.seekHintForward = seekTo > curr
         state.seekHintText = PlayerUtils.stringForTime(seekTo)
@@ -449,7 +451,7 @@ class ComposeVideoController @JvmOverloads constructor(
     }
 
     override fun onDoubleTap(e: MotionEvent): Boolean {
-        // 预览态（竖屏详情页）同样支持双击暂停/播放（2026-09-13 用户要求；旧版此态只放行单击显隐）。
+        // 预览态（竖屏详情页）同样支持双击暂停/播放（此态只放行单击显隐）。
         // ⚠️ GestureDetector 语义下单击显隐要等双击窗口超时（~300ms）才确认，是双击功能的固有代价。
         if (isDoubleTapTogglePlayEnabled && !isLocked() && isInPlaybackState()) {
             mControlWrapper?.togglePlay()
@@ -568,7 +570,7 @@ class ComposeVideoController @JvmOverloads constructor(
         applyShowBottom()
     }
 
-    /** 等价旧 msg 1002（逐行照搬可见性规则，§7.8） */
+    /** 可见性规则与 msg 1002 等价 */
     private fun applyShowBottom() {
         updateDanmuSearchBtnState()
         state.controlsVisible = true
@@ -702,6 +704,22 @@ class ComposeVideoController @JvmOverloads constructor(
                 preset = PictureEffects.preset(),
                 tuning = PictureEffects.custom(),
                 unavailableReason = PictureEffects.unavailableReason(),
+                anime4kTierText = context.getString(Anime4kTier.current().labelRes),
+                anime4kEnabled = Anime4kSettings.enabled(),
+                anime4kUnavailable = PictureEffects.anime4kUnavailable(),
+                anime4kSharpen = Anime4kSettings.sharpen(),
+                anime4kDeblur = Anime4kSettings.deblur(),
+                onAnime4kToggled = {
+                    Anime4kSettings.setEnabled(it)
+                    restartForPictureIfNeeded()
+                    refreshParamsSheet()
+                },
+                onAnime4kSharpenChanged = { PictureEffects.setAnime4kSharpen(it) },
+                onAnime4kDeblurToggled = {
+                    Anime4kSettings.setDeblur(it)
+                    restartForPictureIfNeeded()
+                    refreshParamsSheet()
+                },
                 onPresetSelected = {
                     PictureEffects.selectPreset(it)
                     restartForPictureIfNeeded()
@@ -838,7 +856,7 @@ class ComposeVideoController @JvmOverloads constructor(
             // BugReview #16:倍速提速不入 playerCfg(原实现把 "sp":3.0 经 updatePlayerCfg
             // 持久化,手势被 CANCEL 中断或后续集数会持续 3.0x);只改播放器速度,配置保持原值
             speedOld = cfg.getDouble("sp").toFloat()
-            // 长按倍速(2026-09-12):设置页滑块可调 2x~10x,每次长按实时读 KV,改设置立即生效
+            // 长按倍速:设置页滑块可调 2x~10x,每次长按实时读 KV,改设置立即生效
             val boost = KV.get(HawkConfig.LONG_PRESS_SPEED, HawkConfig.LONG_PRESS_SPEED_DEFAULT).toFloat()
             mControlWrapper?.setSpeed(boost)
             state.speedBoostValue = boost
@@ -988,7 +1006,7 @@ class ComposeVideoController @JvmOverloads constructor(
     }
 
     // ============================================================
-    // PlayerActions 实现（§5.3 按钮清单）
+    // PlayerActions 实现（按钮清单）
     // ============================================================
 
     override fun onNextClicked() {

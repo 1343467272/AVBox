@@ -238,7 +238,7 @@ internal fun SheetTitle(text: String) {
 
 /** 面板按钮:M3 选项样式 —— `surfaceBright` 底、选中 `primaryContainer`;触摸点按。
  *  [contentPadding] 给"宽度随内容"的 chips 用(默认 0 = 沿用调用方的宽度)。
- *  文字恒 `Medium`(500):2026-09-28 用户要求播放器弹窗内字重一律 500,选中态只靠底色区分。 */
+ *  文字恒 `Medium`(500):播放器弹窗内字重一律 500,选中态只靠底色区分。 */
 @Composable
 internal fun SheetButton(
     text: String,

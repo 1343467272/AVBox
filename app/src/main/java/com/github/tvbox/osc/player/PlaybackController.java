@@ -12,7 +12,6 @@ import androidx.lifecycle.Observer;
 import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.player.ExoPlayer;
 import com.github.tvbox.osc.player.TrackInfo;
-import com.github.tvbox.osc.player.PreloadManagerHolder;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.base.App;
 import com.github.tvbox.osc.api.DanmakuApi;
@@ -1449,17 +1448,7 @@ public class PlaybackController {
             return;
         }
 
-        if (preloadCoordinator != null) {
-            JSONObject preResult = preloadCoordinator.consumeResult(progressKey());
-            if (preResult != null) {
-                // 直链可能已过期:标记来源,失败时走 retryWithFreshResolve 重取一次
-                st.usedPreloadedResult = true;
-                deliverPlayResult(preResult);
-                return;
-            }
-            // 未复用 = 切到的不是预载目标集(或缓存过期):预载数据失效,清掉
-            preloadCoordinator.dropPreloadData();
-        }
+        if (preload.consumeResult(progressKey())) return;
         if (sourceViewModel != null) {
             sourceViewModel.getPlay(sourceKey(), vod().playFlag, progressKey(), vs.url, subtitleCacheKey());
         }
@@ -1594,23 +1583,32 @@ public class PlaybackController {
     // 目标评估时机(正片稳定/缓冲让路/缓冲结束补枪)、结果取用与冷却期都在 PreloadCoordinator;
     // 调度层负责"何时喂快照、何时取结果、何时作废",页面只提供快照(需上下文与真实内核实例)与 Toast。
 
-    private PreloadCoordinator preloadCoordinator;
-    private PreloadManagerHolder.ReadyListener preloadReadyListener;
+    private final PlaybackPreload preload = new PlaybackPreload(new PlaybackPreload.Host() {
+        @Override
+        public PlaybackViewBridge view() {
+            return PlaybackController.this.view;
+        }
+
+        @Override
+        public SourceViewModel sourceViewModel() {
+            return PlaybackController.this.sourceViewModel;
+        }
+
+        @Override
+        public void ensureFetch() {
+            initFetch();
+        }
+
+        @Override
+        public void onPreloadedResult(JSONObject info) {
+            st.usedPreloadedResult = true;
+            deliverPlayResult(info);
+        }
+    });
 
     /** 建立预载协调器与"下一集已就绪"回调(页面 init 时调用一次,须在 initFetch 之后) */
     public void initPreload() {
-        if (sourceViewModel == null) initFetch();
-        preloadCoordinator = new PreloadCoordinator(sourceViewModel);
-        preloadReadyListener = new PreloadManagerHolder.ReadyListener() {
-            @Override
-            public void onPreloadReady(String url) {
-                if (view == null || !view.isPageAlive()) return;
-                view.runOnUi(() -> {
-                    if (view != null) view.showPreloadReadyTip();
-                });
-            }
-        };
-        PreloadManagerHolder.setReadyListener(preloadReadyListener);
+        preload.init();
     }
 
     /**
@@ -1619,29 +1617,17 @@ public class PlaybackController {
      * STATE_BUFFERED 缓冲结束 → 补一次评估(dkplayer 的 STATE_PLAYING 只在首帧发一次,不补枪则拖一次进度条就永久停摆)。
      */
     public void onPlayerStateForPreload(int playState) {
-        if (preloadCoordinator == null) return;
-        // 无页面(仅引擎)时快照为空:跳过评估(预载需要页面上下文与集信息)
-        if (view == null) return;
-        if (playState == VideoView.STATE_PLAYING || playState == VideoView.STATE_BUFFERED) {
-            preloadCoordinator.scheduleEvaluate(view == null ? null : view.buildPreloadSnapshot());
-        } else if (playState == VideoView.STATE_BUFFERING) {
-            preloadCoordinator.onMainPlayerBuffering();
-        }
+        preload.onPlayerState(playState);
     }
 
     /** 切集/换线/换源/重播:作废在途预解析与预载数据(稳定播放后重新评估) */
     public void invalidatePreload() {
-        if (preloadCoordinator != null) preloadCoordinator.invalidate();
+        preload.invalidate();
     }
 
     /** 页面销毁:停协调器 + 注销就绪回调(防页面销毁后回调/Toast 残留) */
     public void destroyPreload() {
-        PreloadManagerHolder.clearReadyListener(preloadReadyListener);
-        preloadReadyListener = null;
-        if (preloadCoordinator != null) {
-            preloadCoordinator.destroy();
-            preloadCoordinator = null;
-        }
+        preload.destroy();
     }
 
     // ==================== 音乐会话/媒体通知 ====================

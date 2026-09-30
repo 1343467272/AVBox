@@ -1,16 +1,13 @@
 package com.github.tvbox.osc.player.controller
 
 import com.github.tvbox.osc.util.LOG
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.os.BatteryManager
 import android.content.res.Configuration
-import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
-import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -34,7 +31,6 @@ import com.github.tvbox.osc.player.state.PictureParamsState
 import com.github.tvbox.osc.player.state.PlayerActions
 import com.github.tvbox.osc.player.state.PlayerUiState
 import com.github.tvbox.osc.player.state.VideoSizeGate
-import com.github.tvbox.osc.util.GestureHelper
 import com.github.tvbox.osc.player.state.SelectDialogState
 import com.github.tvbox.osc.player.ui.PlayerOverlay
 import com.github.tvbox.osc.player.usecase.M3u8PurifyUseCase
@@ -52,25 +48,23 @@ import org.greenrobot.eventbus.EventBus
 import org.json.JSONException
 import org.json.JSONObject
 import xyz.doikki.videoplayer.controller.BaseVideoController
+import xyz.doikki.videoplayer.controller.ControlWrapper
 import xyz.doikki.videoplayer.player.VideoView
 import xyz.doikki.videoplayer.util.PlayerUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.HashMap
 import java.util.Locale
-import kotlin.math.abs
 
 @Suppress("MemberVisibilityCanBePrivate")
 class ComposeVideoController @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0,
-) : BaseVideoController(context, attrs, defStyleAttr), PlayerControlApi, PlayerActions,
-    GestureDetector.OnGestureListener, GestureDetector.OnDoubleTapListener, View.OnTouchListener {
+) : BaseVideoController(context, attrs, defStyleAttr), PlayerControlApi, PlayerActions {
 
     companion object {
-        
-        private const val SLIDE_POSITION_FULL_WIDTH_MS = 240000f
+
         /** 锁屏图标 3s 后隐藏 */
         private const val LOCK_HIDE_DELAY_MS = 3000L
         /** BugReview #32:倍速应用重试上限(100ms×30 = 3s),防长期不进播放态时主线程空转 */
@@ -80,41 +74,31 @@ class ComposeVideoController @JvmOverloads constructor(
     }
 
 
-    private lateinit var state: PlayerUiState
+    internal lateinit var state: PlayerUiState
+
+    internal val gestures = GestureController(this)
+
+    /** mControlWrapper 是父类 protected 字段,手势委托经这里取用(dkplayer 的类型) */
+    internal val wrapper: ControlWrapper?
+        get() = mControlWrapper
 
     // —— 原生字幕视图（PlayContainer 直接操作，保留 View 引用） ——
     private lateinit var mSubtitleView: SimpleSubtitleView
     private lateinit var mLyricView: SimpleSubtitleView
     private lateinit var mExoSubtitleView: SubtitleView
 
-    // —— 手势引擎字段（照抄 BaseController） ——
-    private var gestureDetector: GestureDetector? = null
-    private var audioManager: AudioManager? = null
-    private var isGestureEnabled = true
-    private var streamVolume = 0
-    private var brightness = 0f
-    private var mSeekPosition = -1
-    private var firstTouch = false
-    private var changePosition = false
-    private var changeBrightness = false
-    private var changeVolume = false
-    private var canChangePosition = true
-    private var enableInNormal = false
-    private var canSlide = false
-    private var curPlayState = 0
-    private var isDoubleTapTogglePlayEnabled = true
+    internal var curPlayState = 0
     private val videoSizeGate = VideoSizeGate()
 
     // —— 控制层行为字段（照抄 VodController） ——
-    private var previewMode = false
-    private var fromLongPress = false
-    private var speedOld = 1.0f
+    internal var previewMode = false
+    internal var speedOld = 1.0f
     /** BugReview #32:倍速应用重试计数 */
     private var speedRetryCount = 0
     private var skipEnd = true
     private var isClickBackBtn = false
     private var showParseFlag = false
-    private var playerConfig: JSONObject? = null
+    internal var playerConfig: JSONObject? = null
     private var listener: VodControlListener? = null
 
     // 方向键/滚轮步进 seek 的累计进度与提交去抖
@@ -163,14 +147,11 @@ class ComposeVideoController @JvmOverloads constructor(
     // 生命周期 / 初始化
     // ============================================================
 
-    @SuppressLint("ClickableViewAccessibility")
     override fun initView() {
         super.initView()
         state = PlayerUiState()
 
-        audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        gestureDetector = GestureDetector(context, this)
-        setOnTouchListener(this)
+        gestures.attach()
 
         initNativeSubtitleViews()
         initComposeLayer()
@@ -262,11 +243,7 @@ class ComposeVideoController @JvmOverloads constructor(
     override fun setPlayerState(playerState: Int) {
         super.setPlayerState(playerState)
         state.playerState = playerState
-        if (playerState == VideoView.PLAYER_NORMAL) {
-            canSlide = enableInNormal
-        } else if (playerState == VideoView.PLAYER_FULL_SCREEN) {
-            canSlide = true
-        }
+        gestures.onPlayerState(playerState)
     }
 
     override fun onPlayStateChanged(playState: Int) {
@@ -362,7 +339,7 @@ class ComposeVideoController @JvmOverloads constructor(
 
     /** seek 提示（替代旧 updateSeekUI + msg 1000/1001，UI 侧 1s 自动隐藏）。
      *  只显示目标时间 —— 总时长在底栏时间胶囊里已有，提示里再带一份是冗余。 */
-    private fun updateSeekUiHint(curr: Int, seekTo: Int) {
+    internal fun updateSeekUiHint(curr: Int, seekTo: Int) {
         state.seekHintForward = seekTo > curr
         state.seekHintText = PlayerUtils.stringForTime(seekTo)
         state.seekHintVisible = true
@@ -377,7 +354,7 @@ class ComposeVideoController @JvmOverloads constructor(
         else String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
     }
 
-    private fun isInPlaybackState(): Boolean {
+    internal fun isInPlaybackState(): Boolean {
         return mControlWrapper != null &&
                 curPlayState != VideoView.STATE_ERROR &&
                 curPlayState != VideoView.STATE_IDLE &&
@@ -387,170 +364,9 @@ class ComposeVideoController @JvmOverloads constructor(
                 curPlayState != VideoView.STATE_PLAYBACK_COMPLETED
     }
 
-    private fun canHandleGesture(event: MotionEvent): Boolean {
-        return isInPlaybackState() &&
-                isGestureEnabled &&
-                canSlide &&
-                !isLocked() &&
-                !PlayerUtils.isEdge(context, event)
-    }
-
-
-    private fun canChangeBrightnessVolume(event: MotionEvent): Boolean {
-        return canHandleGesture(event) && !GestureHelper.isControlDisabled()
-    }
-
-    override fun onDown(e: MotionEvent): Boolean {
-        if (!isInPlaybackState() || !isGestureEnabled || PlayerUtils.isEdge(context, e)) {
-            return true
-        }
-        streamVolume = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-        val activity = PlayerUtils.scanForActivity(context)
-        brightness = if (activity == null) 0f else activity.window.attributes.screenBrightness
-        firstTouch = true
-        changePosition = false
-        changeBrightness = false
-        changeVolume = false
-        return true
-    }
-
-    override fun onScroll(
-        e1: MotionEvent?,
-        e2: MotionEvent,
-        distanceX: Float,
-        distanceY: Float,
-    ): Boolean {
-        if (e1 == null) return true
-        if (!canHandleGesture(e1)) return true
-        val deltaX = e1.x - e2.x
-        val deltaY = e1.y - e2.y
-        if (firstTouch) {
-            changePosition = abs(distanceX) >= abs(distanceY)
-            if (!changePosition) {
-                if (previewMode) return true
-                if (!canChangeBrightnessVolume(e1)) return true
-                val halfScreen = PlayerUtils.getScreenWidth(context, true) / 2
-                if (e2.x > halfScreen) changeVolume = true else changeBrightness = true
-            }
-            if (changePosition) changePosition = canChangePosition
-            firstTouch = false
-        }
-        if (changePosition) {
-            slideToChangePosition(deltaX)
-        } else if (changeBrightness) {
-            slideToChangeBrightness(deltaY)
-        } else if (changeVolume) {
-            slideToChangeVolume(deltaY)
-        }
-        return true
-    }
-
-    override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-        toggleControls()
-        return true
-    }
-
-    override fun onDoubleTap(e: MotionEvent): Boolean {
-        // 预览态（竖屏详情页）同样支持双击暂停/播放（此态只放行单击显隐）。
-        // ⚠️ GestureDetector 语义下单击显隐要等双击窗口超时（~300ms）才确认，是双击功能的固有代价。
-        if (isDoubleTapTogglePlayEnabled && !isLocked() && isInPlaybackState()) {
-            mControlWrapper?.togglePlay()
-        }
-        return true
-    }
-
-    override fun onLongPress(e: MotionEvent) {
-        if (previewMode) return
-        if (curPlayState != VideoView.STATE_PAUSED) {
-            speedPlayStart()
-        }
-    }
-
-    override fun onShowPress(e: MotionEvent) {}
-    override fun onSingleTapUp(e: MotionEvent): Boolean = false
-    override fun onDoubleTapEvent(e: MotionEvent): Boolean = false
-    override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean = false
-
-    /** 锁屏触摸守卫 + 手势分发（旧 rootView OnTouch 与 BaseController.OnTouch 合并，行为等价） */
-    @SuppressLint("ClickableViewAccessibility")
-    override fun onTouch(v: View, event: MotionEvent): Boolean {
-        if (previewMode) {
-            return gestureDetector?.onTouchEvent(event) ?: false
-        }
-        if (isLocked()) {
-            if (event.actionMasked == MotionEvent.ACTION_UP) {
-                showLockView()
-            }
-            return true
-        }
-        return gestureDetector?.onTouchEvent(event) ?: false
-    }
-
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        // BugReview #16:CANCEL(来电浮窗/下拉通知栏/父容器拦截)时也要结束倍速,
-        // 否则长按 3.0x 永不恢复
-        when (event.actionMasked) {
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> speedPlayEnd()
-        }
-        if (gestureDetector?.onTouchEvent(event) != true) {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_UP -> {
-                    if (mSeekPosition >= 0) {
-                        mControlWrapper?.seekTo(mSeekPosition.toLong())
-                        mSeekPosition = -1
-                    }
-                }
-                MotionEvent.ACTION_CANCEL -> mSeekPosition = -1
-            }
-        }
+        gestures.onTouchEvent(event)
         return super.onTouchEvent(event)
-    }
-
-    private fun slideToChangePosition(deltaX: Float) {
-        val width = measuredWidth
-        if (width <= 0) return
-        val wrapper = mControlWrapper ?: return
-        val duration = PlayerUtils.safeTimeMs(wrapper.duration)
-        val currentPosition = PlayerUtils.safeTimeMs(wrapper.currentPosition)
-        var position = (-deltaX / width * SLIDE_POSITION_FULL_WIDTH_MS + currentPosition).toInt()
-        if (position > duration) position = duration
-        if (position < 0) position = 0
-        updateSeekUiHint(currentPosition, position)
-        mSeekPosition = position
-    }
-
-    private fun slideToChangeBrightness(deltaY: Float) {
-        val activity = PlayerUtils.scanForActivity(context) ?: return
-        val window = activity.window
-        val attributes = window.attributes
-        val height = measuredHeight
-        if (height <= 0) return
-        if (brightness == -1.0f) brightness = 0.5f
-        var newBrightness = deltaY * 2 / height + brightness
-        if (newBrightness < 0) newBrightness = 0f
-        if (newBrightness > 1.0f) newBrightness = 1.0f
-        val percent = (newBrightness * 100).toInt()
-        attributes.screenBrightness = newBrightness
-        window.attributes = attributes
-        state.slideHintText = context.getString(R.string.player_gesture_percent, percent)
-        state.slideHintBrightness = true
-        state.slideHintVisible = true
-    }
-
-    private fun slideToChangeVolume(deltaY: Float) {
-        val am = audioManager ?: return
-        val height = measuredHeight
-        if (height <= 0) return
-        val streamMaxVolume = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        val deltaV = deltaY * 2 / height * streamMaxVolume
-        var index = streamVolume + deltaV
-        if (index > streamMaxVolume) index = streamMaxVolume.toFloat()
-        if (index < 0) index = 0f
-        val percent = (index / streamMaxVolume * 100).toInt()
-        am.setStreamVolume(AudioManager.STREAM_MUSIC, index.toInt(), 0)
-        state.slideHintText = context.getString(R.string.player_gesture_percent, percent)
-        state.slideHintBrightness = false
-        state.slideHintVisible = true
     }
 
     // ============================================================
@@ -615,7 +431,7 @@ class ComposeVideoController @JvmOverloads constructor(
         }
     }
 
-    private fun showLockView() {
+    internal fun showLockView() {
         if (previewMode) {
             setLocked(false)
             uiHandler.removeCallbacks(lockHideRunnable)
@@ -849,31 +665,6 @@ class ComposeVideoController @JvmOverloads constructor(
         state.liveButtonsVisible = runCatching { mControlWrapper?.duration ?: 0L != 0L }.getOrDefault(true)
     }
 
-    private fun speedPlayStart() {
-        fromLongPress = true
-        try {
-            val cfg = playerConfig ?: return
-            // BugReview #16:倍速提速不入 playerCfg(原实现把 "sp":3.0 经 updatePlayerCfg
-            // 持久化,手势被 CANCEL 中断或后续集数会持续 3.0x);只改播放器速度,配置保持原值
-            speedOld = cfg.getDouble("sp").toFloat()
-            // 长按倍速:设置页滑块可调 2x~10x,每次长按实时读 KV,改设置立即生效
-            val boost = KV.get(HawkConfig.LONG_PRESS_SPEED, HawkConfig.LONG_PRESS_SPEED_DEFAULT).toFloat()
-            mControlWrapper?.setSpeed(boost)
-            state.speedBoostValue = boost
-            state.speedBoostVisible = true
-        } catch (e: JSONException) {
-            LOG.e("ComposeVideoController", e)
-        }
-    }
-
-    private fun speedPlayEnd() {
-        if (!fromLongPress) return
-        fromLongPress = false
-        // 恢复 DOWN 时快照的原速度;cfg 未被修改,无需回写与持久化
-        mControlWrapper?.setSpeed(speedOld)
-        state.speedBoostVisible = false
-    }
-
     private fun applySpeedWhenReady() {
         if (isInPlaybackState()) {
             speedRetryCount = 0
@@ -934,15 +725,15 @@ class ComposeVideoController @JvmOverloads constructor(
     }
 
     override fun setCanChangePosition(canChangePosition: Boolean) {
-        this.canChangePosition = canChangePosition
+        gestures.setCanChangePosition(canChangePosition)
     }
 
     override fun setEnableInNormal(enableInNormal: Boolean) {
-        this.enableInNormal = enableInNormal
+        gestures.setEnableInNormal(enableInNormal)
     }
 
     override fun setGestureEnabled(gestureEnabled: Boolean) {
-        isGestureEnabled = gestureEnabled
+        gestures.setGestureEnabled(gestureEnabled)
     }
 
     /** 旧暂停浮层根已并入 Compose 层,View 版无需隐藏 */

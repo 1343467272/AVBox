@@ -345,6 +345,8 @@ Android 13+ 的「系统设置 → 应用 → 语言」需要 `res/xml/locales_c
 
 **A.2 非 UI 层(32 文件 / 213 处,逐条甄别)** —— `api/`:ApiConfig 33、SpiderLoader 5、DanmakuApi 4、ConfigParser 1;`player/`:PlaybackController 25、PlayUrlResolver 15、ComposeVideoController 19、PlaybackService 6、M3u8PurifyUseCase 2、PlayerUiState 2、IjkMediaPlayer 2、ExoPlayer 1;`util/`:PlayerHelper 17、Thunder 13、LocalConfigHelper 11、DefaultConfig 6、OkGoHelper 4、Proxy 2、FileUtils 2、KV 1、HistoryHelper 1、EpisodeTotals 1、parser/SuperParse 1、live/TxtSubscribe 1;`bean/`:LivePlayerManager 9;`sourcedata/`:SourceViewModel 15;`dlna/`:DLNACastManager 2;`crawler/`:RSAEncrypt 6、Trans 2、JsSpider 1;`python/java/`:PythonSpider 2、PyLog 1。
 
+> **2026-10-01 注记(结构拆分)**：以上是实施当时的逐文件快照。V5 把播放三件套拆出 5 个协作者（`player/PlaybackTimeouts`/`PlaybackPreload`/`PlaybackFetch`、`player/controller/GestureController`、`ui/player/TrackSelectorDelegate`），相关文案随之迁移（例：手势提示与音轨弹窗跟着走）；卡口以实测为准 —— 复跑 `.codebuddy/tools/i18n_gate.py` 为 **ui 0 处 + 非 ui 0 处**。
+
 ## 附录 B:统计口径与复现
 
 - 统计脚本(本地审计工具,未入库):`.codebuddy/tools/i18n_hardcoded_scan.py` —— 状态机剥离注释与字符边界,只统计"含中文的字符串字面量",按所在行是否日志上下文分类;输出同目录 `i18n_scan_out.json`。

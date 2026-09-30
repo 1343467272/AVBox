@@ -35,6 +35,7 @@ import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.Renderer;
 import androidx.media3.exoplayer.RenderersFactory;
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.TrackGroupArray;
@@ -103,9 +104,14 @@ public class ExoPlayer extends ExoMediaPlayer {
     }
 
     private static final MediaCodecSelector EXO_VIDEO_CODEC_SELECTOR =
-            (mimeType, requiresSecureDecoder, requiresTunnelingDecoder) ->
-                    (preferSoftwareDecode ? MediaCodecSelector.PREFER_SOFTWARE : MediaCodecSelector.DEFAULT)
-                            .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
+            (mimeType, requiresSecureDecoder, requiresTunnelingDecoder) -> {
+                List<MediaCodecInfo> infos =
+                        (preferSoftwareDecode ? MediaCodecSelector.PREFER_SOFTWARE : MediaCodecSelector.DEFAULT)
+                                .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
+                LOG.i("echo-exo-selector: mime=" + mimeType + " preferSoft=" + preferSoftwareDecode
+                        + " count=" + infos.size() + " first=" + (infos.isEmpty() ? "none" : infos.get(0).name));
+                return infos;
+            };
 
     public static final int ERROR_KIND_UNKNOWN = 0;
     public static final int ERROR_KIND_NETWORK = 1;
@@ -871,7 +877,7 @@ public class ExoPlayer extends ExoMediaPlayer {
             
             super.buildVideoRenderers(context, extensionRendererMode, EXO_VIDEO_CODEC_SELECTOR, enableDecoderFallback,
                     eventHandler, eventListener, allowedJoiningTimeMs, out);
-            replaceWithReplayableRenderer(context, mediaCodecSelector, enableDecoderFallback, eventHandler,
+            replaceWithReplayableRenderer(context, EXO_VIDEO_CODEC_SELECTOR, enableDecoderFallback, eventHandler,
                     eventListener, allowedJoiningTimeMs, firstRendererIndex, out);
             if (videoRendererSink != null) {
                 for (int i = firstRendererIndex; i < out.size(); i++) {
@@ -883,6 +889,7 @@ public class ExoPlayer extends ExoMediaPlayer {
         /**
          * 把 super 建的默认 MediaCodecVideoRenderer 换成带可重放帧缓存的子类。构建设置须与上游 1.11.1 的
          * {@code DefaultRenderersFactory.createMediaCodecVideoRenderer} 逐项对齐(升级 media3 时回来对账);
+         * 唯一例外:selector 必须下发 {@link ExoPlayer#EXO_VIDEO_CODEC_SELECTOR}(软解偏好靠它,上游形参恒为 DEFAULT)。
          * 被换下的实例未 init/enable、不持编解码器与显示面,丢弃安全。
          */
         private void replaceWithReplayableRenderer(Context context, MediaCodecSelector mediaCodecSelector,
@@ -916,7 +923,9 @@ public class ExoPlayer extends ExoMediaPlayer {
                     builder = builder.experimentalSetEnableMediaCodecBufferDecodeOnlyFlag(false);
                 }
                 out.set(i, new ReplayableCacheVideoRenderer(builder, lateThresholdToDropDecoderInputUs));
-                LOG.i("echo-exo-video-renderer: replayable cache on");
+                LOG.i("echo-exo-video-renderer: replayable cache on, usesExoSelector="
+                        + (mediaCodecSelector == EXO_VIDEO_CODEC_SELECTOR)
+                        + " preferSoft=" + preferSoftwareDecode);
                 return;
             }
             // 未换成功:保持上游默认渲染器,暂停态重绘随之失效(redrawReady 会挡掉),不影响播放

@@ -2,9 +2,12 @@ package com.github.tvbox.osc.player.effect
 
 import android.content.Context
 import androidx.media3.common.C
+import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.PlaybackVideoGraphWrapper
 import androidx.media3.exoplayer.video.VideoFrameReleaseControl
+import com.github.tvbox.osc.player.ExoPlayer
+import com.github.tvbox.osc.util.LOG
 
 /**
  * 打开「可重放帧缓存」的视频渲染器：media3 默认关闭它，于是暂停态既没有新帧、`VideoFrameProcessor.REDRAW`
@@ -35,4 +38,14 @@ class ReplayableCacheVideoRenderer(
             // 与上游唯一差别：开缓存（代价 = media3 自述的更耗电、更耗算力）
             .setEnableReplayableCache(true)
             .build()
+
+    override fun onCodecInitialized(
+        name: String,
+        configuration: MediaCodecAdapter.Configuration,
+        initializedTimestampMs: Long,
+        initializationDurationMs: Long,
+    ) {
+        super.onCodecInitialized(name, configuration, initializedTimestampMs, initializationDurationMs)
+        LOG.i("echo-exo-codec-init: name=$name preferSoft=${ExoPlayer.isPreferSoftwareDecode()}")
+    }
 }

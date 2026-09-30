@@ -4068,3 +4068,15 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **判读教训**:中途我曾把 11:56 影视页的探针数据当成"音乐换歌"来判读,并据此推出"复用意图失效"的错误结论 —— 根因是**没先确认用户操作的页面**(用户 11:59 澄清"我是在影视播放页面切歌的")。**教训:真机日志判读前先确认操作场景(哪个页面、哪个入口),否则整条推理链会建在错误前提上。**
 
 **收尾**:两条临时探针已删除,`PlaybackController.java` 与 `MusicPlayerActivity.kt` 均回到 HEAD(`git diff` 为空可验);重新构建干净包。**未做**:代码未提交。
+
+### 修复:关闭超分不生效 —— media3 不消费 GlEffect.isNoOp(2026-10-01 03:30)
+
+**用户报障**:开启调色后 GPU 占用 40~50%,关闭超分后依旧。日志对账:关闭操作**确实落库**(MMKV `anime4k_enabled` 最新记录 = `json:false`),但 03:32:47 / 03:32:52 仍每次起播 `echo-anime4k chain: tier=Standard passes=12 … deblur=4`。
+
+**根因(字节码级)**:①media3 1.11.1 **从不调用** `GlEffect.isNoOp` —— `media3-effect` / `media3-exoplayer` / `media3-common` 三个 aar 全量扫描 `isNoOp` 零调用方,`GlTextureFrameProcessorChain.configure` 对列表里每个 `GlEffect` **无条件** `toGlShaderProgram`;②`Anime4kEffect.toGlShaderProgram` 里 `tier ?: Anime4kTier.default` 把关闭态(=`tier=null`)兜底成 Standard ⇒ 只要调色链还挂着(列表仍下发),超分就以 Standard 档完整重建运行。
+
+**修法(A+B)**:A = `Anime4kChainProgram` 接可空 tier、null 直接走既有纯拷贝分支(删兜底;`logFirstFrame` 的 `tier?.name ?: "off"` 防 NPE);B = `PictureEffects.effectsFor(anime4kEnabled)` 两个预建列表按超分启用态组装(onPrepare 用 `anime4kWanted`、push 用 `anime4kOpened`;开关变化必走重播 = 新内核首次下发,不破坏"列表恒定")。新增单测 `PictureEffectsEffectListTest`(3 项)。
+
+**验证**:BUILD SUCCESSFUL + **468 用例 0 失败**;装机后用户续播(03:41:44)—— 无任何新 `echo-anime4k` 行、`echo-picture-size` 仍在(调色链正常),GPU 44~46% → **7~18%**。**未走查**:重开超分应恢复挂链。**未做**:代码未提交。
+
+**判读教训**:①KV 值可疑时直接读设备端 MMKV 原文(`grep -abo <key>` 拿字节偏移 + `dd`/`od -A d -t x1` 看值;append-only ⇒ 最大偏移 = 最新有效值),比反复让用户操作/加日志重装快得多;②`GlEffect.isNoOp` 这类"接口默认实现"必须查**消费方是否真的调用**(javap 扫常量池),别按接口语义假设 —— 本次全链路据此误判了一次设计。**既有遗漏**(非本次引入):本文件最后一条停留 09-30 12:00,10-01 的 Anime4K 阶段 2/3、画布模式、自适应倍率、详情页 V4 等过程未归档到这里(活规范/review 侧有部分记录),待统一补录。

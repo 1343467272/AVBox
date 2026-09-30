@@ -1,7 +1,6 @@
 package com.github.tvbox.osc.ui.page
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -34,8 +33,7 @@ internal fun SelectCircle(
         modifier = modifier
             .size(24.dp)
             .clip(CircleShape)
-            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.35f))
-            .border(2.dp, Color.White, CircleShape),
+            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.35f)),
         contentAlignment = Alignment.Center,
     ) {
         if (selected) {

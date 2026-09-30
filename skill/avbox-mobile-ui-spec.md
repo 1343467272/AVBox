@@ -157,7 +157,7 @@
   - **横屏观感代价(用户已知悉)**:侧滑选集面板贴右、底栏仍整行铺在下方(右端被面板盖住),两套 UI 同屏;字幕类是平台 Dialog(60% 遮罩),底栏隔着遮罩隐约可见。竖屏下选集面板贴底全宽、本就把底栏盖住,收不收看不出差别。
   - **未纳入**:长按字幕(关字幕 + Toast)/ 长按弹幕(切开关 + Toast)/ `onScreenDisplayClicked` / `onParseSelected` / 旋转 / 锁 / 返回仍各自 `hideBottom()` —— 它们不开面板,与「弹幕设置长按」的既有模式一致。
 
-- **详情页只保留一层实例、也不留返回链(2026-09-27 用户拍板)**:`DetailActivity` 为 `singleTop`,从栈顶详情页点推荐卡片**复用同一实例**(`onNewIntent` → `DetailViewModel.pushTargetFromIntent`),不新压 Activity;新片以导航参数替换当前内容(`ui/activity/DetailNavStack.kt`,上限常量 `MAX_DEPTH = 1`),**返回键一次即退出到上级页面** —— 打开详情页再多也不累积返回次数(用户明确否掉了"逐部回退"的返回链)。换片会:清空上一部的内容级状态(推荐位 / 换源候选 / 清晰度 / fallback 快照 / `sourcesSearching`)→ 换 `SourceViewModel` 实例隔离同源不同片的迟到回包 → `PlayContainer.stopForContentSwitch()` 停播并落盘旧片进度 → 重载详情 + 重搜推荐。**已知取舍**:从推荐进新片后返回回不到上一部(用户选定);滚动位置回到顶部;换片瞬间旧片若在取流中会被 `stopPlaybackKeepPlayer` 打断(已播内容保持 PAUSED,可无缝接管)。过程与真机走查清单见 `history/features.md` 2026-09-27 条目。
+- **详情页只保留一层实例、也不留返回链(2026-09-27 用户拍板)**:`DetailActivity` 为 `singleTop`,从栈顶详情页点推荐卡片**复用同一实例**(`onNewIntent` → `DetailViewModel.pushTargetFromIntent`),不新压 Activity;新片以导航参数替换当前内容(`ui/activity/DetailNavStack.kt`,上限常量 `MAX_DEPTH = 1`),**返回键一次即退出到上级页面** —— 打开详情页再多也不累积返回次数(用户明确否掉了"逐部回退"的返回链)。换片会:清空上一部的内容级状态(推荐位 / 换源候选 / 清晰度 / fallback 快照 / `sourcesSearching`)→ **换代次**隔离同源不同片的迟到回包(2026-10-01 V4 起:`detailRequestToken` 随请求下传、回包带 `AbsXml.detailToken`,代次不符即丢;原"换 `SourceViewModel` 实例"的做法已删) → `PlayContainer.stopForContentSwitch()` 停播并落盘旧片进度 → 重载详情 + 重搜推荐。**已知取舍**:从推荐进新片后返回回不到上一部(用户选定);滚动位置回到顶部;换片瞬间旧片若在取流中会被 `stopPlaybackKeepPlayer` 打断(已播内容保持 PAUSED,可无缝接管)。过程与真机走查清单见 `history/features.md` 2026-09-27 条目。
 
 ### 4.5 直播页(2026-09-08 实施定稿)
 

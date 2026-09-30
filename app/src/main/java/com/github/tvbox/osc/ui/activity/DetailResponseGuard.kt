@@ -15,4 +15,15 @@ internal object DetailResponseGuard {
 
     fun isCurrent(requestToken: Int, responseToken: Int?): Boolean =
         responseToken != null && responseToken == requestToken
+
+    /**
+     * 详情请求"根本发不出去"的三种目标(空 id / 聚合搜索占位 id / 源不在当前订阅)。
+     *
+     * 抽成纯函数是因为它决定 [DetailViewModel.loadDetail] 是否早退,而早退分支**同样必须换代次**:
+     * V4 首版把换代次写在早退之后,导致这类换片只改内容不换代,上一代的迟到回包被守卫放行
+     * (同源不同片时 `sourceKey` 相同,内容比对也拦不住) ⇒ 旧片顶掉新页。用例见
+     * `DetailResponseGuardTest.detailTargetsThatCannotBeLoaded`。
+     */
+    fun isUnloadableTarget(vodId: String, sourceMissing: Boolean): Boolean =
+        vodId.isEmpty() || vodId.startsWith("msearch:") || sourceMissing
 }

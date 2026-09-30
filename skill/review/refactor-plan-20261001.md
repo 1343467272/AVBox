@@ -165,7 +165,14 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
   - `DetailViewModel.detailRequestToken`:**只在"发起新的内容请求"时自增**（换片/换源/重试,即 `loadDetail`）;**fallback 换候选站不自增**（同一代内多候选,谁先回都算当前,与旧"换实例只在换片/换源时发生"一致）。
   - 判据抽成纯函数 `DetailResponseGuard.isCurrent(requestToken, responseToken)`(null = 无代次信息,不采信),单测 6 例锁行为 —— 含**换源但同 vodId** 那一格:源 A/源 B 命中同一部片时 `sourceKey` 会变而 `vodId` 可能相同,内容比对分不出来,只有代次能分（这正是"换实例"的技术替代）。
 - **播放层的 2 处为何不在本阶段收口（登记理由）**:`PlaybackController`(Java,自持 `SourceViewModel`)与 `PreloadCoordinator`(Java,构造器里挂 `preloadResult`)都不是页面 VM,`observeForever` 是它们与门面之间的自然写法;两者**都已有配对清理**(`releaseFetch()` / `destroy()`),不存在 V4 要消的"漏配对即泄漏"形态。V4 若把它们也搬成 flow,就要在 `player` 模块引入协程作用域与生命周期,收益不匹配。归 **V5**(`PlaybackController` 拆簇时一并具名化 + 补配对清理检查),`PreloadCoordinator` 同批评估。
-- **验证**：`assembleDebug` + `testDebugUnitTest` 全绿（**60 类 / 464 例 / 0 失败** = V3 基线 458 + 代次守卫 6 例）。
+- **验证**：`assembleDebug` + `testDebugUnitTest` 全绿（**60 类 / 466 例 / 0 失败** = V3 基线 458 + 代次守卫 8 例）。
+- **审查轮（两轮独立复核）抓到 3 处真回归（已修）** —— 全部是本阶段引入、且前两笔审查轮从未出现的类型：
+  1. **代次自增时机有洞（高）**：首版把 `nextDetailRequestToken()` 写在 `loadDetail` 的**早退之后**，于是"空 id / `msearch:` 占位 / 源不在当前订阅"这三类换片只改内容不换代 —— 上一代的迟到回包被守卫放行，而同源不同片时 `sourceKey` 比对也拦不住 ⇒ 旧片顶掉新页、并可能按新页的 vodId 写脏历史。**旧实现的 `rebindDetailSource()` 是无条件执行的，所以这是严格退化**。修法:自增提到早退之前，并把判据抽成 `DetailResponseGuard.isUnloadableTarget` + 用例，让这条分支也有测试。
+  2. **子作用域丢 Dispatcher（阻断级）**：`CoroutineScope(viewModelScope.coroutineContext[Job]!!)` 只带 Job，`launch` 兜底成 `Dispatchers.Default`，而 `observeForever` 内部有 `assertMainThread` ⇒ 首页首次建 `PartitionLoader` 即抛，分区/推荐永久 Loading。
+  3. **`cancel()` 打到父作用域（高）**：同一行复用父 Job，`release()` 的 `cancel()` 会连 `viewModelScope` 一起取消 —— 而 `loadHome()` **每次换源都 release 旧 loader** ⇒ 首页切源后永久 loading。
+  - 2/3 修法:`SupervisorJob(parent) + Dispatchers.Main.immediate`（`HomeViewModel.PartitionLoader` 与 `PartitionListViewModel` 各一处），两个坑都写进代码注释（最容易再犯的地方）。
+  - **教训（已进 §9 流程）**：这三条都属"单测跑不到、只有读协程语义/路径枚举才能发现"的类型 —— `observeForever` 的主线程断言在纯 JVM 单测里根本不执行，所以"全绿"不能当通过。凡"给页面 VM 造作用域"的改动，必须显式检查**继承了什么 Dispatcher**与**cancel 会打到谁**；凡"判据前有早退"的改动，必须检查**早退分支是否也走了那条判据的更新步骤**。
+  - 其余审查发现:测试里 3 例是同义重复（已删/改写为带反例的形态）；`observeAsFlow` 的 `trySend` 静默丢弃与注释口径已订正（并写明播放层是 `observeForever` 的登记例外）；`PushDetailResolver` 的 3 个 post 投的是**被原地改写的同一对象**（代次不会被冲掉，已核实非回归，未加冗余兜底）；活规范 §4.4 与附录 B 坐标已同步。
 - 未做：装机走查 —— `adb` 不在 PATH。走查判据（本阶段最关键的一组）：详情页快进快出连点（迟到回包不串片,尤其**换到另一个源但同一部片**）、fallback 自动换站期间旧回包不串、搜索聚合并发、`HomeViewModel` sort/rec/action 三通道互不串扰、首页下拉刷新与分区翻页仍正常。
 
 **原设计记录（本次执行按上述落地）**：
@@ -236,6 +243,7 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - 每步落地：`.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest`；以 `BUILD SUCCESSFUL` 与 `test-results` 用例计数为准（**当前基线 58 类 455 例** = V1 执行日 447 + V2 新增 8；09-28 参考值 45 类 376 例，其后 09-29/30 有内核移除与调色等增量提交）。
 - 纯搬迁步（V3 改名、V5 各簇）：`git show HEAD:旧文件` 逐行去空白后多重集比对 + 方法级存在性检查（旧 spec 阶段 4/5 验证过的卡口，含 marker 唯一性教训）。
 - 语义转换步（V2 指令流、V4 token）：必须先补单测锁行为再改实现（`token 失配丢弃`/`指令有序消费`）。**V2 教训（写进流程）**：改动判据前先按 `git show HEAD^:文件` 把旧表达式抄下来逐格推真值表，再拿真值表写断言；凭直觉写的断言会把"新行为"锁成"旧语义"，给的是虚假覆盖信心（V2 首版即如此，审查轮才抓到）。判据类改动一律先查 `skill/history/features.md` 有没有该判据的真机验证记录与"不要盲改"警告。
+- **V4 教训（写进流程）**：三类问题单测与"全绿"都发现不了，只能靠读语义与路径枚举 —— ①**判据前的早退分支**是否也走该判据的更新步骤（V4 首版在 `loadDetail` 早退前漏了换代次）；②**自建 CoroutineScope 继承了什么 Dispatcher**（漏了就是 `Dispatchers.Default`，而 `observeForever`/UI 状态有主线程断言）；③**`cancel()` 会打到哪个 Job**（复用父 Job 就会连 `viewModelScope` 一起杀，而 `loadHome()` 每次换源都会 release）。审查这类改动时，重点不是"用例过没过"，而是"哪些代码路径没有用例能覆盖"。
 - 真机走查判据按阶段分列（见各节）；V5 绑定播放服务化 §4 全清单。
 - 每步一个 commit，可独立回滚；不推远程除非明确许可。
 
@@ -259,12 +267,12 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - `observeForever` 面：`Select-String '\.observeForever\('` 全库。
 - VM 持 View 引用面：`Select-String 'PlayContainer\?|View\b'` 限 `**/viewmodel/**` 与页面 VM。
 
-# 附录 B. 关键代码坐标（执行时直接定位）
+# 附录 B. 关键代码坐标（执行时直接定位；**V1–V4 落地后已订正**）
 
-- `DetailViewModel.playContainerRef`：声明 79 / 使用 170、232–233、525、552、775；赋值 `DetailScreen.kt:71`；`setEpisodeSheetOpen` `DetailEpisodes.kt:167`。
-- `rebindDetailSource`：`DetailViewModel.kt:214–218`；`detailBuildToken`:98；`searchToken`:126。
-- `observeForever` 九处：`DetailViewModel.kt:131/217`、`HomeViewModel.kt:110–112/393`、`PartitionListViewModel.kt:51/66`（实例创建）、`SearchViewModel.kt:302`（实例创建）、`PlaybackController.java:1039`。
-- static 三件：`SourceViewModel.java:43`（`spThreadPool` 别名）/ 48（`sortCache`）/ 56（`extendCache`）/ 86（`clearRuntimeCache`）。
-- `ConfigManagePage`：`ConfigManageScreen` 170–703；嵌套 fun 201–404；`deleteSelected` 的一次性 executor 358–360；`applyVodSource`/`applyLiveSource`/`applyLiveFollowVod` 148–166。
-- `PlaybackController` 簇坐标：超时 437–444 / 嗅探 1025–1027 / 取流观察 1039–1040 + 匿名 Observer 1075 / 预载 1614–1615 / 进度继承 81–99。
-- `HomeViewModel` 三实例：79–81；`clearRuntimeCache` 调用点 150。
+- `DetailViewModel` 播放指令流：`DetailPlaybackCommands.kt`（指令/事实/全屏判定）；收集点 `DetailScreen.kt:73–83`；设备事实 `DetailActivity.playbackFacts()`。
+- `DetailViewModel` 详情代次（V4）：`detailRequestToken` 声明与自增（`loadDetail` **早退之前**）、`loadDetailInternal` 沿用当代；判据 `DetailResponseGuard.kt`；回包盖章 `DetailLoader`（每条出口）+ `SourceResultParser.json/xml` 的 5 参重载 + `AbsXml.detailToken`。
+- `observeForever` 现存 **3 处 / 2 文件**（全在播放层）：`PlaybackController.java` playResult（挂/摘配对 `releaseFetch()`）、`PreloadCoordinator.java` preloadResult（挂/摘配对 `destroy()`）。页面层其余全部经 `sourcedata/LiveDataFlow.kt` 的 `observeAsFlow()`。
+- 运行期状态：`SourceRuntimeState.java` 的 `sortCache`（access-order + 上限 5）/`extendCache`/`clearRuntimeCache()`；唯一清理调用点 `HomeViewModel.reload()`；spider 线程池真身 `SourceHelper.SPIDER_POOL`（门面 `spThreadPool` 别名已删）。
+- `ConfigManagePage`：`ConfigManageViewModel`（状态 + 14 方法）；页面留 UI 开关与 `badgeText`。
+- `PlaybackController` 簇坐标：超时 437–444 / 嗅探 1025–1027 / 取流观察 1039–1040 + 匿名 Observer 1075 / 预载 1614–1615 / 进度继承 81–99（行号随 V5 拆分变动）。
+- `HomeViewModel`：三通道收集器 + `PartitionLoader`（`observeScope` 必须是 `SupervisorJob(parent) + Main.immediate`，见代码注释里的两个坑）。

@@ -276,21 +276,24 @@ class DetailViewModel : ViewModel() {
     }
 
     private fun loadDetail(vid: String, key: String) {
+        // 代次必须在任何早退之前开新的一代:否则"源不在订阅/id 不可播"这类换片只改了内容没换代,
+        // 上一代的迟到回包会被守卫判成"当前",把旧片顶到新页上(V4 审查轮抓到的回归)
+        val requestToken = nextDetailRequestToken()
         vodId = vid.orEmpty()
         sourceKey = key.orEmpty()
         firstsourceKey = sourceKey
         usedSourceKeys.add(firstsourceKey)
         collected.value = RoomDataManger.isVodCollect(sourceKey, vodId)
-        if (vodId.isEmpty() || vodId.startsWith("msearch:") || ApiConfig.get().getSource(sourceKey) == null) {
+        if (DetailResponseGuard.isUnloadableTarget(vodId, ApiConfig.get().getSource(sourceKey) == null)) {
             onDetailUnavailable()
             return
         }
         pageState.value = PageState.Loading
-        sourceViewModel.getDetail(sourceKey, vodId, false, nextDetailRequestToken())
+        sourceViewModel.getDetail(sourceKey, vodId, false, requestToken)
     }
 
     /**
-     * 开新的一代并返回它。只有"发起新的内容请求"才自增:换片、换源、重试;
+     * 开新的一代并返回它。只有"发起新的内容请求"才自增:换片、换源、重试(含 [loadDetail] 的早退分支);
      * fallback 候选站(见 [loadDetailInternal])沿用当前代次。
      */
     private fun nextDetailRequestToken(): Int = ++detailRequestToken
@@ -963,7 +966,7 @@ class DetailViewModel : ViewModel() {
     }
 
     override fun onCleared() {
-        // 观察者不再手工摘:桥接器的 awaitClose 随 viewModelScope 取消执行
+        // 收集器不手工摘:onCleared 返回后框架才取消 viewModelScope,桥接器的 awaitClose 随之摘观察者
         EventBus.getDefault().unregister(this)
         destroyEngine()
         super.onCleared()

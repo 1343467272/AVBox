@@ -8,7 +8,9 @@ import com.github.tvbox.osc.bean.MovieSort
 import com.github.tvbox.osc.sourcedata.SourceViewModel
 import com.github.tvbox.osc.sourcedata.observeAsFlow
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -64,8 +66,14 @@ class PartitionListVM : ViewModel() {
 
     private class LoaderResult(val stale: Boolean, val absXml: AbsXml?)
 
-    /** 收集作用域随 loader 生命周期:release() 取消它即摘掉观察者(等价旧 removeObserver) */
-    private val loaderScope = CoroutineScope(scope.coroutineContext[Job]!!)
+    /**
+     * 收集作用域随 loader 生命周期:release() 取消它即摘掉观察者(等价旧 removeObserver)。
+     * ⚠️ 必须在下面 `loader` 之前初始化(匿名对象的 init 用它);`SupervisorJob(parent)` 是为了
+     * `cancel()` 只杀这个子 Job 而不带上 viewModelScope,`Main.immediate` 是因为 `observeForever` 有主线程断言。
+     */
+    private val loaderScope = CoroutineScope(
+        SupervisorJob(scope.coroutineContext[Job]) + Dispatchers.Main.immediate
+    )
 
     private val loader = object {
         private val svm = SourceViewModel()
@@ -104,7 +112,7 @@ class PartitionListVM : ViewModel() {
     }
 
     override fun onCleared() {
-        // 观察者随 viewModelScope/loaderScope 取消自动摘除(桥接器的 awaitClose)
+        // 两个收集器都不用手工摘:loaderScope 在这里取消,actionViewModel 的随 viewModelScope 取消(onCleared 返回后)
         loader.release()
     }
 

@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,8 +24,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.github.tvbox.osc.ui.theme.cardContainer
+
+private val MockupScaleBase = 480.dp
+
+private const val MockupMaxScale = 2.2f
 
 private val MockupWidth = 168.dp
 
@@ -88,6 +94,24 @@ private const val NavSelectedWeight = 1.5f
 
 @Composable
 fun PhoneMockupPreview(modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
+        val scale = (maxWidth / MockupScaleBase).coerceIn(1f, MockupMaxScale)
+        Box(
+            modifier = Modifier.size(MockupWidth * scale, MockupHeight * scale),
+            contentAlignment = Alignment.Center,
+        ) {
+            PhoneMockupBody(
+                Modifier.graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PhoneMockupBody(modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
     val cardColor = scheme.cardContainer
     val ghostColor = scheme.onSurfaceVariant.copy(alpha = 0.5f)

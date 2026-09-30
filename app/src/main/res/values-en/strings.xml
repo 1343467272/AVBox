@@ -567,4 +567,31 @@
     <string name="player_channel_mono">Mono</string>
     <string name="player_channel_stereo">Stereo</string>
     <string name="player_channel_count">%1$d channels</string>
+
+    <string name="player_info">Playback info</string>
+    <string name="osd_video">Video</string>
+    <string name="osd_audio">Audio</string>
+    <string name="osd_decoder">Decoder</string>
+    <string name="osd_network">Network</string>
+    <string name="osd_playback">Playback</string>
+    <string name="osd_config">Config</string>
+    <string name="osd_conclusion">Status</string>
+    <string name="osd_device">Device</string>
+    <string name="osd_system">System</string>
+    <string name="osd_chip">Chip</string>
+    <string name="osd_screen">Screen</string>
+    <string name="osd_network_env">Network env</string>
+    <string name="osd_state_ready">Ready</string>
+    <string name="osd_state_playing">Playing</string>
+    <string name="osd_state_buffering">Buffering</string>
+    <string name="osd_state_paused">Paused</string>
+    <string name="osd_state_ended">Ended</string>
+    <string name="osd_normal">Normal</string>
+    <string name="osd_abnormal">Abnormal</string>
+    <string name="osd_dropped_frames">Dropped %1$d</string>
+    <string name="osd_rebuffer">Rebuffer %1$d</string>
+    <string name="osd_frame_rate_match">Frame rate match</string>
+    <string name="osd_tunnel">Tunnel</string>
+    <string name="osd_preload">Preload</string>
+    <string name="osd_cache">Cache</string>
 </resources>

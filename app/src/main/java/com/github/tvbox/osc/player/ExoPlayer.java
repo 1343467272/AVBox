@@ -35,6 +35,7 @@ import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.Renderer;
 import androidx.media3.exoplayer.RenderersFactory;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.source.MediaSource;
@@ -123,6 +124,87 @@ public class ExoPlayer extends ExoMediaPlayer {
         return lastErrorKind;
     }
 
+    private volatile long droppedFramesTotal;
+    private volatile int rebufferCountTotal;
+    private volatile boolean playbackStarted;
+
+    public long droppedFrames() {
+        return droppedFramesTotal;
+    }
+
+    public int rebufferCount() {
+        return rebufferCountTotal;
+    }
+
+    public boolean isTunnelingEnabled() {
+        return tunnelingEnabled;
+    }
+
+    public String videoDecoderName() {
+        return PlayerCodecStats.videoDecoderName;
+    }
+
+    private final java.util.concurrent.atomic.AtomicLong renderedFrameCount = new java.util.concurrent.atomic.AtomicLong();
+    private volatile long frameRateWindowStartMs;
+    private volatile float measuredFrameRate;
+    private volatile boolean frameRateTracking;
+    private final androidx.media3.exoplayer.video.VideoFrameMetadataListener videoFrameListener =
+            (presentationTimeUs, releaseTimeNs, format, mediaFormat) -> renderedFrameCount.incrementAndGet();
+
+    public float measuredFrameRate() {
+        return measuredFrameRate;
+    }
+
+    public void sampleFrameRate() {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (frameRateWindowStartMs == 0) {
+            frameRateWindowStartMs = now;
+            renderedFrameCount.set(0);
+            return;
+        }
+        long elapsed = now - frameRateWindowStartMs;
+        if (elapsed < 1000) return;
+        measuredFrameRate = renderedFrameCount.getAndSet(0) * 1000f / elapsed;
+        frameRateWindowStartMs = now;
+    }
+
+    public void setFrameRateTracking(boolean enabled) {
+        frameRateTracking = enabled;
+        frameRateWindowStartMs = 0;
+        renderedFrameCount.set(0);
+        if (enabled) measuredFrameRate = 0f;
+        applyFrameRateTracking();
+    }
+
+    private void applyFrameRateTracking() {
+        if (mInternalPlayer == null) return;
+        if (frameRateTracking) {
+            mInternalPlayer.setVideoFrameMetadataListener(videoFrameListener);
+        } else {
+            mInternalPlayer.clearVideoFrameMetadataListener(videoFrameListener);
+        }
+    }
+
+    public Format getSelectedVideoFormat() {
+        return selectedFormat(C.TRACK_TYPE_VIDEO);
+    }
+
+    public Format getSelectedAudioFormat() {
+        return selectedFormat(C.TRACK_TYPE_AUDIO);
+    }
+
+    private Format selectedFormat(int trackType) {
+        if (mInternalPlayer == null) return null;
+        Tracks tracks = mInternalPlayer.getCurrentTracks();
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != trackType || !group.isSelected()) continue;
+            for (int i = 0; i < group.length; i++) {
+                if (group.isTrackSelected(i)) return group.getTrackFormat(i);
+            }
+        }
+        return null;
+    }
+
     private static int classifyError(String codeName) {
         if (codeName == null) return ERROR_KIND_UNKNOWN;
         if (codeName.startsWith("ERROR_CODE_IO") || codeName.startsWith("ERROR_CODE_PARSING")) return ERROR_KIND_NETWORK;
@@ -200,6 +282,22 @@ public class ExoPlayer extends ExoMediaPlayer {
                 LOG.i(sb.toString());
             }
         });
+        mInternalPlayer.addAnalyticsListener(new AnalyticsListener() {
+            @Override
+            public void onDroppedVideoFrames(EventTime eventTime, int droppedFrames, long elapsedMs) {
+                droppedFramesTotal += droppedFrames;
+            }
+
+            @Override
+            public void onPlaybackStateChanged(EventTime eventTime, int playbackState) {
+                if (playbackState == Player.STATE_READY) {
+                    playbackStarted = true;
+                } else if (playbackState == Player.STATE_BUFFERING && playbackStarted) {
+                    rebufferCountTotal++;
+                }
+            }
+        });
+        applyFrameRateTracking();
         LOG.i("echo-exo-cues-listener-ready");
     }
 
@@ -229,6 +327,13 @@ public class ExoPlayer extends ExoMediaPlayer {
     public void setDataSource(String path, Map<String, String> headers) {
         defaultSubtitleTrackSelected = false;
         defaultSubtitleTrackSelectionClosed = false;
+        droppedFramesTotal = 0;
+        rebufferCountTotal = 0;
+        playbackStarted = false;
+        PlayerCodecStats.videoDecoderName = "";
+        renderedFrameCount.set(0);
+        frameRateWindowStartMs = 0;
+        measuredFrameRate = 0f;
         // librtmp 要求直播流地址末尾带 " live=1"(media3 的 RtmpDataSource 原样透传 URL,不会补),
         // 缺了会被当作点播流,读到流尾即结束(直播必现)
         boolean isRtmp = path != null && path.startsWith("rtmp://");

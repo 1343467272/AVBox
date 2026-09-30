@@ -258,6 +258,17 @@ fun PlayerSideButtons(state: PlayerUiState, actions: PlayerActions, iconBox: Dp)
             onClick = actions::onRotateClicked,
         )
         SideButton(
+            iconRes = R.drawable.ic_settings_about,
+            contentDescription = stringResource(R.string.player_info),
+            startSide = false,
+            edge = edge,
+            iconSize = iconSize,
+            visible = shown && !state.locked,
+            onClick = actions::onInfoOsdClicked,
+            tintWhite = true,
+            offsetY = -(iconSize + playerDim(R.dimen.vs_24)),
+        )
+        SideButton(
             iconRes = if (state.locked) R.drawable.icon_lock else R.drawable.icon_unlock,
             contentDescription = stringResource(R.string.player_lock),
             startSide = false,
@@ -278,14 +289,18 @@ private fun BoxScope.SideButton(
     iconSize: Dp,
     visible: Boolean,
     onClick: () -> Unit,
+    tintWhite: Boolean = false,
+    offsetY: Dp = 0.dp,
 ) {
     Image(
         painter = painterResource(iconRes),
         contentDescription = contentDescription,
         alpha = if (visible) 1f else 0f,
+        colorFilter = if (tintWhite) ColorFilter.tint(Color.White) else null,
         modifier = Modifier
             .align(if (startSide) Alignment.CenterStart else Alignment.CenterEnd)
             .padding(start = if (startSide) edge else 0.dp, end = if (startSide) 0.dp else edge)
+            .offset(y = offsetY)
             .size(iconSize)
             .then(
                 if (visible) {

@@ -12,15 +12,23 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.animation.Animation
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Build
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.compose.ui.platform.ComposeView
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.ui.SubtitleView
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.api.ApiConfig
 import com.github.tvbox.osc.bean.ParseBean
 import com.github.tvbox.osc.bean.SourceBean
 import com.github.tvbox.osc.event.RefreshEvent
+import com.github.tvbox.osc.player.ExoPlayer
+import com.github.tvbox.osc.player.MyVideoView
 import com.github.tvbox.osc.player.state.LockVisibility
 import com.github.tvbox.osc.player.state.ParamsChoice
 import com.github.tvbox.osc.player.state.ParamsSheetState
@@ -75,6 +83,12 @@ class ComposeVideoController @JvmOverloads constructor(
 
 
     internal lateinit var state: PlayerUiState
+
+    private var kernelSource: PlayerControlApi.KernelProvider? = null
+
+    override fun setKernelProvider(provider: PlayerControlApi.KernelProvider?) {
+        kernelSource = provider
+    }
 
     // initView 由父类构造函数虚调用:那时属性初始化器还没跑 ⇒ 委托必须在 initView 里建(同 ComposeLiveController)
     internal lateinit var gestures: GestureController
@@ -1043,6 +1057,19 @@ class ComposeVideoController @JvmOverloads constructor(
         hideBottom()
     }
 
+    override fun onInfoOsdClicked() {
+        keepControlsAlive()
+        state.infoOsdVisible = !state.infoOsdVisible
+        val exo = kernelSource?.get()?.mediaPlayer as? ExoPlayer
+        if (state.infoOsdVisible) {
+            exo?.setFrameRateTracking(true)
+            refreshInfoOsd(runCatching { wrapper?.tcpSpeed ?: 0L }.getOrDefault(0L))
+        } else {
+            exo?.setFrameRateTracking(false)
+        }
+        hideBottom()
+    }
+
     override fun onBackClicked() {
         if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
             mActivity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -1156,9 +1183,192 @@ class ComposeVideoController @JvmOverloads constructor(
         state.netSpeedCenter = PlayerHelper.getDisplaySpeed(speed, false)
         val size = runCatching { wrapper.videoSize }.getOrDefault(intArrayOf(0, 0))
         state.videoSize = videoSizeGate.textFor(size[0], size[1])
+        if (state.infoOsdVisible) refreshInfoOsd(speed)
     }
 
-    /** 系统电量与充电状态（读不到/越界时 batteryPercent=-1 不显示） */
+    private fun refreshInfoOsd(speed: Long) {
+        val videoView = kernelSource?.get()
+        val exo = videoView?.mediaPlayer as? ExoPlayer
+        val video = exo?.selectedVideoFormat
+        val left = ArrayList<String>()
+        val right = ArrayList<String>()
+
+        left.add(context.getString(R.string.osd_video) + " " + videoText(video, exo))
+        left.add(context.getString(R.string.osd_decoder) + " " + (exo?.videoDecoderName()?.takeIf { it.isNotEmpty() } ?: "-"))
+        left.add(context.getString(R.string.osd_audio) + " " + audioText(exo?.selectedAudioFormat))
+
+        exo?.sampleFrameRate()
+        val throughput = runCatching {
+            DefaultBandwidthMeter.getSingletonInstance(context).bitrateEstimate
+        }.getOrDefault(0L)
+        left.add(
+            context.getString(R.string.osd_network) + " " + PlayerHelper.getDisplaySpeed(speed, true)
+                + " · " + bitrateText(throughput) + marginText(throughput, video)
+        )
+        left.add(context.getString(R.string.osd_playback) + " " + playbackText(exo))
+        val footer = context.getString(R.string.osd_config) + " " + configText(videoView, exo)
+        left.add(
+            context.getString(R.string.osd_conclusion) + " "
+                + context.getString(if (state.playState == VideoView.STATE_ERROR) R.string.osd_abnormal else R.string.osd_normal)
+        )
+
+        right.add(
+            context.getString(R.string.osd_device) + " " + Build.MODEL + " / " + Build.DEVICE + " / "
+                + (Build.SUPPORTED_ABIS.firstOrNull() ?: "-")
+        )
+        right.add(context.getString(R.string.osd_system) + " Android " + Build.VERSION.RELEASE + " / SDK " + Build.VERSION.SDK_INT)
+        right.add(context.getString(R.string.osd_chip) + " " + chipText())
+        right.add(context.getString(R.string.osd_screen) + " " + screenText())
+        right.add("WebView " + webViewText())
+        right.add(context.getString(R.string.osd_network_env) + " " + networkEnvText())
+
+        state.infoOsdLeft = left
+        state.infoOsdRight = right
+        state.infoOsdFooter = footer
+    }
+
+    private fun videoText(format: Format?, exo: ExoPlayer?): String {
+        if (format == null) return "-"
+        val parts = ArrayList<String>()
+        parts.add(videoCodecName(format))
+        if (format.width > 0 && format.height > 0) parts.add(format.width.toString() + "x" + format.height)
+        val fps = frameRateText(format, exo)
+        if (fps.isNotEmpty()) parts.add(fps)
+        val bitrate = bitrateText(format.bitrate.toLong())
+        if (bitrate.isNotEmpty()) parts.add(bitrate)
+        val codecs = format.codecs
+        if (!codecs.isNullOrEmpty()) parts.add(codecs)
+        return parts.joinToString(" · ")
+    }
+
+    private fun frameRateText(format: Format, exo: ExoPlayer?): String {
+        if (format.frameRate > 0f) return format.frameRate.toInt().toString() + "fps"
+        val measured = exo?.measuredFrameRate() ?: 0f
+        if (measured <= 0f) return ""
+        return String.format(Locale.US, "%.1ffps", measured)
+    }
+
+    private fun videoCodecName(format: Format): String = when (format.sampleMimeType) {
+        MimeTypes.VIDEO_H264 -> "H.264"
+        MimeTypes.VIDEO_H265 -> "H.265"
+        MimeTypes.VIDEO_AV1 -> "AV1"
+        MimeTypes.VIDEO_VP9 -> "VP9"
+        MimeTypes.VIDEO_MP4V -> "MPEG-4"
+        else -> format.sampleMimeType?.substringAfter('/')?.uppercase(Locale.US) ?: "-"
+    }
+
+    private fun audioText(format: Format?): String {
+        if (format == null) return "-"
+        val parts = ArrayList<String>()
+        val codecs = format.codecs
+        parts.add(if (!codecs.isNullOrEmpty()) codecs else format.sampleMimeType?.substringAfter('/')?.uppercase(Locale.US) ?: "-")
+        if (format.channelCount > 0) parts.add(format.channelCount.toString() + ".0")
+        if (format.sampleRate > 0) {
+            val khz = format.sampleRate / 1000f
+            parts.add((if (khz % 1f == 0f) khz.toInt().toString() else String.format(Locale.US, "%.1f", khz)) + "kHz")
+        }
+        return parts.joinToString(" · ")
+    }
+
+    private fun bitrateText(bps: Long): String {
+        if (bps <= 0) return ""
+        return String.format(Locale.US, "%.1fMbps", bps / 1000000f)
+    }
+
+    private fun marginText(throughput: Long, format: Format?): String {
+        val bitrate = format?.bitrate ?: 0
+        if (throughput <= 0 || bitrate <= 0) return ""
+        return " · x" + String.format(Locale.US, "%.2f", throughput.toFloat() / bitrate)
+    }
+
+    private fun playbackText(exo: ExoPlayer?): String {
+        val parts = ArrayList<String>()
+        parts.add(context.getString(playStateRes()))
+        parts.add(timeText(state.position) + " / " + timeText(state.duration))
+        parts.add(context.getString(R.string.osd_dropped_frames, exo?.droppedFrames() ?: 0L))
+        parts.add(context.getString(R.string.osd_rebuffer, exo?.rebufferCount() ?: 0))
+        return parts.joinToString(" · ")
+    }
+
+    private fun playStateRes(): Int = when (state.playState) {
+        VideoView.STATE_BUFFERING -> R.string.osd_state_buffering
+        VideoView.STATE_PLAYING -> R.string.osd_state_playing
+        VideoView.STATE_PAUSED -> R.string.osd_state_paused
+        VideoView.STATE_PLAYBACK_COMPLETED -> R.string.osd_state_ended
+        VideoView.STATE_ERROR -> R.string.osd_abnormal
+        else -> R.string.osd_state_ready
+    }
+
+    private fun timeText(millis: Int): String {
+        if (millis <= 0) return "00:00"
+        val seconds = millis / 1000
+        return String.format(Locale.US, "%02d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private fun decodeText(exo: ExoPlayer?): String {
+        val name = exo?.videoDecoderName()?.takeIf { it.isNotEmpty() } ?: return "-"
+        val software = name.startsWith("c2.android.") || name.startsWith("OMX.google.") ||
+            name.startsWith("OMX.ffmpeg.") || name.contains(".sw.")
+        return context.getString(if (software) R.string.player_decode_soft else R.string.player_decode_hard)
+    }
+
+    private fun configText(videoView: MyVideoView?, exo: ExoPlayer?): String {
+        val parts = ArrayList<String>()
+        parts.add(context.getString(R.string.player_exo))
+        parts.add(decodeText(exo))
+        parts.add(if (videoView?.isSurfaceRenderActive == true) "Surface" else "Texture")
+        parts.add(context.getString(R.string.osd_tunnel) + " " + onOffText(exo?.isTunnelingEnabled == true))
+        parts.add(context.getString(R.string.osd_frame_rate_match) + " " + onOffText(false))
+        parts.add(context.getString(R.string.osd_preload) + " " + onOffText(KV.get(HawkConfig.PRELOAD_NEXT_EPISODE, true) == true))
+        parts.add(context.getString(R.string.osd_cache) + " " + onOffText(KV.get(HawkConfig.PLAY_CACHE, false) == true))
+        return parts.joinToString(" · ")
+    }
+
+    private fun onOffText(on: Boolean): String = context.getString(if (on) R.string.common_on else R.string.common_off)
+
+    private fun chipText(): String {
+        val parts = ArrayList<String>()
+        if (Build.VERSION.SDK_INT >= 31) {
+            Build.SOC_MODEL?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+        }
+        Build.HARDWARE?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+        Build.BOARD?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+        return if (parts.isEmpty()) "-" else parts.joinToString(" / ")
+    }
+
+    @Suppress("DEPRECATION")
+    private fun screenText(): String {
+        val display = mActivity?.windowManager?.defaultDisplay ?: return "-"
+        val parts = ArrayList<String>()
+        val mode = display.mode
+        if (mode != null) {
+            parts.add(mode.physicalWidth.toString() + "x" + mode.physicalHeight)
+        } else {
+            parts.add(resources.displayMetrics.widthPixels.toString() + "x" + resources.displayMetrics.heightPixels)
+        }
+        parts.add(String.format(Locale.US, "%.0fHz", display.refreshRate))
+        return parts.joinToString(" · ")
+    }
+
+    private fun webViewText(): String {
+        if (Build.VERSION.SDK_INT < 26) return "-"
+        return WebView.getCurrentWebViewPackage()?.versionName ?: "-"
+    }
+
+    private fun networkEnvText(): String {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return "-"
+        val network = manager.activeNetwork ?: return "offline"
+        val capabilities = manager.getNetworkCapabilities(network) ?: return "offline"
+        val type = when {
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WiFi"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Cellular"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+            else -> "Other"
+        }
+        val validated = if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) "validated" else "unvalidated"
+        return type + " / " + validated + (if (manager.isActiveNetworkMetered) " metered" else " unmetered")
+    }
+
     private fun readBattery() {
         runCatching {
             val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager

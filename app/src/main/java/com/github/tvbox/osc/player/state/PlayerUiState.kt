@@ -88,6 +88,10 @@ class PlayerUiState {
 
     // —— 底部菜单（照搬 updatePortraitMenu / updatePlayerCfgView / hideLiveAboutBtn） ——
     var screenDisplayOn: Boolean by mutableStateOf(false)
+    var infoOsdVisible: Boolean by mutableStateOf(false)
+    var infoOsdLeft: List<String> by mutableStateOf(emptyList())
+    var infoOsdRight: List<String> by mutableStateOf(emptyList())
+    var infoOsdFooter: String by mutableStateOf("")
     var showParseRow: Boolean by mutableStateOf(false)
     var isPortrait: Boolean by mutableStateOf(true)
     var playerType: Int by mutableStateOf(2)
@@ -341,6 +345,7 @@ interface PlayerActions {
     /** 打开播放参数抽屉（右侧竖排入口） */
     fun onParamsClicked()
     fun onScreenDisplayClicked()
+    fun onInfoOsdClicked()
     fun onBackClicked()
     fun onLockClicked()
 

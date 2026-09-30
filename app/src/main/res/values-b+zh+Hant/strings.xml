@@ -567,4 +567,31 @@
     <string name="player_channel_mono">單聲道</string>
     <string name="player_channel_stereo">立體聲</string>
     <string name="player_channel_count">%1$d 聲道</string>
+
+    <string name="player_info">播放資訊</string>
+    <string name="osd_video">視訊</string>
+    <string name="osd_audio">音訊</string>
+    <string name="osd_decoder">解碼器</string>
+    <string name="osd_network">網路</string>
+    <string name="osd_playback">播放</string>
+    <string name="osd_config">設定</string>
+    <string name="osd_conclusion">結論</string>
+    <string name="osd_device">裝置</string>
+    <string name="osd_system">系統</string>
+    <string name="osd_chip">晶片</string>
+    <string name="osd_screen">螢幕</string>
+    <string name="osd_network_env">網路環境</string>
+    <string name="osd_state_ready">就緒</string>
+    <string name="osd_state_playing">播放中</string>
+    <string name="osd_state_buffering">緩衝中</string>
+    <string name="osd_state_paused">已暫停</string>
+    <string name="osd_state_ended">已結束</string>
+    <string name="osd_normal">正常</string>
+    <string name="osd_abnormal">異常</string>
+    <string name="osd_dropped_frames">掉幀 %1$d</string>
+    <string name="osd_rebuffer">重新緩衝 %1$d</string>
+    <string name="osd_frame_rate_match">幀率匹配</string>
+    <string name="osd_tunnel">隧道</string>
+    <string name="osd_preload">預載</string>
+    <string name="osd_cache">快取</string>
 </resources>

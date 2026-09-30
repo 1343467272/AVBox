@@ -362,6 +362,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         });
         surfaceSlot = findViewById(R.id.surfaceSlot);
         mController = new ComposeVideoController(mActivity);
+        mController.setKernelProvider(() -> mVideoView);
 
         mController.getLyricView().setTextSize(previewMode ? 16 : 24);
         mController.setCanChangePosition(true);

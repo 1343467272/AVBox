@@ -79,6 +79,7 @@ fun PlayerOverlay(
         if (!state.tipVisible) PlayerLoadingLayer(state)
         PlayerNetSpeedCenter(state)
         PlayerSideButtons(state, actions, iconBox)
+        PlayerInfoOsd(state, actions, maxWidth)
         PlayerSpeedBoostHint(state)
 
         // 尺寸/倍速/播放器选择弹窗（阶段 7）

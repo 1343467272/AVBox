@@ -6,6 +6,7 @@ import android.widget.TextView;
 import androidx.media3.ui.SubtitleView;
 
 import com.github.tvbox.osc.bean.SourceBean;
+import com.github.tvbox.osc.player.MyVideoView;
 import com.github.tvbox.osc.player.state.PlayerUiState;
 import com.github.tvbox.osc.subtitle.widget.SimpleSubtitleView;
 
@@ -14,6 +15,12 @@ import org.json.JSONObject;
 import java.util.HashMap;
 
 public interface PlayerControlApi {
+
+    interface KernelProvider {
+        MyVideoView get();
+    }
+
+    void setKernelProvider(KernelProvider provider);
 
     SimpleSubtitleView getSubtitleView();
 

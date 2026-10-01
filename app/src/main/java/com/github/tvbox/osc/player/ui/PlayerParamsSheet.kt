@@ -44,6 +44,8 @@ internal fun PlayerParamsSheet(
     sheet: ParamsSheetState,
     tab: ParamsTab,
     onTabSelected: (ParamsTab) -> Unit,
+    osdVisible: Boolean,
+    onToggleOsd: () -> Unit,
     slideFromEnd: Boolean,
     onDismiss: () -> Unit,
 ) {
@@ -83,7 +85,7 @@ internal fun PlayerParamsSheet(
             )
             Spacer(Modifier.height(playerDim(R.dimen.vs_30)))
             when (tab) {
-                ParamsTab.Playback -> PlaybackParams(sheet, onDismiss)
+                ParamsTab.Playback -> PlaybackParams(sheet, osdVisible, onToggleOsd, onDismiss)
                 ParamsTab.Picture -> PictureParams(sheet.picture)
             }
         }
@@ -91,7 +93,12 @@ internal fun PlayerParamsSheet(
 }
 
 @Composable
-private fun PlaybackParams(sheet: ParamsSheetState, onDismiss: () -> Unit) {
+private fun PlaybackParams(
+    sheet: ParamsSheetState,
+    osdVisible: Boolean,
+    onToggleOsd: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     Column(Modifier.fillMaxWidth()) {
         ParamsChoiceGroup(R.string.player_params_player, sheet.player, R.drawable.player_ic_params_player)
         ParamsGroupDivider()
@@ -102,6 +109,14 @@ private fun PlaybackParams(sheet: ParamsSheetState, onDismiss: () -> Unit) {
         ParamsTimeGroup(sheet)
         ParamsGroupDivider()
         ParamsChoiceGroup(R.string.live_group_scale, sheet.scale, R.drawable.player_ic_params_scale)
+        ParamsGroupDivider()
+        SheetButton(
+            text = stringResource(R.string.player_info),
+            iconRes = R.drawable.ic_settings_about,
+            selected = osdVisible,
+            onClick = onToggleOsd,
+            modifier = Modifier.fillMaxWidth(),
+        )
         sheet.onSearchDanmu?.let { onSearch ->
             Spacer(Modifier.height(playerDim(R.dimen.vs_30)))
             val dismissThen = LocalSheetDismissThen.current

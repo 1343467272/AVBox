@@ -96,6 +96,8 @@ fun PlayerOverlay(
                 sheet = sheet,
                 tab = state.paramsTab,
                 onTabSelected = { state.paramsTab = it },
+                osdVisible = state.infoOsdVisible,
+                onToggleOsd = actions::onInfoOsdClicked,
                 slideFromEnd = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE,
                 onDismiss = { state.paramsSheet = null },
             )

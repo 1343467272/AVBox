@@ -1060,7 +1060,6 @@ class ComposeVideoController @JvmOverloads constructor(
     }
 
     override fun onInfoOsdClicked() {
-        keepControlsAlive()
         state.infoOsdVisible = !state.infoOsdVisible
         val exo = kernelSource?.get()?.mediaPlayer as? ExoPlayer
         if (state.infoOsdVisible) {
@@ -1069,7 +1068,7 @@ class ComposeVideoController @JvmOverloads constructor(
         } else {
             exo?.setFrameRateTracking(false)
         }
-        hideBottom()
+        if (state.overlayPanelOpen) keepControlsAlive() else hideBottom()
     }
 
     override fun onBackClicked() {

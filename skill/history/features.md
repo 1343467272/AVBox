@@ -4206,3 +4206,20 @@ new-instance v2, Lorg/json/JSONArray;  invoke-direct {v2, v1}      # new JSONArr
 **⚠️ 代价,必须知道**:这个值同时抬高两条边距 —— ①"分隔线 → 首个视觉元素"由 4dp 变 16dp(**所有**分类都变);②有 chips 档"分隔线 → chips 行"也由 4dp 变 16dp。**"分隔线 → chips"与"分隔线 → 卡片"从此都是 16dp**,即三档(无 chips / 有 chips / 骨架态)不再各自不同。若用户觉得 chips 行离分隔线太远,正确改法是再拆一个独立常量,**不要**回退这个值(那会把无 chips 档打回 4dp 的老毛病)。
 
 **验证**:`:app:assembleDebug` BUILD SUCCESSFUL;`:app:testDebugUnitTest` 62 类 / 479 用例 / 0 失败。真机侧只在修复前截到过一帧(荐片源、无 chips 档,间距正常),**有 chips 档未截图核对**;**未做**:代码未提交。
+
+## 屏显(OSD)开关移入「更多」面板(2026-10-02,用户"将播放器界面上锁控件上方的osd屏显开关挪到更多弹窗面板的右上角",附播放页右侧竖排截图 + 「更多」面板截图;同日二次定位"将播放参数放在画面比例下方吧")
+
+**第一步落在「更多」面板标题行右上角(已撤)**:为此给共享组件 `AVBoxBottomSheet` 加了 `titleTrailing` 槽(标题行改 `Row`:标题 `weight(1f)` + 行末控件,沿 `OverlayRequest` → `SheetRequest` → `SheetHost` → `SheetOverlay` → `SheetSurface` 透传),标题行画一颗 `SheetButton`。用户当日改为「放在画面比例下方」⇒ **`titleTrailing` 整套改动已从 `BottomSheet.kt` 回滚(该文件与改动前逐字节相同)**,控件改挂内容区;`SheetButton` / `PlayerOverlay` 的接线不变。
+
+**最终形态(3 个文件)**:
+
+- `player/ui/PlayerParamsSheet.kt`:`PlaybackParams` 在画面比例组之后插 `ParamsGroupDivider()` + 一颗**全宽** `SheetButton`(文案复用 `player_info`「播放信息」、图标 `ic_settings_about`、`selected = osdVisible`),与紧随其后的「搜弹幕」同款、不另起组标题;`PlayerParamsSheet` 新增 `osdVisible` / `onToggleOsd` 两个入参(原先标题行那版已删)。
+- `player/ui/PlayerOverlay.kt`:把 `state.infoOsdVisible` 与 `actions::onInfoOsdClicked` 供给面板 —— 面板由窗口根 `SheetHost` 渲染,读数落在 `PlayerOverlay` 组合里 ⇒ 切开关当帧重组并重投 `SheetRequest`,选中态实时跟随。
+- `player/ui/PlayerLayers.kt`:删掉右侧竖排那颗 info,连带删掉私有 `SideButton` 只有它在用的 `tintWhite` / `offsetY` 两个参数(旋转 / 锁都不传)。
+- `player/controller/ComposeVideoController.kt`:`onInfoOsdClicked()` 的收尾由恒定 `hideBottom()` 改为 `if (state.overlayPanelOpen) keepControlsAlive() else hideBottom()`,并删掉方法开头多余的 `keepControlsAlive()`(紧跟着的 `hideBottom()` 会把它撤掉)。
+
+**为什么必须动控制器那一行**:原行为 = 切屏显就收底栏(连顶栏片名/时间/网速一起收,给 OSD 让出干净画面),那是在"按钮长在覆盖层里"的前提下定的。开关移进面板后同一动作会把用户正站着的底栏收掉,而 `idleHideRunnable` 的面板契约明写「面板在屏不收底栏」(spec §4.4)⇒ 两条规则直接冲突。改后:面板里切开关只续期底栏,面板外(点 OSD 面板自身收起)保持原行为。
+
+**顺带解决**:info 按钮原先只在 `lockState == SHOWN && !locked` 时可见 —— 锁定态点不到,TV 端 `lockState` 恒 `GONE` 更是从来没有过 OSD 入口;移进「更多」面板后手机与 TV 都可点。
+
+**验证**:`:app:compileDebugKotlin` + `:app:testDebugUnitTest` BUILD SUCCESSFUL(62 类 / 479 用例 / 0 失败,仅两条既有告警:`onBackPressed` 弃用、`ComposeVideoController` 1335 行多余安全调用);`:app:assembleDebug` 出包并 `adb install -r` 成功(vivo V2425A,01:43 那次是标题行版本)。**装机走查待做**:开关选中态、「播放参数」页里切换后关面板底栏仍在、TV 端可达性。

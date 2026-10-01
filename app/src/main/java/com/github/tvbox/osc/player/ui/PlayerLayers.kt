@@ -42,14 +42,6 @@ import com.github.tvbox.osc.player.state.LockVisibility
 import com.github.tvbox.osc.player.state.PlayerActions
 import com.github.tvbox.osc.player.state.PlayerUiState
 
-/**
- * 浮层组（照搬旧 tv_slide_progress_text / tv_progress_container /
- * loading / tv_play_load_net_speed / tv_back / tv_lock / play_speed_3_container）。
- * 视觉：提示类浮层（seek 提示 / 亮度音量提示 / 长按倍速）统一为**半透明黑药丸 + 白字**
- * —— 4dp 轻投影、无描边、尺寸内容自适应，底色透明度取 [OVERLAY_PILL_ALPHA]（与底栏左下角
- * 那颗时间胶囊同值）。三处位置也统一，见 [HintPillLayer]。
- */
-
 private val PillShape = RoundedCornerShape(50)
 
 @Composable
@@ -66,11 +58,6 @@ private fun HintPill(modifier: Modifier, content: @Composable RowScope.() -> Uni
     )
 }
 
-/**
- * 提示药丸的统一落点：水平居中 + 屏幕上部（顶部下移 `vs_60`，落在屏幕上方四分之一区域内）。
- * seek / 亮度音量 / 长按倍速三处共用 —— 原先只有 seek 在这里，另两处在屏幕正中，同类提示位置不一
- * （统一到 seek 提示的位置）。
- */
 @Composable
 private fun HintPillLayer(content: @Composable RowScope.() -> Unit) {
     Box(Modifier.fillMaxSize()) {
@@ -83,10 +70,6 @@ private fun HintPillLayer(content: @Composable RowScope.() -> Unit) {
     }
 }
 
-/**
- * 加载/错误遮罩：盖住视频面，但**必须**画在顶栏/底栏之前 —— 盖到控制条上时，加载期单击只会
- * 静默翻转 `controlsVisible`（遮罩不拦触摸），用户一个控件也看不到。
- */
 @Composable
 fun PlayerTipLayer(state: PlayerUiState) {
     if (!state.tipVisible) return
@@ -136,11 +119,6 @@ fun PlayerPauseLayer(state: PlayerUiState, actions: PlayerActions) {
     }
 }
 
-/**
- * 亮度/音量提示（替代旧 msg 100/101 + tv_slide_progress_text）。
- * 图标区分调的是哪一项，文本只剩百分比 —— 「亮度」「音量」两词不再出现；
- * 样式与位置见 [HintPillLayer]（半透明黑药丸 + 白字）。
- */
 @Composable
 fun PlayerSlideHint(state: PlayerUiState) {
     if (!state.slideHintVisible) return
@@ -163,12 +141,6 @@ fun PlayerSlideHint(state: PlayerUiState) {
     }
 }
 
-/**
- * seek 提示（快进/快退图标 + 时间，替代 msg 1000/1001）。
- * 图标复用播放参数面板的「设为片头 / 设为片尾」矢量（`|◀` / `▶|`，与快退/快进同向）。
- * 图标盒 `vs_50`：这两颗只占画布约 46%，`vs_50` 盒下图形 ≈23mm、与 `ts_30` 的数字等高
- * （参考图同样是「图标与数字等高」）；盒再大就只是把胶囊顶高（`vs_60` 时胶囊 80mm，现 60mm）。
- */
 @Composable
 fun PlayerSeekHint(state: PlayerUiState) {
     if (!state.seekHintVisible) return
@@ -191,9 +163,6 @@ fun PlayerSeekHint(state: PlayerUiState) {
     }
 }
 
-/** loading（PREPARING/BUFFERING 显示，替代旧 vod_control_loading ProgressBar）；
- *  指示器下方实时网速：复用 1s 轮询刷新的 netSpeedTopRight，
- *  拖动进度条/缓冲时用户可直观看到取流速度 */
 @Composable
 fun PlayerLoadingLayer(state: PlayerUiState) {
     if (!state.loadingVisible) return
@@ -215,8 +184,6 @@ fun PlayerLoadingLayer(state: PlayerUiState) {
     }
 }
 
-/** 中央网速（旧 tv_play_load_net_speed：center + marginTop 40mm，仅 IDLE 可见）。
- *  遮罩在屏时不显示：解析期播放态正是 IDLE，网速会压在遮罩上。 */
 @Composable
 fun PlayerNetSpeedCenter(state: PlayerUiState) {
     if (!state.netSpeedCenterVisible || state.tipVisible) return
@@ -232,11 +199,6 @@ fun PlayerNetSpeedCenter(state: PlayerUiState) {
     }
 }
 
-/**
- * 左右两侧各一颗、垂直居中（左：旋转 / 右：锁）。
- * 锁屏三态照搬 showLockView：非预览态非 TV 才出现，锁定 3s 后隐藏。
- * [iconBox] 由 [PlayerOverlay] 统一算出并与动作胶囊共用 ⇒ 两处图标必然等大。
- */
 @Composable
 fun PlayerSideButtons(state: PlayerUiState, actions: PlayerActions, iconBox: Dp) {
     if (state.lockState == LockVisibility.GONE) return
@@ -256,17 +218,6 @@ fun PlayerSideButtons(state: PlayerUiState, actions: PlayerActions, iconBox: Dp)
             // 锁定态隐藏（绕锁旋转无意义）
             visible = shown && !state.locked,
             onClick = actions::onRotateClicked,
-        )
-        SideButton(
-            iconRes = R.drawable.ic_settings_about,
-            contentDescription = stringResource(R.string.player_info),
-            startSide = false,
-            edge = edge,
-            iconSize = iconSize,
-            visible = shown && !state.locked,
-            onClick = actions::onInfoOsdClicked,
-            tintWhite = true,
-            offsetY = -(iconSize + playerDim(R.dimen.vs_24)),
         )
         SideButton(
             iconRes = if (state.locked) R.drawable.icon_lock else R.drawable.icon_unlock,
@@ -289,18 +240,14 @@ private fun BoxScope.SideButton(
     iconSize: Dp,
     visible: Boolean,
     onClick: () -> Unit,
-    tintWhite: Boolean = false,
-    offsetY: Dp = 0.dp,
 ) {
     Image(
         painter = painterResource(iconRes),
         contentDescription = contentDescription,
         alpha = if (visible) 1f else 0f,
-        colorFilter = if (tintWhite) ColorFilter.tint(Color.White) else null,
         modifier = Modifier
             .align(if (startSide) Alignment.CenterStart else Alignment.CenterEnd)
             .padding(start = if (startSide) edge else 0.dp, end = if (startSide) 0.dp else edge)
-            .offset(y = offsetY)
             .size(iconSize)
             .then(
                 if (visible) {
@@ -314,11 +261,6 @@ private fun BoxScope.SideButton(
     )
 }
 
-/**
- * 长按倍速浮层（替代 play_speed_3_container / fromLongPress；倍率设置页可调 2x~10x）。
- * 样式与位置见 [HintPillLayer]（半透明黑药丸 + 白字）。
- * 遮罩在屏时不显示：长按倍速作用的是上一次会话的残留内核，提示不该出现在加载画面上。
- */
 @Composable
 fun PlayerSpeedBoostHint(state: PlayerUiState) {
     if (!state.speedBoostVisible || state.tipVisible) return

@@ -125,6 +125,8 @@ final class SourceResultParser {
             }
             return data;
         } catch (Exception e) {
+            LOG.i("echo--parse-fail-sortJson: ex=" + e
+                    + " head=" + (json == null ? "null" : json.substring(0, Math.min(200, json.length()))));
             return null;
         }
     }
@@ -140,6 +142,8 @@ final class SourceResultParser {
             }
             return data;
         } catch (Exception e) {
+            LOG.i("echo--parse-fail-sortXml: ex=" + e
+                    + " head=" + (xml == null ? "null" : xml.substring(0, Math.min(200, xml.length()))));
             return null;
         }
     }
@@ -177,6 +181,10 @@ final class SourceResultParser {
             }
             return data;
         } catch (Exception e) {
+            if (result != null) {
+                LOG.i("echo--parse-fail-xml:" + sourceKey + " ex=" + e
+                        + " head=" + (xml == null ? "null" : xml.substring(0, Math.min(200, xml.length()))));
+            }
             if (searchResult == result) {
                 postEmptySearchResult(result, sourceKey, searchToken);
             } else if (result != null) {
@@ -217,6 +225,10 @@ final class SourceResultParser {
             }
             return data;
         } catch (Exception e) {
+            if (result != null) {
+                LOG.i("echo--parse-fail-json:" + sourceKey + " ex=" + e
+                        + " head=" + (json == null ? "null" : json.substring(0, Math.min(200, json.length()))));
+            }
             if (searchResult == result) {
                 postEmptySearchResult(result, sourceKey, searchToken);
             } else if (result != null) {

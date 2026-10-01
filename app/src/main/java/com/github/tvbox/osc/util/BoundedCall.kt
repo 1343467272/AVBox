@@ -28,7 +28,7 @@ object BoundedCall {
             LOG.i("$tag-interrupted")
             null
         } catch (e: Exception) {
-            LOG.e("BoundedCall: $tag", e.cause ?: e)
+            LOG.e("BoundedCall", "$tag-error: ${e.cause ?: e}", e.cause ?: e)
             null
         } finally {
             executor.shutdown()

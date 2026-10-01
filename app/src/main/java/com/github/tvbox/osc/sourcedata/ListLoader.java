@@ -94,6 +94,7 @@ final class ListLoader {
                 if (json != null) {
                     resultParser.json(listResult, json, homeSourceBean.getKey());
                 } else {
+                    LOG.i("echo--list-spider-null:" + homeSourceBean.getKey() + " sort=" + sortData.id + " pg=" + page);
                     listResult.postValue(null);
                 }
             }
@@ -138,10 +139,12 @@ final class ListLoader {
                     @Override
                     public void onError(Response<String> response) {
                         super.onError(response);
+                        LOG.i("echo--list-api-error:" + homeSourceBean.getKey() + " t=" + sortData.id + " pg=" + page
+                                + " code=" + response.code() + " ex=" + response.getException());
                         listResult.postValue(null);
                     }
                 });
-    
+
     }
 
     /** type 4:带 extend 的接口(filter 走 Base64 的 ext 参数) */
@@ -197,11 +200,13 @@ final class ListLoader {
                     @Override
                     public void onError(Response<String> response) {
                         super.onError(response);
+                        LOG.i("echo--list-ext-error:" + homeSourceBean.getKey() + " t=" + sortData.id + " pg=" + page
+                                + " code=" + response.code() + " ex=" + response.getException());
                         listResult.postValue(null);
                     }
                 });
 
-    
+
     }
 
     interface HomeRecCallback {

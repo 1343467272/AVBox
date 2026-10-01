@@ -111,6 +111,7 @@ fun HomeGridLayout(
     val sorts by vm.sorts.collectAsState()
     val partitions by vm.partitions.collectAsState()
     val sourceKey by vm.currentSource.collectAsState()
+    val sortLoadFailed by vm.sortLoadFailed.collectAsState()
     val titleMeasurer = rememberTextMeasurer()
     val titleLine = with(LocalDensity.current) {
         titleMeasurer.measure("M", style = MaterialTheme.typography.titleSmall).size.height.toDp()
@@ -204,7 +205,14 @@ fun HomeGridLayout(
                 when (tabPartition?.state) {
                     null -> if (sorts.isEmpty()) {
                         item(key = "no_sort", span = { GridItemSpan(maxLineSpan) }) {
-                            HomeGridHint(text = stringResource(R.string.common_empty_content))
+                            if (sortLoadFailed) {
+                                HomeGridHint(
+                                    text = stringResource(R.string.common_load_failed_network),
+                                    onRetry = { vm.retrySort() },
+                                )
+                            } else {
+                                HomeGridHint(text = stringResource(R.string.common_empty_content))
+                            }
                         }
                     } else {
                         items(HomeGridSkeletonCount) { HomeGridSkeleton(titleLine) }
@@ -244,9 +252,6 @@ fun HomeGridLayout(
                                 style = VodCardStyle.Stacked,
                             )
                         }
-                        // 首屏没排满时"加载更多"哨兵还压在视口外 ⇒ 它不组合、永远不触发,末行右侧会空一格
-                        // (列数越多越显眼,平板 7 列时首屏 20 张正好空右下角)。补一条:最后一个可见项
-                        // 离末尾不足一行就继续取下一页;取完末尾被推远,条件自然不再成立,不会连环拉取
                         item(key = "more_$tabId", span = { GridItemSpan(maxLineSpan) }) {
                             LaunchedEffect(videos.size) {
                                 if (tabPartition.hasMore) vm.loadMorePartition(tabPartition)

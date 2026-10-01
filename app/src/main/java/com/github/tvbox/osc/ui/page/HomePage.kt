@@ -39,7 +39,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -59,11 +58,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -72,9 +72,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
+import androidx.core.content.ContextCompat
 import com.github.tvbox.osc.R
-import com.github.tvbox.osc.api.ApiConfig
 import com.github.tvbox.osc.bean.Movie
 import com.github.tvbox.osc.ui.activity.ConfigManageActivity
 import com.github.tvbox.osc.ui.activity.PartitionListActivity
@@ -101,9 +100,13 @@ import com.github.tvbox.osc.util.HomeSettings
 import com.github.tvbox.osc.util.SiteSearch
 import com.kyant.capsule.ContinuousCapsule
 import com.github.tvbox.osc.ui.page.jumpToSearch
+import kotlin.math.roundToInt
 import com.github.tvbox.osc.ui.activity.SearchViewModel
 
 private val HomeSourceCapsuleMaxWidth = 240.dp
+
+// 自适应图标前景层在系统内的缩放系数，此处复刻以呈现与桌面图标一致的 logo 占比
+private const val CapsuleLogoZoom = 1.5f
 
 private val HomeTopBarControlSpacing = 8.dp
 
@@ -124,6 +127,7 @@ fun HomePage(vm: HomeViewModel, contentPadding: PaddingValues = PaddingValues(0.
     val pullState = rememberPullToRefreshState()
 
     val pageLoading by vm.pageLoading.collectAsState()
+    val sortLoadFailed by vm.sortLoadFailed.collectAsState()
     val homeLayout by HomeSettings.layoutFlow.collectAsState()
     LaunchedEffect(homeLayout) { vm.onLayoutChanged() }
     LaunchedEffect(vm) {
@@ -161,25 +165,24 @@ fun HomePage(vm: HomeViewModel, contentPadding: PaddingValues = PaddingValues(0.
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val capsuleLogo = currentSource?.icon?.takeIf { it.isNotEmpty() }
-                        ?: ApiConfig.get().configLogo.takeIf { it.isNotEmpty() }
-                    if (!capsuleLogo.isNullOrEmpty()) {
-                        AsyncImage(
-                            model = capsuleLogo,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(26.dp)
-                                .clip(RoundedCornerShape(50)),
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Filled.Tune,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
+                    val capsuleLogo = remember { ContextCompat.getDrawable(context, R.drawable.ic_launcher_foreground) }
+                    Box(
+                        modifier = Modifier
+                            .size(26.dp)
+                            .drawBehind {
+                                capsuleLogo?.let { drawable ->
+                                    val w = size.width
+                                    val h = size.height
+                                    drawable.setBounds(
+                                        (w / 2 - w * CapsuleLogoZoom / 2).roundToInt(),
+                                        (h / 2 - h * CapsuleLogoZoom / 2).roundToInt(),
+                                        (w / 2 + w * CapsuleLogoZoom / 2).roundToInt(),
+                                        (h / 2 + h * CapsuleLogoZoom / 2).roundToInt(),
+                                    )
+                                    drawable.draw(drawContext.canvas.nativeCanvas)
+                                }
+                            },
+                    )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = currentSource?.name?.takeIf { it.isNotEmpty() } ?: stringResource(R.string.home_subscription_source),
@@ -334,6 +337,26 @@ fun HomePage(vm: HomeViewModel, contentPadding: PaddingValues = PaddingValues(0.
                             onCardLongClick = { video -> vodMenu.show(video) },
                             cardWidth = 140.dp,
                         )
+                    }
+                }
+                if (sortLoadFailed) {
+                    item(key = "sort_error") {
+                        Row(
+                            modifier = Modifier
+                                .fillParentMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.common_load_failed_network),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { vm.retrySort() }) {
+                                Text(text = stringResource(R.string.common_retry))
+                            }
+                        }
                     }
                 }
                 items(partitions, key = { it.sort.id }) { p ->

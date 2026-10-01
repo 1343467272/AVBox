@@ -14,6 +14,9 @@ import java.util.List;
 public class AbsSortXml implements Serializable {
     public String sourceKey;
 
+    /** 分类取数失败兜底标记:SortLoader 真实失败时置位,与"站点确实无分类"区分 */
+    public transient boolean loadFailed;
+
     @XStreamAlias("class")
     public MovieSort classes;
 

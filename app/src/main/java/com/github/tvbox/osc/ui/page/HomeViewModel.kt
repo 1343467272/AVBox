@@ -14,6 +14,7 @@ import com.github.tvbox.osc.event.RefreshEvent
 import com.github.tvbox.osc.util.DefaultConfig
 import com.github.tvbox.osc.util.HomeSettings
 import com.github.tvbox.osc.util.LanguageManager
+import com.github.tvbox.osc.util.LOG
 import com.github.tvbox.osc.sourcedata.SourceRuntimeState
 import com.github.tvbox.osc.sourcedata.SourceViewModel
 import com.github.tvbox.osc.sourcedata.observeAsFlow
@@ -79,6 +80,11 @@ class HomeViewModel : ViewModel() {
     private val sortsLoaded = MutableStateFlow(false)
     private val bootReady = MutableStateFlow(false)
     val pageErrorEvents = MutableSharedFlow<String>(extraBufferCapacity = 1)
+
+    /** 分类取数失败(含一次自动重试仍失败):首页整页错误态,与真空区分 */
+    val sortLoadFailed = MutableStateFlow(false)
+    private var sortRetried = false
+    private val listRetried = HashSet<String>()
 
     private val scope = viewModelScope
     private val sortViewModel = SourceViewModel()
@@ -163,6 +169,9 @@ class HomeViewModel : ViewModel() {
         currentSource.value = home
         pageLoading.value = true
         sortsLoaded.value = false
+        sortLoadFailed.value = false
+        sortRetried = false
+        listRetried.clear()
         rec.value = Rec(PartitionState.Loading, emptyList())
         partitions.value = emptyList()
         val staleLoaders = ArrayList(loaders.values)
@@ -194,10 +203,23 @@ class HomeViewModel : ViewModel() {
 
     fun retryPartition(partition: Partition) {
         if (partition.state != PartitionState.Error) return
+        listRetried.remove(partition.sort.id)
         partitions.value = partitions.value.map {
             if (it.sort.id == partition.sort.id) it.copy(state = PartitionState.Loading) else it
         }
         requestPartition(partition, Partition.FIRST_PAGE)
+    }
+
+    /** 整页错误态(分类取数失败)手动重试 */
+    fun retrySort() {
+        val key = loadingSourceKey ?: return
+        sortLoadFailed.value = false
+        sortRetried = true
+        rec.value = Rec(PartitionState.Loading, emptyList())
+        sortsLoaded.value = false
+        pageLoading.value = true
+        armWatchdog()
+        sortViewModel.getSort(key, HomeSettings.current() == HomeSettings.HomeLayout.Horizontal)
     }
 
     fun ensureLoaded(sortId: String) {
@@ -241,6 +263,24 @@ class HomeViewModel : ViewModel() {
         }
         if (absXml?.sourceKey != null && absXml.sourceKey != key) return
 
+        if (absXml != null && absXml.loadFailed) {
+            if (!sortRetried) {
+                sortRetried = true
+                LOG.i("echo--sort-retry: src=$key")
+                sortViewModel.getSort(key, HomeSettings.current() == HomeSettings.HomeLayout.Horizontal)
+                return
+            }
+            LOG.i("echo--sort-failed: src=$key")
+            sortLoadFailed.value = true
+            rec.value = Rec(PartitionState.Empty, emptyList())
+            partitions.value = emptyList()
+            sorts.value = emptyList()
+            allSorts.value = emptyList()
+            sortsLoaded.value = true
+            return
+        }
+
+        LOG.i("echo--sort-result: src=$key hasClasses=${absXml?.classes?.sortList != null}")
         val adjusted = if (absXml?.classes?.sortList != null) {
             DefaultConfig.adjustSort(key, absXml.classes.sortList, true)
         } else {
@@ -313,7 +353,21 @@ class HomeViewModel : ViewModel() {
     }
 
     private fun applyPartitionResult(sortId: String, page: Int, absXml: AbsXml?) {
+        if (absXml == null && page == Partition.FIRST_PAGE) {
+            if (listRetried.add(sortId)) {
+                LOG.i("echo--list-retry: sort=$sortId pg=$page")
+                val current = partitions.value.firstOrNull { it.sort.id == sortId } ?: return
+                requestPartition(current, Partition.FIRST_PAGE)
+            } else {
+                LOG.i("echo--list-failed: sort=$sortId pg=$page")
+                partitions.value = partitions.value.map { p ->
+                    if (p.sort.id == sortId) p.copy(state = PartitionState.Error) else p
+                }
+            }
+            return
+        }
         val videos = absXml?.movie?.videoList ?: emptyList()
+        LOG.i("echo--list-result: src=${loadingSourceKey} sort=$sortId pg=$page n=${videos.size}")
         val maxPage = absXml?.movie?.pagecount ?: 0
         partitions.value = partitions.value.map { p ->
             if (p.sort.id != sortId) {

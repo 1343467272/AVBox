@@ -81,6 +81,13 @@ final class SortLoader {
         sortResult.postValue(attachSortSource(sourceKey, sortXml));
     }
 
+    /** 分类取数失败出口:空包 + loadFailed 标记,由 HomeViewModel 决定重试/错误态 */
+    private void postSortFailure(String sourceKey) {
+        AbsSortXml sortXml = new AbsSortXml();
+        sortXml.loadFailed = true;
+        sortResult.postValue(attachSortSource(sourceKey, sortXml));
+    }
+
     private static boolean hasActionSort(AbsSortXml sortXml) {
         if (sortXml == null) return false;
         if (hasActionVideo(sortXml.videoList)) return true;
@@ -190,6 +197,10 @@ final class SortLoader {
                             sortXml.videoList = absXml.movie.videoList;
                             postSortResult(sourceKey, sortXml);
                             cacheSort(sourceKey, sortXml);
+                        } else if (sortXml.classes != null) {
+                            // homeContent 解析成功却没带推荐视频是常态(分类够用),不能当取数失败
+                            postSortResult(sourceKey, sortXml);
+                            cacheSort(sourceKey, sortXml);
                         } else {
                             listLoader.getHomeRecList(sourceBean, null, new ListLoader.HomeRecCallback() {
                                 @Override
@@ -201,11 +212,11 @@ final class SortLoader {
                             });
                         }
                     } else {
-                        postSortResult(sourceKey, sortXml);
-                        cacheSort(sourceKey, sortXml);
+                        postSortFailure(sourceKey);
                     }
                 } else {
-                    postSortResult(sourceKey, null);
+                    LOG.i("echo--getSort-spider-null:" + sourceKey);
+                    postSortFailure(sourceKey);
                 }
             }
         };
@@ -254,19 +265,24 @@ final class SortLoader {
                                     cacheSort(sourceKey, finalSortXml);
                                 }
                             });
-                        } else {
+                        } else if (sortXml != null && sortXml.classes != null) {
+                            // 分类已解析出来,推荐位缺失不影响首页可用性;postSortFailure 只留给真没解析出响应的情况
                             postSortResult(sourceKey, sortXml);
                             cacheSort(sourceKey, sortXml);
+                        } else {
+                            postSortFailure(sourceKey);
                         }
                     }
 
                     @Override
                     public void onError(Response<String> response) {
                         super.onError(response);
-                        postSortResult(sourceKey, null);
+                        LOG.i("echo--getSort-api-error:" + sourceKey + " code=" + response.code()
+                                + " ex=" + response.getException());
+                        postSortFailure(sourceKey);
                     }
                 });
-    
+
     }
 
     /** type 4:带 extend 的接口;extend 过长时改走 RemoteTVBox 的 POST(URL 长度限制) */
@@ -314,18 +330,19 @@ final class SortLoader {
                                         });
                                     }
                                 } else {
-                                    postSortResult(sourceKey, sortXml);
-                                    cacheSort(sourceKey, sortXml);
+                                    postSortFailure(sourceKey);
                                 }
                             } else {
-                                postSortResult(sourceKey, null);
+                                postSortFailure(sourceKey);
                             }
                         }
 
                         @Override
                         public void onError(Response<String> response) {
                             super.onError(response);
-                            postSortResult(sourceKey, null);
+                            LOG.i("echo--getSort-ext-error:" + sourceKey + " code=" + response.code()
+                                    + " ex=" + response.getException());
+                            postSortFailure(sourceKey);
                         }
                     });
         }else {
@@ -338,7 +355,8 @@ final class SortLoader {
                 RemoteTVBox.post(sourceBean.getApi(), params, sourceBean.getHeader(), new okhttp3.Callback() {
                     @Override
                     public void onFailure(@NonNull Call call, IOException e) {
-                        postSortResult(sourceKey, null);
+                        LOG.i("echo--getSort-post-fail:" + sourceKey + " ex=" + e);
+                        postSortFailure(sourceKey);
                     }
 
                     @Override
@@ -353,15 +371,20 @@ final class SortLoader {
                                 sortXml.videoList = absXml.movie.videoList;
                                 postSortResult(sourceKey, sortXml);
                                 cacheSort(sourceKey, sortXml);
+                            } else if (sortXml.classes != null) {
+                                // 同上:解析成功但无推荐要走成功出口,否则这条分支全程无回包、只能等超时
+                                postSortResult(sourceKey, sortXml);
+                                cacheSort(sourceKey, sortXml);
+                            } else {
+                                postSortFailure(sourceKey);
                             }
                         } else {
-                            postSortResult(sourceKey, sortXml);
-                            cacheSort(sourceKey, sortXml);
+                            postSortFailure(sourceKey);
                         }
                     }
                 });
             } catch (Exception ignored) {
-                postSortResult(sourceKey, null);
+                postSortFailure(sourceKey);
             }
         }
     

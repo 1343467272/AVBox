@@ -52,7 +52,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
@@ -62,7 +61,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil3.compose.AsyncImage
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.api.ApiConfig
 import com.github.tvbox.osc.data.RoomDataManger
@@ -71,6 +69,7 @@ import com.github.tvbox.osc.event.RefreshEvent
 import com.github.tvbox.osc.ui.WindowSize
 import com.github.tvbox.osc.ui.components.AppTopBarScaffold
 import com.github.tvbox.osc.ui.components.LoadStateBox
+import com.github.tvbox.osc.ui.components.VodPoster
 import com.github.tvbox.osc.util.HawkConfig
 import com.github.tvbox.osc.util.KV
 import com.github.tvbox.osc.util.SubscribeList
@@ -422,12 +421,7 @@ private fun CollectCard(
             .clip(RoundedCornerShape(16.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        AsyncImage(
-            model = item.pic,
-            contentDescription = item.name,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
+        VodPoster(name = item.name, pic = item.pic, modifier = Modifier.fillMaxSize())
         if (editMode) {
             SelectCircle(
                 selected = selected,

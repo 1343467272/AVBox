@@ -226,6 +226,7 @@ final class SourceResultParser {
             return data;
         } catch (Exception e) {
             if (result != null) {
+                // json 可能是 null(接口 onError 分支、爬虫超时):裸取 substring 会再抛 NPE,线程死掉 UI 永远转圈
                 LOG.i("echo--parse-fail-json:" + sourceKey + " ex=" + e
                         + " head=" + (json == null ? "null" : json.substring(0, Math.min(200, json.length()))));
             }

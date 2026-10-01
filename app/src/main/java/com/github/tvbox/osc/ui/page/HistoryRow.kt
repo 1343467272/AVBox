@@ -3,7 +3,6 @@ package com.github.tvbox.osc.ui.page
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,13 +34,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.bean.VodInfo
+import com.github.tvbox.osc.ui.components.VodPoster
 import com.github.tvbox.osc.ui.theme.cardContainer
 import com.github.tvbox.osc.util.EpisodeTotals
 import kotlin.math.roundToInt
@@ -79,14 +77,12 @@ internal fun HistoryRow(
                     .width(64.dp)
                     .aspectRatio(2f / 3f),
             ) {
-                AsyncImage(
-                    model = item.pic,
-                    contentDescription = item.name,
-                    contentScale = ContentScale.Crop,
+                VodPoster(
+                    name = item.name,
+                    pic = item.pic,
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        .clip(RoundedCornerShape(8.dp)),
                 )
                 if (editMode) {
                     SelectCircle(

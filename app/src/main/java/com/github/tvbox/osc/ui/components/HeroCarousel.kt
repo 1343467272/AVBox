@@ -24,12 +24,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.bean.Movie
 import kotlin.math.abs
@@ -86,10 +84,9 @@ fun HeroCarousel(
                 .clip(RoundedCornerShape(24.dp))
                 .clickable { onCardClick(video) },
         ) {
-            AsyncImage(
-                model = video.pic,
-                contentDescription = video.name,
-                contentScale = ContentScale.Crop,
+            VodPoster(
+                name = video.name,
+                pic = video.pic,
                 modifier = Modifier.fillMaxSize(),
             )
             Box(

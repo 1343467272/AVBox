@@ -88,7 +88,11 @@ private val HomeFilterChipEqualWidthMaxWidth = 600.dp
 
 private val HomeGridItemSpacing = 16.dp
 
-private val HomeGridContentTopPadding = 4.dp
+/**
+ * 栅格顶部留白 = 分类 tab 行下方分隔线到首行卡片的距离,必须取到 HomeGridItemSpacing:
+ * 没有筛选 chips 的分类首行会紧贴分隔线。有 chips 时由 chips 自己补差(见下),两档间距一致。
+ */
+private val HomeGridContentTopPadding = 16.dp
 
 private const val HomeGridSkeletonCount = 18
 
@@ -193,7 +197,7 @@ fun HomeGridLayout(
                     item(key = "chips_${tabSort.id}", span = { GridItemSpan(maxLineSpan) }) {
                         Box(
                             modifier = Modifier.padding(
-                                top = HomeGridItemSpacing - HomeGridContentTopPadding,
+                                top = (HomeGridItemSpacing - HomeGridContentTopPadding).coerceAtLeast(0.dp),
                             ),
                         ) {
                             HomeFilterChipsRow(sort = tabSort) { selection ->

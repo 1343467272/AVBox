@@ -16,12 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import com.github.tvbox.osc.bean.Movie
 
 enum class VodCardStyle { Overlay, Stacked }
@@ -42,7 +40,7 @@ fun VodCard(
                 shape = RoundedCornerShape(16.dp),
             ) {
                 Box(modifier = Modifier.aspectRatio(2f / 3f)) {
-                    VodPoster(video)
+                    VodPoster(video.name, video.pic)
                     RatingBadge(video, Modifier.align(Alignment.TopEnd))
                 }
             }
@@ -68,7 +66,7 @@ fun VodCard(
         shape = RoundedCornerShape(16.dp),
     ) {
         Box(modifier = Modifier.aspectRatio(2f / 3f)) {
-            VodPoster(video)
+            VodPoster(video.name, video.pic)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -110,16 +108,6 @@ fun VodCard(
             }
         }
     }
-}
-
-@Composable
-private fun VodPoster(video: Movie.Video) {
-    AsyncImage(
-        model = video.pic,
-        contentDescription = video.name,
-        contentScale = ContentScale.Crop,
-        modifier = Modifier.fillMaxSize(),
-    )
 }
 
 @Composable

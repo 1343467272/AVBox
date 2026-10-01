@@ -4113,3 +4113,96 @@ echo-exo-player-error: code=ERROR_CODE_UNSPECIFIED, msg=Unexpected runtime error
 **验证**:BUILD SUCCESSFUL + **468 用例 0 失败**;装机后用户续播(03:41:44)—— 无任何新 `echo-anime4k` 行、`echo-picture-size` 仍在(调色链正常),GPU 44~46% → **7~18%**。**未走查**:重开超分应恢复挂链。**未做**:代码未提交。
 
 **判读教训**:①KV 值可疑时直接读设备端 MMKV 原文(`grep -abo <key>` 拿字节偏移 + `dd`/`od -A d -t x1` 看值;append-only ⇒ 最大偏移 = 最新有效值),比反复让用户操作/加日志重装快得多;②`GlEffect.isNoOp` 这类"接口默认实现"必须查**消费方是否真的调用**(javap 扫常量池),别按接口语义假设 —— 本次全链路据此误判了一次设计。**既有遗漏**(非本次引入):本文件最后一条停留 09-30 12:00,10-01 的 Anime4K 阶段 2/3、画布模式、自适应倍率、详情页 V4 等过程未归档到这里(活规范/review 侧有部分记录),待统一补录。
+
+### 无海报占位:源没给图时显示片名首字大字(2026-10-02 00:52)
+
+**用户报障(两张截图对照)**:部分站点的影视海报没有缩略图,首页竖向网格里整格留空,"给人的感觉和出现了错误一样";要求像 fongmi(图二)那样——没有缩略图就在海报位置显示**标题首个大字**。
+
+**上游对账(`示例文件/TV-fongmi`,只读)**:`ui/holder/VodRectHolder.java` 的 `ImgUtil.load(item.getName(), item.getPic(), binding.image)` → `ImgUtil.getTextDrawable()`:`text.substring(0, 1)` 作字,`ColorGenerator.get400(text)` 取色,第三方 `jahirfiquitiva.libs.textdrawable` 画成矩形 drawable;Glide 侧 **空 url 直接落 drawable**,非空 url 挂 `RequestListener.onLoadFailed` 落同一个 drawable 并记入 `failed` 集合避免重试。即"占位是兜底 drawable,不是错误态 UI"。
+
+**本仓实现(Compose,新增 `ui/components/VodPoster.kt`)**:
+- `VodPoster(name, pic, modifier)` = `Box { PosterFallback(name); AsyncImage(pic) }` —— **占位恒垫在图片下层**。理由:Coil 3 的报错终态 `State.Error` 本身 `painter == null`(实际查过 3.6.2 源码 `AsyncImagePainter.updateState`/`toState`),图自然画成空,占位就露出来;反过来写"`onState` 判成功才隐藏占位"会在列表项复用时先闪一下占位。
+- 色板 = Material 400 档 19 色内联 int 数组(项目没有 M2 的 `MDColor`;不引第三方 textdrawable,自己 `Box` + `Text` 画)。取色键 = **片名首字**:同一部片在不同源叫法常有出入,按整名取色会一处一色。`(hashCode() and Int.MAX_VALUE) % 19`。
+- 字号 = `min(maxWidth, maxHeight) × 0.46`(`BoxWithConstraints`),取**短边**而非宽 —— 首页 Hero 是 1.5 横版,按宽算在大屏上会顶穿高度;`includeFontPadding = false` 去掉字体上下留白,否则方块偏下。
+- 接入点 = `VodCard`(覆盖首页内容流 / 详情相关推荐 / 搜索源分区 / 栏目二级页)、首页 `HeroCarousel`、收藏页网格、`HistoryRow` 行内缩略图、搜索结果行 68dp 缩略图。旧的三处 `AsyncImage(model = video.pic, contentScale = Crop, fillMaxSize)` 全部收敛进组件(顺手删掉 `HistoryRow` 缩略图那层已无意义的 `surfaceContainerHighest` 占位底色)。
+
+**一个必须做的归一化(单测锁住)**:`"polygenelubricants".hashCode() == Int.MIN_VALUE`(JDK 手写 hash 的老特例),少了 `and Int.MAX_VALUE` 就是 `% 19` 得负下标 → `ArrayIndexOutOfBoundsException`。单测 `app/src/test/.../ui/components/VodPosterSeedTest.kt`。
+
+**自审修掉的四处(同日 00:58,均本次引入)**:①**取色键与文档相反** —— 文档写"按首字取色",代码却 `name.trim().hashCode()` 取整名,同一部片换个源的叫法就换个颜色;改成 `posterFirstChar(name).hashCode()`,并补 `seedIgnoresNameTail` 把这条锁住(原测试只锁"同色稳定",把实现换回整名也全绿 —— **规范主张零测试守护**这条比 bug 本身更值得记)。②**字号没消系统字体缩放** —— `charHeight.value.sp` 写字面 sp,在 `fontScale = 2.0` 下字被放大一倍顶出海报盒;改用 `with(LocalDensity.current) { charHeight.toSp() }`(`toSp` 是 `FontScaling` 上的 `Dp` 扩展、由 `Density` 继承,无需 import,它内部还会走 `FontScaleConverterFactory` 处理 Android 14 的非线性字号)。③**首字切坏代理对** —— `take(1)` 取的是单个 UTF-16 码元,emoji 开头只拿到高位代理渲染成豆腐块;改按码点取。④**`CollectCard` 没传尺寸** —— `VodPoster` 把尺寸当调用方契约,漏传时 `fillMaxSize()` 在宽松约束下退化成最小尺寸;补 `Modifier.fillMaxSize()`。
+
+**验证**:`.\gradlew.bat :app:assembleDebug` BUILD SUCCESSFUL;`:app:testDebugUnitTest` **62 类 / 479 用例 / 0 失败**(含 `VodPosterSeedTest` 11 例)。构建中途踩了两次 import:`Unresolved reference 'fillMaxSize'`(删 `VodCard` 旧 `AsyncImage` 时把 overlay 渐变 scrim 还要用的 import 一起删了)、`Unresolved reference 'toSp'`(误加了并不存在的顶层扩展 import —— `toSp` 是成员扩展,靠接收者可见,不要 import)。**未真机验证**;走查判据:①首页竖向网格里无图站点应显示色底 + 片名首字,不再整格空白;②有图站点外观与改动前逐像素一致(占位被图完全盖住);③历史 / 收藏 / 搜索结果行的小缩略图同样生效;④系统字体调到最大档,首字仍应完整落在海报格内(不再顶出)。**未做**:代码未提交。
+
+### 排查:「猜你喜欢」整块加载失败(2026-10-02 01:05,真机日志 + 反编译取证)
+
+**用户报障**:首页「猜你喜欢」分类显示「加载失败,请检查网络」+ 重试,其余分类正常。
+
+**取证(设备 10AF1J04JX0016G,`files/preload_debug.log`)**:全日志范围内 `guess_you_like` **失败 17 次、成功 0 次**,而同源的 `hot_gaia` / `tv_hot` / `1` / `99` / `config` 全部正常。失败三连只有一种形状:
+
+```
+E echo--getList--豆瓣-error: org.json.JSONException: End of input at character 0 of
+I echo--list-spider-null:豆瓣 sort=guess_you_like pg=1
+I echo--list-failed: sort=guess_you_like pg=1
+```
+
+即**报错在爬虫内部,不是网络**。旁证:设备直连 `movie.douban.com` 返回 HTTP 200(0.8s);`echo--jar-load success` 说明 jar 已加载。
+
+**根因(反编译设备上的 `files/csp/54d55d1ebdcc12aa0becd68a39385881.jar`)**:用 Android Studio 自带的 `smali-baksmali-3.0.9`(依赖 guava + jcommander)反汇编,`Douban.smali` 的 `categoryContent` 把 `guess_you_like` 单独路由到 `processGuessyoulike`,该方法**第一件事**就是:
+
+```
+const-string v1, "historyvodname"
+invoke-static {v1}, Lcom/github/catvod/spider/merge/m/l;->b(...)   # SharedPreferences.getString(key, "")
+new-instance v2, Lorg/json/JSONArray;  invoke-direct {v2, v1}      # new JSONArray("") -> 抛
+```
+
+`merge/m/l.b` 是 `getString(key, "")`(默认值空串),存储 = `<packageName>_preferences` 这个 SharedPreferences。**该键从未被写入过** ⇒ 读到空串 ⇒ `new JSONArray("")` 抛 `JSONException: End of input at character 0 of ` —— 与日志逐字吻合。
+
+**为什么永远写不进去**:写入方是 `merge.a.a.saveName()`(只被 `parseJsonAndSave` / `processVodData` 调用)。全 dex 搜索确认 **`Douban.smali` 内 `saveName` / `parseJsonAndSave` / `processVodData` 零引用**,它对 `historyvodname` 只有 1 处、且是读取 ⇒ **豆瓣包的「猜你喜欢」在这份 jar 里没有任何历史来源,是爬虫自身的缺陷**。所以「重试」注定无效(重试是同一段代码同一份空数据)。设备侧 `shared_prefs/` 里也确实只有宿主自己的 `com.github.avbox.osc_preferences.xml`。
+
+**结论口径**:①非 App 回归(本次会话只动 UI 层:海报位组件 + 五个调用点,`git status` 可验;爬虫取数链路未触碰);②非网络故障;③修复点在源侧 —— 让 `processGuessyoulike` 对空历史取 `"[]"` 兜底、或从宿主观看历史拉一次,或直接用爬虫配置里的 `homePage` 去掉这一项。
+
+**顺带修掉一个真 bug(非本次引入,既有)**:`SourceResultParser.json()` 的 catch 里 `json.substring(...)` 裸取 —— `json` 为 null 时这里会再抛 NPE,**把"失败但已上报"变成 worker 线程直接死掉、`postValue` 不执行、UI 永远转圈**。可达路径不止一条:`DetailLoader.onError` 在接口报错时就是 `json(detailResult, "", ...)`,而 OkGo 的 `convertResponse` 抛异常(如 `response.body() == null` 抛 `ERR_NETWORK`)走的正是 `onError`;`ListLoader`/`DetailLoader` 的爬虫分支在 `BoundedCall` 超时返回 `null` 时同样落进来。已改为 `json == null ? "null" : json.substring(...)`。
+
+**验证**:`:app:assembleDebug` BUILD SUCCESSFUL;`:app:testDebugUnitTest` 62 类 / 479 用例 / 0 失败。**未真机验证**(需要用户拿这份日志再走一遍)。**未做**:代码未提交。
+
+### 竖向首页的「推荐」入口:实现后按用户要求回退(2026-10-02)
+
+**起因**:用户对比两张同源同首页截图,fongmi 的分类 tab 行第一个是「推荐」,AVBox 竖向布局没有。根因 = 推荐位是**宿主合成的入口**(`DefaultConfig.adjustSort` 在 `withMy` 时插入 id 固定为 `my0` 的 `SortData`),而 `HomeViewModel.loadHome()` 只在横向布局传 `withMy/withRec = true` ⇒ 竖向既不合成入口,`rec`(推荐位)又白拉一次请求没地方渲染。
+
+**曾实现并验证通过**:`my0` 提为常量、`sorts` 保留推荐项、`HomeGridLayout` 新增 `HomeRecommendGrid`(复用 `rec` 三态)、tab 文案取 `R.string.home_recommend`;`assembleDebug` + `testDebugUnitTest`(62 类 / 479 用例)全绿。过程中踩到的两个坑值得留档:①`ensureLoaded("my0")` 必须短路,否则推荐项没有 `Partition` ⇒ `firstOrNull` 直接 return ⇒ 状态永远停在"取数中";②三态里的重试必须走 `retryRec()`(`recViewModel.getSort`)而不是 `retryPartition()`,后者读不到 `Partition` 会直接 return,按钮点了没反应。
+
+**结论(2026-10-02 用户口径)**:**回退,竖向不展示推荐栏目**。`HomeViewModel.kt` / `HomeGridLayout.kt` / `DefaultConfig.java` 三个文件 `git checkout` 回 HEAD,活规范 §4.1 里那条「推荐」入口记录一并删除。**横向布局的「推荐」分区不受影响**(它本来就存在,本次没动过,回退后仍是原样)。
+
+**判读**:这条记录留着是为了"别再提同一件事" —— 竖向补推荐入口曾被完整实现且构建/单测全绿,是**产品口径**否掉的,不是技术不可行。若日后要重开,按上面的两处短路照做即可。
+
+### 回归修复:海报加载时闪一下"首字占位"(2026-10-02 01:18,用户截图两帧对照)
+
+**用户报障**:"首页的影视海报在加载时会闪烁出无缩略图状态下的字体海报,搜索时也一样" —— 两帧对比:第 1 帧整屏骨架屏,第 2 帧**四张卡先显示色底大字("无"/"我"/"余"),其余已是真海报**。
+
+**根因(本轮海报功能自己带进来的,两个成因叠加)**:
+1. **占位恒垫在图片下层**:Coil 的 crossfade 是从"上一态 painter"淡入到新图 —— 上一态 `Loading` 的 painter 为 null(我们没传 `placeholder`),于是**图片自己从 alpha 0 淡入**,垫在下面的占位在淡入全程都透出来。
+2. **列表项复用时状态重置**:即便不淡入,首帧就画占位也会闪一帧;`remember(pic)` 在项被复用时会重置。
+
+**上一版为什么写错**:我当时读 `AsyncImagePainter.updateState/toState` 得出的结论是"报错终态不带 painter,所以垫底写法天然成立",**只验证了错误路径,没验证成功路径的可见性**。而"成功时占位不可见"这条依赖的是 crossfade 不存在 —— 恰恰被 `VodImages.init` 的全局 `.crossfade(true)` 打破。
+
+**修法**:
+- `showFallback` 初值 `false`(不画占位),只在 `AsyncImagePainter.State.Error` 时为 `true`;
+- 该请求单独下 `transitionFactory(Transition.Factory.NONE)` 关掉淡入 —— `crossfade` 注册在**单例 ImageLoader** 上,只能用 `ImageRequest.Builder.transitionFactory` 按请求覆盖(`coil3.request.transitionFactory` 是 `ImageRequest.Builder` 的扩展,默认值来自 Loader 的 extras;`Transition.Factory.NONE` 在 `coil3.transition` 里)。
+
+**⚠️ 这条推翻了 01:00 那版的结论**:活规范 §4.1 原文写的"占位恒垫在图片下层…垫在下面的占位自然露出来"**已作废并改写**,别按那句话回改。
+
+**验证**:`:app:assembleDebug` BUILD SUCCESSFUL;`:app:testDebugUnitTest` 62 类 / 479 用例 / 0 失败。**未真机验证**;走查判据:①首页竖向网格与搜索结果滚动/刷新,海报位**只应有"空 → 出图"两态**,任何一帧都不应出现色底大字;②源真的没给图(或图 404)时,色底大字仍要正常显示且不再变化;③加载完成后图片是**硬切**出现(已关淡入),若观感突兀再议,不要用"把占位垫回去"来换淡入。**未做**:代码未提交。
+
+### 修复:无筛选 chips 的分类首行海报紧贴分隔线(2026-10-02 01:26,用户报"很不协调")
+
+**用户报障(两张截图对照)**:有筛选控件的分类(热度/最新/评分那档)里海报与分隔线间距正常;没有这类控件的分类(猜你喜欢)首行海报**紧贴分隔线**,观感像被切掉一块。
+
+**根因(栅格顶部留白与 chips 补差是两段拼起来的)**:
+- `HomeGridContentTopPadding` 原为 **4dp**(栅格 `contentPadding.top`);
+- 有 chips 的分类:chips 作为跨列 item 自带 `HomeGridItemSpacing(16) - HomeGridContentTopPadding(4) = 12dp` 上边距,**补差后 = 16dp**;chips 与卡片之间再由 `verticalArrangement` 给 16dp;
+- 无 chips 的分类:没有任何 item 来补这段差 ⇒ 首行卡片距分隔线只剩 **4dp**。
+
+**修法**:`HomeGridContentTopPadding` 改为 **16dp**(= `HomeGridItemSpacing`),并把 chips 的补差 `coerceAtLeast(0.dp)`(否则 16-16 之外的新值会算出负数边距)。
+
+**⚠️ 代价,必须知道**:这个值同时抬高两条边距 —— ①"分隔线 → 首个视觉元素"由 4dp 变 16dp(**所有**分类都变);②有 chips 档"分隔线 → chips 行"也由 4dp 变 16dp。**"分隔线 → chips"与"分隔线 → 卡片"从此都是 16dp**,即三档(无 chips / 有 chips / 骨架态)不再各自不同。若用户觉得 chips 行离分隔线太远,正确改法是再拆一个独立常量,**不要**回退这个值(那会把无 chips 档打回 4dp 的老毛病)。
+
+**验证**:`:app:assembleDebug` BUILD SUCCESSFUL;`:app:testDebugUnitTest` 62 类 / 479 用例 / 0 失败。真机侧只在修复前截到过一帧(荐片源、无 chips 档,间距正常),**有 chips 档未截图核对**;**未做**:代码未提交。

@@ -41,7 +41,6 @@ public class JarLoader {
     private final ConcurrentHashMap<String, Object> locks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> siteJarKeys = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> aliases = new ConcurrentHashMap<>();
-    private final ProtectedInitJar protectedInitJar = new ProtectedInitJar();
     private volatile String recent = MAIN_KEY;
 
     public boolean load(String cache) {
@@ -89,10 +88,7 @@ public class JarLoader {
             file.setReadOnly();
             String cachePath = jarDir().getAbsolutePath();
             DexClassLoader loader = new DexClassLoader(file.getAbsolutePath(), cachePath, cachePath, AppContextHolder.context().getClassLoader());
-            if (!invokeInit(loader, file.getAbsolutePath())) {
-                LOG.i("echo--jar-load error key=" + key + ", init returned false");
-                return false;
-            }
+            invokeInit(loader);
             invokeProxy(key, loader);
             invokeDanmaku(key, loader);
             injectProxyPort(loader);
@@ -106,21 +102,15 @@ public class JarLoader {
         }
     }
 
-    private boolean invokeInit(DexClassLoader loader, String jar) {
-        boolean riskyJar = false;
+    // init 异常不阻塞加载:是否放行由 jar 自己的闸门决定,宿主侧不做识别
+    private void invokeInit(DexClassLoader loader) {
         try {
             Class<?> clz = loader.loadClass("com.github.catvod.spider.Init");
-            riskyJar = protectedInitJar.check(jar);
-            if (riskyJar) {
-                LOG.i("echo--jar-initProtectedJar file=" + jar);
-                return protectedInitJar.init(clz);
-            }
             Method method = clz.getMethod("init", Context.class);
             method.invoke(null, AppContextHolder.context());
         } catch (Throwable e) {
             LOG.e("JarLoader", e);
         }
-        return !riskyJar;
     }
 
     private void invokeProxy(String key, DexClassLoader loader) {

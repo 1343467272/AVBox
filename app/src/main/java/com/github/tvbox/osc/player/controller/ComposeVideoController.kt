@@ -1320,7 +1320,7 @@ class ComposeVideoController @JvmOverloads constructor(
         parts.add(if (videoView?.isSurfaceRenderActive == true) "Surface" else "Texture")
         parts.add(context.getString(R.string.osd_tunnel) + " " + onOffText(exo?.isTunnelingEnabled == true))
         parts.add(context.getString(R.string.osd_frame_rate_match) + " " + onOffText(false))
-        parts.add(context.getString(R.string.osd_preload) + " " + onOffText(KV.get(HawkConfig.PRELOAD_NEXT_EPISODE, true) == true))
+        parts.add(context.getString(R.string.osd_preload) + " " + onOffText(KV.get(HawkConfig.PRELOAD_NEXT_EPISODE, false) == true))
         parts.add(context.getString(R.string.osd_cache) + " " + onOffText(KV.get(HawkConfig.PLAY_CACHE, false) == true))
         return parts.joinToString(" · ")
     }

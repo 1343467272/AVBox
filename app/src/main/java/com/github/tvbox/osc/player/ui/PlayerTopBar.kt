@@ -40,6 +40,8 @@ import com.github.tvbox.osc.player.state.PlayerUiState
 
 private val TopBarLineHeight = 36.dp
 
+private val PreviewTopPadding = 4.dp
+
 @Composable
 fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
     val rightVisible = state.topRightVisible && !state.previewMode
@@ -47,6 +49,7 @@ fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
     val anyVisible = state.topLeftVisible || rightVisible
     // 左右边距按窗口宽度分档（竖屏预览 16dp / 横屏全屏与平板 48dp，见 playerEdgePadding）
     val edge = playerEdgePadding()
+    val topPad = if (state.previewMode) PreviewTopPadding else 12.dp
     // 顶栏贴顶时补上未被自身覆盖的安全区差值（不贴顶/已被上层 padding 抬下去时为 0）。宽档（≥600dp：横屏
     // 全屏/平板）只取挖孔：safeDrawing 含状态栏，而系统栏在进应用/旋转/回前台会被短暂放出且带显隐动画，跟着它顶栏会弹一下
     val density = LocalDensity.current
@@ -85,7 +88,7 @@ fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
                 .padding(
                     start = edge,
                     end = edge,
-                    top = 12.dp + extraTop,
+                    top = topPad + extraTop,
                     bottom = playerDim(R.dimen.vs_5),
                 )
         ) {

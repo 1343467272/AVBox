@@ -102,20 +102,18 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
         return mRenderView != null && mRenderView.getView() instanceof SurfaceView;
     }
 
-    /** 当前挂载的渲染视图是否已是目标渲染方式(1=Surface);未挂载时算已就绪 —— 下次起播本就按工厂新建 */
-    public boolean isRenderTypeApplied(int renderType) {
-        if (mRenderView == null) return true;
-        return (renderType == 1) == isSurfaceRenderActive();
+    /** 当前渲染工厂对应的渲染方式(1=Surface,0=Texture):"本次起播实际会用哪种视图"的唯一取值口 */
+    public int factoryRenderType() {
+        return (mRenderViewFactory instanceof TextureRenderViewFactory) ? 0 : 1;
     }
 
     /**
-     * 当前视图是否已按「本次起播要用的渲染方式」建好 —— 口径是**工厂**(已被 updateCfg 与纯音频预判
-     * `useTextureRenderForAudio` 更新过),故音频兜底改工厂不会被误判成"设置没生效"而反复重建。
+     * 渲染视图是否与目标渲染方式不一致(不一致 = 必须重建内核才会生效);未挂载时算已就绪 —— 下次 start() 本就按工厂新建。
+     * 目标是"工厂"还是"配置值"由调用方给(起播链路传 {@link #factoryRenderType()},接管链路传配置值),两处口径都经本方法。
      */
-    public boolean isRenderFactoryApplied() {
-        if (mRenderView == null) return true;
-        boolean factoryTexture = mRenderViewFactory instanceof TextureRenderViewFactory;
-        return factoryTexture == !isSurfaceRenderActive();
+    public boolean needsRenderRebuild(int targetRenderType) {
+        if (mRenderView == null) return false;
+        return (targetRenderType == 1) != isSurfaceRenderActive();
     }
 
     public void switchRenderToTexture() {

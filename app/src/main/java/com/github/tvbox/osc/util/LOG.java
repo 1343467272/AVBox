@@ -22,7 +22,7 @@ public class LOG {
     private static final int MAX_LOG_LENGTH = 3000;
 
     private static final boolean FILE_LOG = BuildConfig.DEBUG;
-    private static final String[] FILE_LOG_PREFIXES = {"echo-preload", "echo-setDataSource", "echo-play-cache", "echo-kv", "echo-progress", "echo-exo", "echo-music", "echo-lyric", "echo-sub", "echo-danmu", "echo-p2", "echo-p3", "echo-p4", "echo-p5", "clearCache", "echo--jar", "echo-local-src", "echo-setTrack", "echo-autoRetry", "echo-player", "echo-switch", "echo-goPlayUrl", "echo-history", "echo-render", "echo-picture", "echo-anime4k", "echo--list", "echo--getList", "echo--parse", "echo--getSort", "echo--sort"};
+    private static final String[] FILE_LOG_PREFIXES = {"echo-preload", "echo-setDataSource", "echo-play-cache", "echo-kv", "echo-progress", "echo-exo", "echo-music", "echo-lyric", "echo-sub", "echo-danmu", "echo-p2", "echo-p3", "echo-p4", "echo-p5", "clearCache", "echo--jar", "echo-local-src", "echo-setTrack", "echo-autoRetry", "echo-player", "echo-switch", "echo-goPlayUrl", "echo-history", "echo-render", "echo-picture", "echo-anime4k", "echo--list", "echo--getList", "echo--parse", "echo--getSort", "echo--sort", "echo-proxy"};
     private static final String FILE_LOG_NAME = "preload_debug.log";
     private static ExecutorService fileLogExecutor;
 

@@ -74,7 +74,7 @@ final class PlaybackRetryDelegate {
     private void restoreAutoSwitchedPlayer() {
         PlaybackAttemptState st = host.attemptState();
         if (st.autoSwitchedPlayerType < 0) return;
-        st.releasePlayerOnSwitch = true;
+        st.setReleaseIntent(true);
         try {
             LOG.i("echo-autoRetry restore player: " + host.playerCfg().optInt("pl", -1) + " -> " + st.autoSwitchedPlayerType);
             host.playerCfg().put("pl", st.autoSwitchedPlayerType);

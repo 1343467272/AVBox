@@ -823,11 +823,12 @@ public final class PlaybackEngine implements PlaybackHostApi {
         @Override
         public void startVideoPlayback(String url, HashMap<String, String> headers, boolean forceExoPlayer) {
             if (released) return;
-            // 与页面桥一致的复用/释放防线:stopPlaybackKeepPlayer 可能留下"IDLE + 内核仍在"的组合,必须走非复用路径,
-            // 且先显式 release 才能让引擎侧状态(已起播内容/进度管理器/预载归属)与内核真实情况一致。
-            // 无页面时到达的取流结果窗口窄(退页面即 cancelInFlight),但迟到的嗅探/OkGo 回调仍可能撞上。
-            boolean reusePlayer = !forceExoPlayer && videoView.getMediaPlayer() != null;
-            if (!reusePlayer && videoView.getMediaPlayer() != null) releasePlayer();
+            // 与页面桥同一判定;重建标记必须消费,否则复用内核会沿用旧渲染/解码方式(无页面时迟到的取流回调同样能撞上)。
+            boolean kernelPresent = videoView.getMediaPlayer() != null;
+            boolean rebuildKernel = videoView.consumeKernelRebuildRequired();
+            boolean reusePlayer = KernelReusePolicy.decide(kernelPresent, rebuildKernel, forceExoPlayer, true)
+                    == KernelDecision.REUSE;
+            if (!reusePlayer && kernelPresent) releasePlayer();
             // 归属记录须在 releasePlayer 之后(它会 clearStartedContent)
             controller.markContentStarted();
             // 无页面 = 没有轨道菜单 = 没有用户选择:清键,免得上一部片的键留在内核上(页面起播前会重新下发)

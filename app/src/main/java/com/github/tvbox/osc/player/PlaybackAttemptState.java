@@ -46,9 +46,10 @@ final class PlaybackAttemptState {
 
     // ==================== 切换意图(点一次生效一次) ====================
 
-    boolean reusePlayerOnSwitch;
+    /** 三态代替原先"reuse/release 两个独立 boolean":REBUILD 覆盖 REUSE,避免两个字段各自为政 */
+    enum SwitchIntent { NONE, REUSE, REBUILD }
 
-    boolean releasePlayerOnSwitch;
+    SwitchIntent switchIntent = SwitchIntent.NONE;
 
     /** 换源点击即停:置位后抑制在途取流结果/超时/嗅探回调把已停的旧源拉起 */
     boolean switchStopPending;
@@ -116,11 +117,11 @@ final class PlaybackAttemptState {
         clearTriedLines();
     }
 
-    /** 换线成功:阶梯复位 + 置复用意图(不动 release:自动切过内核时须保持) */
+    /** 换线成功:阶梯复位 + 置复用意图(不覆盖 REBUILD:自动切过内核回滚时该意图必须保持) */
     void onLineSwitched() {
         allowSwitchPlayer = true;
         hasAutoSwitchedPlayer = false;
-        reusePlayerOnSwitch = true;
+        if (switchIntent != SwitchIntent.REBUILD) switchIntent = SwitchIntent.REUSE;
     }
 
     /** 无路可走(无剧集数据 / 线路耗尽):清已试线路 */
@@ -133,25 +134,32 @@ final class PlaybackAttemptState {
         triedLineFlags.clear();
     }
 
-    /** 单字段写,另一个字段不动(避免读-改-写冲掉并发改动) */
+    /** 单字段写,另一个意图不动(避免读-改-写冲掉并发改动);REBUILD 不被复用意图覆盖 */
     void setReuseIntent(boolean reuse) {
-        reusePlayerOnSwitch = reuse;
+        if (reuse) {
+            if (switchIntent == SwitchIntent.NONE) switchIntent = SwitchIntent.REUSE;
+        } else if (switchIntent == SwitchIntent.REUSE) {
+            switchIntent = SwitchIntent.NONE;
+        }
     }
 
     void setReleaseIntent(boolean release) {
-        releasePlayerOnSwitch = release;
+        if (release) {
+            switchIntent = SwitchIntent.REBUILD;
+        } else if (switchIntent == SwitchIntent.REBUILD) {
+            switchIntent = SwitchIntent.NONE;
+        }
     }
 
     /** 两个意图一起写 */
     void toggleReuseIntent(boolean reuse, boolean release) {
-        reusePlayerOnSwitch = reuse;
-        releasePlayerOnSwitch = release;
+        switchIntent = release ? SwitchIntent.REBUILD : (reuse ? SwitchIntent.REUSE : SwitchIntent.NONE);
     }
 
-    /** 取出并复位(release 优先:true = 不复用) */
+    /** 取出并复位(REBUILD 优先:true = 复用) */
     boolean consumeReuseIntent() {
-        boolean reuse = reusePlayerOnSwitch && !releasePlayerOnSwitch;
-        toggleReuseIntent(false, false);
+        boolean reuse = switchIntent == SwitchIntent.REUSE;
+        switchIntent = SwitchIntent.NONE;
         return reuse;
     }
 

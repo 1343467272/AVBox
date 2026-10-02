@@ -5,6 +5,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.widget.Toast;
+import com.github.tvbox.osc.player.KernelDecision;
+import com.github.tvbox.osc.player.KernelReusePolicy;
 import com.github.tvbox.osc.player.MyVideoView;
 import com.github.tvbox.osc.player.PreloadCoordinator;
 import com.github.tvbox.osc.player.PlaybackHostApi;
@@ -194,17 +196,19 @@ final class PlayContainerViewBridge implements PlaybackViewBridge {
     public void startVideoPlayback(String url, HashMap<String, String> headers, boolean forceExoPlayer) {
         if (container.mVideoView == null) return;
         container.mController.hidePauseRoot();
-        // 渲染方式变更:复用内核不会重建渲染视图(见 MyVideoView.isRenderFactoryApplied),同样必须走非复用路径
-        if (container.mVideoView.getMediaPlayer() != null && !container.mVideoView.isRenderFactoryApplied()) {
+        // 渲染方式变更:复用内核不会重建渲染视图,必须走非复用路径
+        if (container.mVideoView.getMediaPlayer() != null
+                && container.mVideoView.needsRenderRebuild(container.mVideoView.factoryRenderType())) {
             container.mVideoView.requireKernelRebuild();
             LOG.i("echo-render-changed: rebuild kernel on next start");
         }
-        // EXO 解码方式变更标记(2026-09-17,见 MyVideoView.requireKernelRebuild):复用内核不会重选解码器,
-        // 必须走非复用路径先释放再新建;无条件消费一次,避免标记残留到下一次无关起播
+        // 复用内核不会重选解码器:标记无条件消费一次,避免残留到下一次无关起播
         boolean rebuildKernel = container.mVideoView.consumeKernelRebuildRequired();
-        boolean reusePlayer = !forceExoPlayer && container.mVideoView.getMediaPlayer() != null && !rebuildKernel;
+        boolean kernelPresent = container.mVideoView.getMediaPlayer() != null;
+        boolean reusePlayer = KernelReusePolicy.decide(kernelPresent, rebuildKernel, forceExoPlayer, true)
+                == KernelDecision.REUSE;
         if (!reusePlayer) container.hideTip();
-        if (!reusePlayer && container.mVideoView.getMediaPlayer() != null) {
+        if (!reusePlayer && kernelPresent) {
             container.releasePlayerKernel();
         }
         container.mVideoView.setProgressKey(container.scheduler.progressKey());

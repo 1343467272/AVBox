@@ -85,15 +85,7 @@ final class PlayContainerControlListener implements VodControlListener {
         if(replay){
             container.playViaScheduler(true);
         }else {
-            container.reloadDanmuForPlayback();
-            if(container.scheduler.webPlayUrl()!=null && !container.scheduler.webPlayUrl().isEmpty()) {
-                container.scheduler.stopParse();
-                container.scheduler.initParseLoadFound();
-                container.releasePlayerKernel();
-                container.scheduler.goPlayUrl(container.scheduler.webPlayUrl(),container.scheduler.webHeaderMap());
-            }else {
-                container.playViaScheduler(false);
-            }
+            container.replayCurrentAddress();
         }
     }
 

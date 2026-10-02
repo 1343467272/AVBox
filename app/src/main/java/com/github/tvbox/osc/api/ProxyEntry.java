@@ -50,18 +50,27 @@ final class ProxyEntry {
             try {
                 Spider spider = owner.getCSP(source);
 
-                Object[] result = spider.proxy(param);
+                // spider.proxy 单独兜底:它抛异常不应吞掉下面的 jar/direct 兜底路径
+                Object[] result = null;
+                try {
+                    result = spider.proxy(param);
+                } catch (Throwable th) {
+                    LOG.e("echo-proxy-route: spider.proxy error, fallback | " + th);
+                }
                 if (result != null) return result;
+                LOG.e("echo-proxy-route: spider.proxy null, try proxyInvokeJar");
 
                 result = spiderLoader.proxyInvokeJar(param);
                 if (result != null) return result;
+                LOG.e("echo-proxy-route: proxyInvokeJar null, try proxyDirect");
 
                 result = proxyDirect(param);
                 if (result != null) return result;
+                LOG.e("echo-proxy-route: proxyDirect null, give up");
 
                 return null;
             } catch (Throwable th) {
-                LOG.e("echo-proxy siteKey error: " + th.getMessage());
+                LOG.e("echo-proxy-route: type3 route error | " + th + " | msg=" + th.getMessage());
                 return null;
             }
         }

@@ -18,6 +18,8 @@ import com.github.tvbox.osc.bean.VodInfo
 import com.github.tvbox.osc.data.RoomDataManger
 import com.github.tvbox.osc.dlna.CastVideo
 import com.github.tvbox.osc.event.RefreshEvent
+import com.github.tvbox.osc.player.KernelDecision
+import com.github.tvbox.osc.player.KernelReusePolicy
 import com.github.tvbox.osc.player.MyVideoView
 import com.github.tvbox.osc.player.PlaybackController
 import com.github.tvbox.osc.player.PlaybackEngine
@@ -384,9 +386,14 @@ class MusicPlayerActivity : BaseActivity(), PlaybackPage {
 
     private fun startPlayback(url: String, headers: HashMap<String, String>?, forceExoPlayer: Boolean) {
         PlayerTipBridge.hide()
+        if (player.mediaPlayer != null && player.needsRenderRebuild(player.factoryRenderType())) {
+            player.requireKernelRebuild()
+            LOG.i("echo-render-changed: rebuild kernel on next start")
+        }
         val rebuildKernel = player.consumeKernelRebuildRequired()
-        val reusePlayer = !forceExoPlayer && player.mediaPlayer != null && !rebuildKernel
-        if (!reusePlayer && player.mediaPlayer != null) engine.releasePlayer()
+        val kernelPresent = player.mediaPlayer != null
+        val reusePlayer = KernelReusePolicy.decide(kernelPresent, rebuildKernel, forceExoPlayer, true) == KernelDecision.REUSE
+        if (!reusePlayer && kernelPresent) engine.releasePlayer()
         player.setProgressKey(controller.progressKey())
         controller.markContentStarted()
         if (headers != null) player.setUrl(url, headers) else player.setUrl(url)

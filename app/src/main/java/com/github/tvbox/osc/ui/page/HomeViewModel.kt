@@ -152,11 +152,13 @@ class HomeViewModel : ViewModel() {
     }
 
     fun reload() {
+        LOG.i("echo--sort-reload")
         SourceRuntimeState.clearRuntimeCache()
         loadHome()
     }
 
     fun switchSource(bean: SourceBean) {
+        LOG.i("echo--sort-switch: key=${bean.key}")
         ApiConfig.get().setSourceBean(bean)
         currentSource.value = bean
         loadHome()
@@ -166,6 +168,7 @@ class HomeViewModel : ViewModel() {
         sources.value = ApiConfig.get().getSwitchSourceBeanList()
         val home = ApiConfig.get().getHomeSourceBean()
         loadingSourceKey = if (home.key.isNullOrEmpty()) null else home.key
+        LOG.i("echo--sort-loadHome: key=${loadingSourceKey} name=${home.name} srcCount=${sources.value.size}")
         currentSource.value = home
         pageLoading.value = true
         sortsLoaded.value = false
@@ -213,6 +216,7 @@ class HomeViewModel : ViewModel() {
     /** 整页错误态(分类取数失败)手动重试 */
     fun retrySort() {
         val key = loadingSourceKey ?: return
+        LOG.i("echo--sort-manual-retry: key=$key")
         sortLoadFailed.value = false
         sortRetried = true
         rec.value = Rec(PartitionState.Loading, emptyList())
@@ -254,6 +258,7 @@ class HomeViewModel : ViewModel() {
     private fun onSortResult(absXml: AbsSortXml?) {
         val key = loadingSourceKey
         if (key == null) {
+            LOG.i("echo--sort-null-key: srcName=${currentSource.value?.name} srcCount=${sources.value.size} absXml=${absXml != null}")
             rec.value = Rec(PartitionState.Empty, emptyList())
             partitions.value = emptyList()
             sorts.value = emptyList()
@@ -261,7 +266,10 @@ class HomeViewModel : ViewModel() {
             sortsLoaded.value = true
             return
         }
-        if (absXml?.sourceKey != null && absXml.sourceKey != key) return
+        if (absXml?.sourceKey != null && absXml.sourceKey != key) {
+            LOG.i("echo--sort-stale-drop: key=$key absKey=${absXml.sourceKey}")
+            return
+        }
 
         if (absXml != null && absXml.loadFailed) {
             if (!sortRetried) {
@@ -280,7 +288,7 @@ class HomeViewModel : ViewModel() {
             return
         }
 
-        LOG.i("echo--sort-result: src=$key hasClasses=${absXml?.classes?.sortList != null}")
+        LOG.i("echo--sort-result: src=$key hasClasses=${absXml?.classes?.sortList != null} sortSize=${absXml?.classes?.sortList?.size}")
         val adjusted = if (absXml?.classes?.sortList != null) {
             DefaultConfig.adjustSort(key, absXml.classes.sortList, true)
         } else {
@@ -296,6 +304,28 @@ class HomeViewModel : ViewModel() {
         }
 
         val visible = adjusted.filter { it.id != "my0" }
+        if (visible.isEmpty() && absXml != null && absXml.videoList.isNullOrEmpty()) {
+            if (!sortRetried) {
+                sortRetried = true
+                LOG.i("echo--sort-empty-retry: src=$key sortSize=${absXml.classes?.sortList?.size}")
+                val gen = loadGeneration
+                scope.launch {
+                    delay(2000)
+                    if (loadingSourceKey == key && loadGeneration == gen) {
+                        sortViewModel.getSort(key, HomeSettings.current() == HomeSettings.HomeLayout.Horizontal)
+                    }
+                }
+                return
+            }
+            LOG.i("echo--sort-empty-final: src=$key sortSize=${absXml.classes?.sortList?.size}")
+            sortLoadFailed.value = true
+            rec.value = Rec(PartitionState.Empty, emptyList())
+            partitions.value = emptyList()
+            sorts.value = emptyList()
+            allSorts.value = emptyList()
+            sortsLoaded.value = true
+            return
+        }
         sorts.value = visible
         val vertical = HomeSettings.current() == HomeSettings.HomeLayout.Vertical
         val active = activeSortId?.takeIf { id -> visible.any { it.id == id } } ?: visible.firstOrNull()?.id
@@ -308,6 +338,7 @@ class HomeViewModel : ViewModel() {
             }
         }
         partitions.value = newPartitions
+        LOG.i("echo--sort-partitions: n=${newPartitions.size}")
         sortsLoaded.value = true
         newPartitions
             .filter { it.state == PartitionState.Loading }

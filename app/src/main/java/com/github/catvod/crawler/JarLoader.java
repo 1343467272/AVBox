@@ -119,7 +119,7 @@ public class JarLoader {
             Method method = clz.getMethod("proxy", Map.class);
             proxyMethods.put(key, method);
         } catch (Throwable e) {
-            LOG.e("JarLoader", e);
+            LOG.e("echo-proxy-jar: register fail key=" + key + " | " + e);
         }
     }
 
@@ -282,14 +282,35 @@ public class JarLoader {
             result = proxyInvoke(entry.getValue(), params);
             if (result != null) return result;
         }
+        LOG.e("echo-proxy-jar: no result, siteKey=" + siteKey + " recent=" + recent + " jars=" + proxyMethods.keySet());
         return null;
     }
 
     private Object[] proxyInvoke(Method method, Map<String, String> params) {
+        if (method == null) return null;
         try {
-            return method == null ? null : (Object[]) method.invoke(null, params);
+            // jar 会把残余 params 当 HTTP header 透传给直链请求;siteKey 是本端路由专用参数
+            // (jar 自身不读), 中文值(如"虎斑")会被 okhttp 以 Unexpected char 拒绝并冒泡成 500
+            Map<String, String> args = params == null ? null : new HashMap<>(params);
+            if (args != null) args.remove("siteKey");
+            return (Object[]) method.invoke(null, args);
         } catch (Throwable e) {
-            LOG.e("JarLoader", e);
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            StringBuilder bad = new StringBuilder();
+            if (params != null) {
+                for (Map.Entry<String, String> entry : params.entrySet()) {
+                    String v = entry.getValue();
+                    if (v == null) continue;
+                    for (int i = 0; i < v.length(); i++) {
+                        if (v.charAt(i) > 0x7f) {
+                            if (bad.length() > 0) bad.append(',');
+                            bad.append(entry.getKey());
+                            break;
+                        }
+                    }
+                }
+            }
+            LOG.e("echo-proxy-jar: invoke error | " + cause + " | nonAsciiKeys=" + bad);
             return null;
         }
     }

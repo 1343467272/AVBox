@@ -44,15 +44,7 @@ public class DefaultConfig {
             }
             ArrayList<String> categories = sb.getCategories();
             if (!categories.isEmpty()) {
-                for (String cate : categories) {
-                    for (MovieSort.SortData sortData : list) {
-                        if (sortData.name.equals(cate)) {
-                            if (sortData.filters == null)
-                                sortData.filters = new ArrayList<>();
-                            data.add(sortData);
-                        }
-                    }
-                }
+                data = pickByCategories(list, categories);
             } else {
                 for (MovieSort.SortData sortData : list) {
                     if (sortData.filters == null)
@@ -64,6 +56,28 @@ public class DefaultConfig {
         if (withMy)
             data.add(0, new MovieSort.SortData("my0", "主页")); // i18n: keep(默认配置数据)
         Collections.sort(data);
+        return data;
+    }
+
+    /** 按白名单挑分类;一个都没匹配上退化为全量,否则源改分类名会把首页整页过滤成空 */
+    static List<MovieSort.SortData> pickByCategories(List<MovieSort.SortData> list, List<String> categories) {
+        List<MovieSort.SortData> data = new ArrayList<>();
+        for (String cate : categories) {
+            for (MovieSort.SortData sortData : list) {
+                if (sortData.name.equals(cate)) {
+                    if (sortData.filters == null)
+                        sortData.filters = new ArrayList<>();
+                    data.add(sortData);
+                }
+            }
+        }
+        if (data.isEmpty()) {
+            for (MovieSort.SortData sortData : list) {
+                if (sortData.filters == null)
+                    sortData.filters = new ArrayList<>();
+                data.add(sortData);
+            }
+        }
         return data;
     }
 

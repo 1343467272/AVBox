@@ -26,6 +26,8 @@ import com.github.tvbox.osc.bean.LiveChannelGroup
 import com.github.tvbox.osc.bean.LiveChannelItem
 import com.github.tvbox.osc.bean.LivePlayerManager
 import com.github.tvbox.osc.bean.LiveSettingGroup
+import com.github.tvbox.osc.player.KernelDecision
+import com.github.tvbox.osc.player.KernelReusePolicy
 import com.github.tvbox.osc.player.MyVideoView
 import com.github.tvbox.osc.player.PlaybackService
 import com.github.tvbox.osc.player.controller.ComposeLiveController
@@ -418,10 +420,10 @@ class LivePlayActivity : BaseActivity() {
         overlay.updateChannelInfoUi()
         val videoView = mVideoView
         if (videoView != null) {
-            // EXO 解码方式变更标记(2026-09-17):复用内核不会重选解码器,切台必须重建 ——
-            // 与点播侧 PlayContainer.startVideoPlayback 同款;标记只在"EXO 解码值确实变了"时才被置上
+            // 复用内核不会重选解码器:标记必须消费,切台才能按新解码方式重建
             val rebuildKernel = videoView.consumeKernelRebuildRequired()
-            val reusePlayer = !rebuildKernel && canReusePlayer(previousLivePlayerType)
+            val reusePlayer = KernelReusePolicy.decide(videoView.mediaPlayer != null, rebuildKernel, false,
+                    canReusePlayer(previousLivePlayerType)) == KernelDecision.REUSE
             val keepExoFrame = reusePlayer
             if (showPreviousFrame && !keepExoFrame) {
                 overlay.showSwitchChannelSnapshot()

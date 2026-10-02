@@ -1092,6 +1092,19 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         scheduler.play(reset);
     }
 
+    void replayCurrentAddress() {
+        reloadDanmuForPlayback();
+        String url = scheduler.webPlayUrl();
+        if (url != null && !url.isEmpty()) {
+            scheduler.stopParse();
+            scheduler.initParseLoadFound();
+            releasePlayerKernel();
+            scheduler.goPlayUrl(url, scheduler.webHeaderMap());
+        } else {
+            playViaScheduler(false);
+        }
+    }
+
     /**
      * D6 同片接管时对齐实例级配置:缩放直接下发;渲染方式与解码方式都必须重建内核才生效
      * (复用内核不重建渲染视图,media3 也不给复用内核重选解码器),此处改走既有"重播"链路
@@ -1106,7 +1119,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         if (cfg.optInt("pl", 2) >= 10) return false;
         // 纯音频会话最终总会热切 Texture(见 ensureAudioOnlyRender),按用户设置重建只会白断一次声音
         boolean renderChanged = !scheduler.isConfirmedAudioOnly()
-                && !mVideoView.isRenderTypeApplied(cfg.optInt("pr", 1));
+                && mVideoView.needsRenderRebuild(cfg.optInt("pr", 1));
         boolean decodeChanged = !PlayerHelper.isExoDecodeApplied(cfg);
         if (!renderChanged && !decodeChanged) return false;
         LOG.i(renderChanged ? "echo-render-changed: rebuild kernel on takeover"

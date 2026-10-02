@@ -891,7 +891,14 @@ public class PlaybackController {
         invalidatePreload();
         if (view != null) view.hidePreloadReadyTip();
         if (vod() == null) return;
-        boolean reusePlayer = consumeReusePlayerOnSwitch();
+        // 起播前的复用判定走唯一入口(与各起播点同一函数):意图来自同片换集/换线/切歌;
+        // 预热建的空闲内核(无内容语义)在开关开启时免意图复用 —— 否则它会被这里的释放收走,预热收益归零
+        boolean kernelPresent = view != null && view.mediaPlayer() != null;
+        boolean idleKernelReused = isIdleKernelReusable(kernelPresent);
+        boolean reuseAllowed = consumeReusePlayerOnSwitch() || idleKernelReused;
+        // "必须重建"标记与 dash 专用路径取流后才可知,交起播点判定;这里只决定"要不要先把内核释放掉"
+        boolean reusePlayer = KernelReusePolicy.decide(kernelPresent, false, false, reuseAllowed)
+                == KernelDecision.REUSE;
         st.switchingPlayback = true;
         st.audioPlayback = false;
         if (view != null) {
@@ -907,11 +914,12 @@ public class PlaybackController {
             return;
         }
         EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_REFRESH, vod()));
-        if (reusePlayer) {
+        if (reusePlayer && !idleKernelReused) {
             // 复用播放器时提示已由上一集留着,这里强制写一次空态(走 view.showTip 而非页面 setTip):
             // 提示层状态归视图桥,页面/音乐页初始化都会先 hide(),旧态不会留给下一页
             if (view != null) view.showTip("", true, false);
         } else if (view != null) {
+            // 空闲内核(预热)复用没有"上一集的提示"可留,仍要给"获取播放信息"反馈
             view.showTip(str(R.string.player_getting_info), true, false);
         }
         publishTitle();
@@ -933,7 +941,8 @@ public class PlaybackController {
                     WatchProgressStore.save(progressOwner(), progressKey(), previousPosition, view.duration());
                 }
                 view.clearVideoFrame();
-            } else {
+            } else if (kernelPresent) {
+                // 内核本来就不在时不空转 release(它会重复清"已起播内容"归属)
                 view.releasePlayer();
             }
         }
@@ -1000,6 +1009,15 @@ public class PlaybackController {
         if (svm != null) {
             svm.getPlay(sourceKey(), vod().playFlag, progressKey(), vs.url, subtitleCacheKey());
         }
+    }
+
+    /**
+     * 预热建的空闲内核(从未绑定内容)可被新内容起播免意图复用:它没有内容语义要保护,复用只是 reset+换源;
+     * 有内容的内核(暂停/在播)仍按"新内容先释放"处理。开关关闭时恒 false,维持既有行为。
+     */
+    private boolean isIdleKernelReusable(boolean kernelPresent) {
+        if (!kernelPresent || !KV.get(HawkConfig.KERNEL_PREWARM, false)) return false;
+        return view.currentPlayState() == VideoView.STATE_IDLE;
     }
 
     /**

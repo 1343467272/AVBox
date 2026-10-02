@@ -565,6 +565,8 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
             mCurrentPosition = 0;
         }
         if (mMediaPlayer == null) {
+            // 不应发生:调用方(内核复用判定)须先确认内核还在 —— 静默转 start() 会把判定错误吞成"看起来正常"
+            L.w("replay() called without kernel, fallback to start()");
             start();
             return;
         }

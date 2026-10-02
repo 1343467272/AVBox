@@ -135,6 +135,7 @@ public final class KVKeySpec implements KVDecoder.TypeRegistry {
         register(HawkConfig.LIQUID_GLASS_NAVBAR, false);
         register(HawkConfig.LIQUID_GLASS_CONTROLS, false);
         register(HawkConfig.LIQUID_GLASS_DISPERSION, false);
+        register(HawkConfig.THEME_PURE_BLACK, false);
 
         // ---- float ----
         register(HawkConfig.LIQUID_GLASS_BLUR, 0f);

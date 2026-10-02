@@ -363,6 +363,7 @@
     <string name="theme_mode_auto">Auto</string>
     <string name="theme_mode_light">Light</string>
     <string name="theme_mode_dark">Dark</string>
+    <string name="theme_pure_black">Pure black</string>
     <string name="theme_palette_style">Color Style</string>
     <string name="theme_seed_red">Red</string>
     <string name="theme_seed_orange">Orange</string>

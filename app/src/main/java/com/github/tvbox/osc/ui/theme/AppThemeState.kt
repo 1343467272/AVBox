@@ -25,6 +25,7 @@ object AppThemeState {
         seedArgb = KV.get(HawkConfig.THEME_SEED, DefaultSeedArgb),
         style = runCatching { PaletteStyle.valueOf(KV.get(HawkConfig.THEME_PALETTE_STYLE, "")) }
             .getOrDefault(DefaultPaletteStyle),
+        pureBlack = KV.get(HawkConfig.THEME_PURE_BLACK, false),
     )
 
     fun setSource(source: Int) {
@@ -45,6 +46,11 @@ object AppThemeState {
     fun setStyle(style: PaletteStyle) {
         KV.put(HawkConfig.THEME_PALETTE_STYLE, style.name)
         current = current.copy(style = style)
+    }
+
+    fun setPureBlack(enabled: Boolean) {
+        KV.put(HawkConfig.THEME_PURE_BLACK, enabled)
+        current = current.copy(pureBlack = enabled)
     }
 
     fun isDark(systemDark: Boolean): Boolean = when (current.mode) {

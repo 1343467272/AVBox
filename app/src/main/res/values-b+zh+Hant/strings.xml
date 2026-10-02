@@ -363,6 +363,7 @@
     <string name="theme_mode_auto">自動</string>
     <string name="theme_mode_light">淺色</string>
     <string name="theme_mode_dark">深色</string>
+    <string name="theme_pure_black">純黑模式</string>
     <string name="theme_palette_style">配色風格</string>
     <string name="theme_seed_red">紅色</string>
     <string name="theme_seed_orange">橘色</string>

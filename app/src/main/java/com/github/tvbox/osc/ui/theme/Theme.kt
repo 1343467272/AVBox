@@ -54,7 +54,7 @@ fun AVBoxTheme(
     }
 
     val context = LocalContext.current
-    val colorScheme = when {
+    val baseScheme = when {
         config.source == ThemeSource.CUSTOM -> remember(config.seedArgb, darkTheme, config.style) {
             AppThemeState.customScheme(config.seedArgb, darkTheme, config.style)
         }
@@ -65,6 +65,7 @@ fun AVBoxTheme(
         darkTheme -> darkColorScheme()
         else -> lightColorScheme()
     }
+    val colorScheme = if (darkTheme && config.pureBlack) baseScheme.toPureBlack() else baseScheme
 
     if (manageStatusBarIcons) {
         ApplyAppThemeBars(isDark = darkTheme)
@@ -123,7 +124,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 @Composable
 private fun AVBoxThemeLightPreview() {
     AVBoxTheme(
-        config = ThemeConfig(ThemeSource.CUSTOM, ThemeMode.LIGHT, DefaultSeedArgb, PaletteStyle.TonalSpot),
+        config = ThemeConfig(ThemeSource.CUSTOM, ThemeMode.LIGHT, DefaultSeedArgb, PaletteStyle.TonalSpot, pureBlack = false),
     ) {
         Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
             Text("AVBox")
@@ -135,7 +136,7 @@ private fun AVBoxThemeLightPreview() {
 @Composable
 private fun AVBoxThemeDarkPreview() {
     AVBoxTheme(
-        config = ThemeConfig(ThemeSource.CUSTOM, ThemeMode.DARK, DefaultSeedArgb, PaletteStyle.TonalSpot),
+        config = ThemeConfig(ThemeSource.CUSTOM, ThemeMode.DARK, DefaultSeedArgb, PaletteStyle.TonalSpot, pureBlack = false),
     ) {
         Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
             Text("AVBox")

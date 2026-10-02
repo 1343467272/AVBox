@@ -153,6 +153,7 @@ public class HawkConfig {
     public static final String THEME_MODE = "theme_mode"; //0 跟随系统 1 浅色 2 深色
     public static final String THEME_SEED = "theme_seed"; //自定义种子色 ARGB
     public static final String THEME_PALETTE_STYLE = "theme_palette_style"; //PaletteStyle 枚举名
+    public static final String THEME_PURE_BLACK = "theme_pure_black"; //深色模式下容器色压成纯黑(仅深色生效)
     // 液态玻璃(2026-09-13,照搬 示例文件/android):blur 需 API 31+,lens 需 API 33+,低版本回退 M3 栏。
     // 2026-09-16 用户定稿:无总开关,两个作用域开关各自控制(默认都开);blur/distortion 两档参数共用。
     // 原总开关键 `liquid_glass_enabled` 已删除(存量值不再读取,无迁移)

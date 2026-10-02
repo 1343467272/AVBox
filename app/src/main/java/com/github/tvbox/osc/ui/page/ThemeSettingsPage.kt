@@ -138,6 +138,13 @@ fun ThemeSettingsScreen(onNavigateBack: () -> Unit) {
                         },
                     )
                 }
+                SettingsCard(SettingsCardPosition.MIDDLE) {
+                    SettingsSwitchRow(
+                        title = stringResource(R.string.theme_pure_black),
+                        checked = config.pureBlack,
+                        onCheckedChange = { AppThemeState.setPureBlack(it) },
+                    )
+                }
                 ThemeCard(SettingsCardPosition.MIDDLE) {
                     ThemeModeRow(
                         currentMode = config.mode,

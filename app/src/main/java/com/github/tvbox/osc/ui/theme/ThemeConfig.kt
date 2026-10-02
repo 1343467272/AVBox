@@ -20,6 +20,7 @@ data class ThemeConfig(
     val mode: Int,
     val seedArgb: Int,
     val style: PaletteStyle,
+    val pureBlack: Boolean,
 )
 
 val DefaultSeedArgb: Int = 0xFF1B6EF3.toInt()

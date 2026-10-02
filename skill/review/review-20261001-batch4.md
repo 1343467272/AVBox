@@ -1,7 +1,7 @@
 ---
 name: AVBox 代码审查报告（2026-10-01 批次四）
-scope: 工作区未提交改动（9 文件，+157/-46）——首页取数失败态与重试链路 + 首页源胶囊 logo + 诊断日志
-mode: 定向审查（用户指定"未提交改动"范围，非全库分批复扫）
+scope: 工作区未提交改动（9 文件+157/-46）——首页取数失败态与重试链路 + 首页源胶囊 logo + 诊断日志
+mode: 定向审查（范围，非全库分批复扫）
 verdict: **发现 1+2 已修并复验通过**（修复轮见附录 C）；发现 3/4 登记待处理；真机走查未做
 ---
 
@@ -9,7 +9,7 @@ verdict: **发现 1+2 已修并复验通过**（修复轮见附录 C）；发现
 
 - 审查范围：`git status` 的全部 9 个改动文件（M，无新增/删除文件）。范围外文件仅在"消费方"意义上被读（`ApiConfig`、`SourceBean`、`SourceRuntimeState`、`HomeGridLayout.kt` 全文、`SourceResultParserRoutingTest.kt`）。
 - 锚点类逐个点名：`SortLoader` 读过 ✓、`ListLoader` 读过 ✓、`SourceResultParser` 读过 ✓、`HomeViewModel`（Kotlin）读过 ✓、`HomePage`/`HomeGridLayout` 读过 ✓（改动段 + 相邻 context）、`AbsSortXml` 读过 ✓、`LOG` 读过 ✓、`BoundedCall` 读过 ✓、`SourceViewModel` 门面读过 ✓（确认 `sortResult` 通道无第二消费者）。
-- 未展开：`player` 模块、`osc/player`、直播链（本批未触碰）；`示例文件/`、`quickjs/`、`pyramid/`、`libs/` 按排除范围跳过。
+- 未展开：`player` 模块、`osc/player`、直播链（本批未触碰）；参考实现、`quickjs/`、`pyramid/`、`libs/` 按排除范围跳过。
 - 所用工具与命令：`git diff`（工作区 vs HEAD，508 行落盘后逐行读）；`grep` 语义检索定位消费方（`getConfigLogo`、`setIcon`、`sortLoadFailed`、`postSortFailure`、`echo--` 前缀）；**临时探针单测**实证解析层形状（`TempSortJsonShapeTest`，4 例全绿后已删除，工作区已复原）；`.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest`（日志落盘再读，未用管道过滤）。
 - 验证结果：`BUILD SUCCESSFUL in 58s`；`app/build/test-results/testDebugUnitTest/*.xml` **61 类 / 468 例 / 0 失败 / 0 错误**（与 `refactor-plan-20261001.md` 记录的 58 类 / 455 例基线相比 +3 类 +13 例，来自本批之前的提交，非本次改动）。Kotlin 编译无新增 warning（日志仅 Gradle 自身的 deprecation WARNING）。
 
@@ -66,7 +66,7 @@ verdict: **发现 1+2 已修并复验通过**（修复轮见附录 C）；发现
 ## 发现 2（中 · 本次引入）type 4 POST 回退分支：解析成功但无推荐时既不投结果也不投失败，请求静默挂起
 
 - 位置：`app/src/main/java/com/github/tvbox/osc/sourcedata/SortLoader.java:360-369`，锚点 `if (sortXml != null) { ... } else { postSortFailure(sourceKey); }`
-- 描述：`sortXml != null` 且 `absXml.movie.videoList` 为空时，既不 `postSortResult`（原实现会）也不 `postSortFailure` ⇒ `sortResult` 通道全程无回包。`HomeViewModel.loadHome()` 已 `armWatchdog()`，20s 后 `onHomeLoadTimeout()` 把 `rec` 置为 `Error` 并弹「首页加载超时」，用户看到的是"超时"而非真实成因。
+- 描述：`sortXml != null` 且 `absXml.movie.videoList` 为空时，既不 `postSortResult`（原实现会）也不 `postSortFailure` ⇒ `sortResult` 通道全程无回包。`HomeViewModel.loadHome()` 已 `armWatchdog()`，20s 后 `onHomeLoadTimeout()` 把 `rec` 置为 `Error` 并弹「首页加载超时」，看到的是"超时"而非真实成因。
 - 触发条件：extend 编码后 URL 超长（`URLEncoder.encode(extend).length() >= 1000`）走 `RemoteTVBox.post`，且站点返回无推荐视频——概率低但路径确实存在。
 - 证据：
   ```java

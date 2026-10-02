@@ -17,7 +17,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +31,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.api.ApiConfig
 import com.github.tvbox.osc.bean.SourceBean
@@ -57,7 +57,7 @@ private val SourceCardShapeRight = RoundedCornerShape(
 fun SearchSettingsSheet(onDismiss: () -> Unit, onSelectionChanged: () -> Unit) {
     val sources = remember { ApiConfig.get().getSourceBeanList().filter(SourceBean::isSearchable) }
     val allKeys = remember(sources) { sources.map { it.key }.toSet() }
-    val homeLayout by HomeSettings.layoutFlow.collectAsState()
+    val homeLayout by HomeSettings.layoutFlow.collectAsStateWithLifecycle()
     var exactMatch by remember { mutableStateOf(SearchSettings.isExactMatchEnabled()) }
     var selected by remember {
         val selection = SearchSettings.currentSelection()

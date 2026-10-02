@@ -32,7 +32,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -59,6 +58,7 @@ import com.github.tvbox.osc.ui.components.SegmentOption
 import com.github.tvbox.osc.ui.components.SettingsCard
 import com.github.tvbox.osc.ui.components.SettingsCardPosition
 import com.github.tvbox.osc.ui.components.SettingsGroup
+import com.github.tvbox.osc.ui.components.SettingsSwitch
 import com.github.tvbox.osc.ui.components.SettingsSwitchRow
 import com.github.tvbox.osc.ui.components.ThemeColorPickerSheet
 import com.github.tvbox.osc.ui.components.TopBarActionBox
@@ -304,7 +304,7 @@ private fun CustomThemeSwitchRow(checked: Boolean, onCheckedChange: (Boolean) ->
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(16.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        SettingsSwitch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

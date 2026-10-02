@@ -15,15 +15,9 @@ import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.github.tvbox.osc.ui.navbar.InteractiveHighlight
-import com.github.tvbox.osc.ui.theme.GLASS_AMBIENT_INTENSITY
-import com.github.tvbox.osc.ui.theme.GLASS_LIGHT_ANGLE
-import com.github.tvbox.osc.ui.theme.GLASS_THICKNESS_ALPHA
-import com.github.tvbox.osc.ui.theme.GLASS_THICKNESS_DP
 import com.github.tvbox.osc.ui.theme.LiquidGlassState
-import com.github.tvbox.osc.ui.theme.REFRACTION_DEPTH_RATIO
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.emptyBackdrop
@@ -32,8 +26,6 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.highlight.HighlightStyle
-import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import kotlin.math.min
 
@@ -41,14 +33,6 @@ internal val LocalTopBarGlassBackdrop = compositionLocalOf<LayerBackdrop?> { nul
 
 internal val LocalGlassPauseRecording = compositionLocalOf { { false } }
 
-
-/** 方向性高光(亮上缘 / 暗下缘):库的 Ambient 样式配正上方光源,是立体感的主来源 */
-internal val GlassHighlight: Highlight = Highlight.Ambient.copy(
-    style = HighlightStyle.Ambient(
-        intensity = GLASS_AMBIENT_INTENSITY,
-        angle = GLASS_LIGHT_ANGLE,
-    )
-)
 
 /** [pressEffect] = false 时不做按压缩放与按压光斑:含输入框的控件必须选这档,见 `SearchField` */
 @Composable
@@ -86,8 +70,8 @@ private fun Modifier.glassSurface(
     val distortionPx = with(density) { config.distortionDp.dp.toPx() }
     val supportsLens = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     val isLightTheme = !isSystemInDarkTheme()
-    val containerColor = MaterialTheme.colorScheme.surfaceBright.copy(
-        alpha = 0.45f * config.containerAlphaScale
+    val containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(
+        alpha = 0.4f * config.containerAlphaScale
     )
     val animationScope = rememberCoroutineScope()
     val interactiveHighlight =
@@ -106,25 +90,17 @@ private fun Modifier.glassSurface(
             if (supportsLens) {
                 val refraction = min(distortionPx, size.minDimension / 2f)
                 lens(
-                    refraction * REFRACTION_DEPTH_RATIO,
                     refraction,
-                    depthEffect = true,
+                    refraction,
                     chromaticAberration = config.dispersion,
                 )
             }
         },
-        highlight = { GlassHighlight },
+        highlight = { Highlight.Default },
         shadow = {
             Shadow(
                 radius = 8.dp,
-                color = Color.Black.copy(if (isLightTheme) 0.08f else 0.16f),
-            )
-        },
-        innerShadow = {
-            InnerShadow(
-                radius = GLASS_THICKNESS_DP.dp,
-                offset = DpOffset(0.dp, -GLASS_THICKNESS_DP.dp),
-                alpha = GLASS_THICKNESS_ALPHA,
+                color = Color.Black.copy(if (isLightTheme) 0.1f else 0.2f),
             )
         },
         layerBlock = interactiveHighlight?.let(::pressGrowthLayerBlock),

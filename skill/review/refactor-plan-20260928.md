@@ -53,7 +53,7 @@ source: 2026-09-28 按 `skill/avbox-code-review-spec.md` 的「架构与分层 /
 
 - ⚠️ **更正（2026-09-28 实施时）**：上表 LivePlayActivity 一行的「字段仅 4 个 / Activity ≤250」不成立 —— 该文件的 Compose UI 段 2026-09-15 就已外提为 `LiveScreens.kt`，现存 1073 行是**有状态**的频道列表簇、播放会话簇与装配代码；压缩需另立「阶段 1b」（中风险，见 §4 阶段 1 执行状态）。
 
-- ⚠️ **更正（2026-09-28 实施时，第二条）**：上表 PlayContainer 一行的「15 个匿名块」不成立 —— 全库扫描（Java `new X() {` + Kotlin `object : X {`）后 >60 行的匿名块共 8 处，>80 行 4 处；PlayContainer 只有 2 处（`viewBridge` 277 + `VodControlListener` 133）。且这两个适配器共依赖宿主约 20 个 private 成员，远超本表下方「每多拆一个文件暴露 2–4 个包级成员」的硬地板 ⇒ 阶段 2 先做同文件具名化；**文件边界外提已作为阶段 2b 由用户拍板完成**（`PlayContainer` 1843 → 1424 行，代价 = 23 个成员降为包级，暴露面限 `ui.player` 包；见 §4 阶段 2 执行状态）。
+- ⚠️ **更正（2026-09-28 实施时，第二条）**：上表 PlayContainer 一行的「15 个匿名块」不成立 —— 全库扫描（Java `new X() {` + Kotlin `object : X {`）后 >60 行的匿名块共 8 处，>80 行 4 处；PlayContainer 只有 2 处（`viewBridge` 277 + `VodControlListener` 133）。且这两个适配器共依赖宿主约 20 个 private 成员，远超本表下方「每多拆一个文件暴露 2–4 个包级成员」的硬地板 ⇒ 阶段 2 先做同文件具名化；**文件边界外提已作为阶段 2b 由已确认完成**（`PlayContainer` 1843 → 1424 行，代价 = 23 个成员降为包级，暴露面限 `ui.player` 包；见 §4 阶段 2 执行状态）。
 
 **三条硬地板**：① Activity/Service/Application 各留一个；② 静态门面签名（`ApiConfig.get()`、KV）必须保留；③ Java `private` 状态跨文件需降级或构造传递——经验值每多拆一个文件新增暴露 2–4 个包级成员，**低于 ~120 行/文件即进入碎片化**，目标区间取 150–350。
 
@@ -81,8 +81,8 @@ source: 2026-09-28 按 `skill/avbox-code-review-spec.md` 的「架构与分层 /
 
 - 已落地（3 个本地 commit，未推远程）：`PlayContainer` 的 `viewBridge`(277) 与 `VodControlListener`(133) → 同文件具名内部类 `ViewBridge` / `ControlListener`；`Thunder.java:116` 的 109 行匿名 `Runnable` → 具名嵌套类 `ParseTask`（`parse()` 117 → 9 行）；`BottomSheet.kt:367` 的 154 行内联块 → 具名 Composable `SheetSurface`（`SheetOverlay` 226 → 约 90 行）。
 - **口径更正**：本列表里的 `PlaybackEngine.HeadlessView`(235) 与 `ProtectedInitJar.Dex`(180) 核对后**本就是具名类**（内部类/静态嵌套类），无需处理；全库 >80 行匿名块实际只有上述 3 处 + `PlaybackController.java:1075` 的 107 行匿名 `Observer` —— 后者按阶段 7 归属本阶段未动。
-- **文件边界外提已在同日作为「阶段 2b」完成（commit `54c8f07`，用户拍板）**：两个适配器 → `ui/player/PlayContainerViewBridge.java`(302 行) 与 `PlayContainerControlListener.java`(156 行)，各持 `container` 引用；`PlayContainer` 1843 → **1424 行**（−419）。代价 = **23 个成员由 `private` 降为包级**（字段 7 + 方法 16）——对本 § 硬地板「每文件 2–4 个」的一次明示例外；因暴露面仅限 `ui.player` 包（包内另两个文件不使用这些成员）且由用户拍板，接受。
-- 验证：`assembleDebug` + `testDebugUnitTest`（44 类 / 364 用例）全绿；逐行等价性脚本 0 丢失 / 0 新增（PlayContainer 仅 2 行包装差、Thunder 仅 `}});` 一行、BottomSheet 仅调用点与签名行）；`adb install` 被设备侧拒绝（`INSTALL_FAILED_ABORTED`），走查待用户确认安装。
+- **文件边界外提已在同日作为「阶段 2b」完成（commit `54c8f07`，已确认）**：两个适配器 → `ui/player/PlayContainerViewBridge.java`(302 行) 与 `PlayContainerControlListener.java`(156 行)，各持 `container` 引用；`PlayContainer` 1843 → **1424 行**（−419）。代价 = **23 个成员由 `private` 降为包级**（字段 7 + 方法 16）——对本 § 硬地板「每文件 2–4 个」的一次明示例外；因暴露面仅限 `ui.player` 包（包内另两个文件不使用这些成员）且由已确认，接受。
+- 验证：`assembleDebug` + `testDebugUnitTest`（44 类 / 364 用例）全绿；逐行等价性脚本 0 丢失 / 0 新增（PlayContainer 仅 2 行包装差、Thunder 仅 `}});` 一行、BottomSheet 仅调用点与签名行）；`adb install` 被设备侧拒绝（`INSTALL_FAILED_ABORTED`），走查待已确认安装。
 - 归档见 `skill/history/features.md` 2026-09-28 阶段 2 条目。
 
 - 目标：消掉 >80 行匿名类/内联块。

@@ -29,7 +29,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.bean.VodInfo
@@ -66,12 +66,12 @@ fun HistoryPage(
     val navStart = contentPadding.calculateStartPadding(LocalLayoutDirection.current)
     val navBottom = contentPadding.calculateBottomPadding()
     val context = LocalContext.current
-    val items by vm.items.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val episodeTotals by vm.episodeTotals.collectAsState()
-    val playedPercents by vm.playedPercents.collectAsState()
-    val placementAnim by vm.placementAnim.collectAsState()
-    val incognito by vm.incognito.collectAsState()
+    val items by vm.items.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val episodeTotals by vm.episodeTotals.collectAsStateWithLifecycle()
+    val playedPercents by vm.playedPercents.collectAsStateWithLifecycle()
+    val placementAnim by vm.placementAnim.collectAsStateWithLifecycle()
+    val incognito by vm.incognito.collectAsStateWithLifecycle()
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<VodInfo?>(null) }

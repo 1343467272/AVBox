@@ -41,7 +41,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +59,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.bean.Movie
 import com.github.tvbox.osc.bean.MovieSort
@@ -112,10 +112,10 @@ fun HomeGridLayout(
     onCardClick: (Movie.Video) -> Unit,
     onCardLongClick: (Movie.Video) -> Unit,
 ) {
-    val sorts by vm.sorts.collectAsState()
-    val partitions by vm.partitions.collectAsState()
-    val sourceKey by vm.currentSource.collectAsState()
-    val sortLoadFailed by vm.sortLoadFailed.collectAsState()
+    val sorts by vm.sorts.collectAsStateWithLifecycle()
+    val partitions by vm.partitions.collectAsStateWithLifecycle()
+    val sourceKey by vm.currentSource.collectAsStateWithLifecycle()
+    val sortLoadFailed by vm.sortLoadFailed.collectAsStateWithLifecycle()
     val titleMeasurer = rememberTextMeasurer()
     val titleLine = with(LocalDensity.current) {
         titleMeasurer.measure("M", style = MaterialTheme.typography.titleSmall).size.height.toDp()

@@ -62,6 +62,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.rememberLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.server.ControlManager
@@ -320,13 +322,22 @@ private fun MainContent() {
                             .fillMaxSize()
                             .then(if (liquidGlassEnabled) Modifier else Modifier.padding(innerPadding)),
                     ) { page ->
-                        // 作为"内容内边距"下发,不用容器 padding:页面必须保持全出血,
-                        // 否则背景被缩到导航栏之上,玻璃就取不到内容、退化成一块纯色
-                        when (AppTab.entries[page]) {
-                            AppTab.HOME -> HomePage(homeViewModel, pageContentPadding)
-                            AppTab.HISTORY -> HistoryPage(contentPadding = pageContentPadding)
-                            AppTab.COLLECT -> CollectPage(contentPadding = pageContentPadding)
-                            AppTab.SETTINGS -> SettingsPage(contentPadding = pageContentPadding)
+                        val pageLifecycleOwner = rememberLifecycleOwner(
+                            maxLifecycle = if (page == pagerState.currentPage) {
+                                Lifecycle.State.RESUMED
+                            } else {
+                                Lifecycle.State.STARTED
+                            }
+                        )
+                        CompositionLocalProvider(LocalLifecycleOwner provides pageLifecycleOwner) {
+                            // 作为"内容内边距"下发,不用容器 padding:页面必须保持全出血,
+                            // 否则背景被缩到导航栏之上,玻璃就取不到内容、退化成一块纯色
+                            when (AppTab.entries[page]) {
+                                AppTab.HOME -> HomePage(homeViewModel, pageContentPadding)
+                                AppTab.HISTORY -> HistoryPage(contentPadding = pageContentPadding)
+                                AppTab.COLLECT -> CollectPage(contentPadding = pageContentPadding)
+                                AppTab.SETTINGS -> SettingsPage(contentPadding = pageContentPadding)
+                            }
                         }
                     }
                 }

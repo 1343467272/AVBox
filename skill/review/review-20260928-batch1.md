@@ -8,7 +8,7 @@
 
 - 本批范围：阶段 5 新增/改建的 `viewmodel` 10 文件 + 阶段 6 触及的 61 文件（`player`/`ui.player`/`ui`/`data`/`util`/`subtitle`/`catvod`）
 - 已审：全部 71 个涉改文件逐个过；另全库（318 文件）跑度量
-- 跳过：`player` 模块上游内核（`tv.danmaku.ijk`、`xyz.doikki`）只看宿主桥接；`quickjs`/`pyramid`/`libs`/`示例文件` 按排除范围；`build/` 产物
+- 跳过：`player` 模块上游内核（`tv.danmaku.ijk`、`xyz.doikki`）只看宿主桥接；`quickjs`/`pyramid`/`libs`/参考代码按排除范围；`build/` 产物
 - 工具与命令：方法级等价脚本（按签名定位 + 花括号配对 + 归一化去 owner 前缀/可见性，见附录 A 口径）、包级环脚本、`git worktree` 取上轮快照做集合差、SDK sources 复核框架语义、子代理做非源码文件全量引用扫描
 
 ## 1. 复查方法（可复现）
@@ -169,7 +169,7 @@
 | F1 | ✅ 已修 | i18n 红线表指针改指新落点（R2→`SortLoader.java:135`、R8→`DetailLoader.java:174`、R9→`SourceHelper.java:44` + 5 个 Loader 的 9 处引用 + 变体/字面量清单）；第 287 行同族指针 `SourceViewModel "豆瓣"` → `SourceHelper "豆瓣"` | `5d74d84` |
 | F3 | ✅ 已改（**未提交**） | 审查规范：模块清单去掉 `cache`（注明并入 `data`）、批次一去掉 `osc/cache`、文件数按实测更新（批次一 134 / 批次二 123 / 批次三 60 = 317） | 未提交，见下 |
 
-**F3 为何未提交**：`skill/avbox-code-review-spec.md` 在本轮开始前就带着**用户自己的未提交修订**（会话初 `git status` 即为 ` M`）。我的 4 处修改已写入工作区，但不替用户提交其半成品，故该文件保持未提交状态，由用户合并后自行提交。
+**F3 为何未提交**：`skill/avbox-code-review-spec.md` 在本轮开始前就带着**自己的未提交修订**（会话初 `git status` 即为 ` M`）。我的 4 处修改已写入工作区，但不替提交其半成品，故该文件保持未提交状态，由用户合并后自行提交。
 
 **构建与单测**：`assembleDebug` + `testDebugUnitTest` → **48 类 / 376 用例 / 0 失败**（修前 45 类 / 367 用例）。附录 A 的「方法 >100 行」由 **36 → 31**（`viewmodel` 包内仅剩 `PushDetailResolver.checkPush` 129 行）。
 

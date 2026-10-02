@@ -50,7 +50,6 @@ import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,6 +72,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.tvbox.osc.R
 import com.github.tvbox.osc.bean.Movie
 import com.github.tvbox.osc.ui.activity.ConfigManageActivity
@@ -116,19 +116,19 @@ fun HomePage(vm: HomeViewModel, contentPadding: PaddingValues = PaddingValues(0.
     val navStart = contentPadding.calculateStartPadding(LocalLayoutDirection.current)
     val navBottom = contentPadding.calculateBottomPadding()
     val context = LocalContext.current
-    val currentSource by vm.currentSource.collectAsState()
-    val sources by vm.sources.collectAsState()
-    val rec by vm.rec.collectAsState()
-    val partitions by vm.partitions.collectAsState()
+    val currentSource by vm.currentSource.collectAsStateWithLifecycle()
+    val sources by vm.sources.collectAsStateWithLifecycle()
+    val rec by vm.rec.collectAsStateWithLifecycle()
+    val partitions by vm.partitions.collectAsStateWithLifecycle()
     val vodMenu = rememberVodCardMenuState()
 
     val listState = rememberLazyListState()
 
     val pullState = rememberPullToRefreshState()
 
-    val pageLoading by vm.pageLoading.collectAsState()
-    val sortLoadFailed by vm.sortLoadFailed.collectAsState()
-    val homeLayout by HomeSettings.layoutFlow.collectAsState()
+    val pageLoading by vm.pageLoading.collectAsStateWithLifecycle()
+    val sortLoadFailed by vm.sortLoadFailed.collectAsStateWithLifecycle()
+    val homeLayout by HomeSettings.layoutFlow.collectAsStateWithLifecycle()
     LaunchedEffect(homeLayout) { vm.onLayoutChanged() }
     LaunchedEffect(vm) {
         vm.pageErrorEvents.collect { msg ->

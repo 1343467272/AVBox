@@ -462,6 +462,7 @@
     <string name="settings_github">造訪 GitHub 儲存庫</string>
     <string name="settings_github_subtitle">造訪專案原始碼儲存庫</string>
     <string name="settings_app_tagline">TVBox手機版</string>
+    <string name="settings_app_version">應用版本</string>
 
     <!-- 設定:偏好設定 -->
     <string name="settings_preference_title">偏好設定</string>

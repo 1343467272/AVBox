@@ -1,7 +1,7 @@
 ---
 name: AVBox 渐进式重构 Spec（VM 归一与上帝类收尾专项）
-status: 执行中·**结构拆分已收尾**（2026-10-01：V1–V5 已落地并过两轮复核【V5 含 1 处阻断级构造期 NPE 修复】；V5b 继续拆分 + 注释精简已落地（主类 1806→1320，+3 协作者）并过**第四轮逻辑复核**（1 处低危语义漂移已修、3 项登记）；**唯余真机走查**；D1/D2/D3/V6 已拍板；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
-source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveData/StateFlow 各半、viewmodel/ 名不副实）② 上帝类残留（PlaybackController / ComposeVideoController / PlayContainer / ApiConfig）③ VM 持 View 与 static 可变缓存 ④ 业务逻辑写进 Composable。审查结论：四问题全部属实（数字 ±5% 出入见 §2）
+status: 执行中·**结构拆分已收尾**（2026-10-01：V1–V5 已落地并过两轮复核【V5 含 1 处阻断级构造期 NPE 修复】；V5b 继续拆分 + 注释精简已落地（主类 1806→1320+3 协作者）并过**第四轮逻辑复核**（1 处低危语义漂移已修、3 项登记）；**唯余真机走查**；D1/D2/D3/V6 已拍板；本文接手 refactor-plan-20260928.md 的阶段 7 遗留与其未做项中与本专项重叠的部分）
+source: 2026-10-01 提名的四问题审查：① 双范式并存（LiveData/StateFlow 各半、viewmodel/ 名不副实）② 上帝类残留（PlaybackController / ComposeVideoController / PlayContainer / ApiConfig）③ VM 持 View 与 static 可变缓存 ④ 业务逻辑写进 Composable。审查结论：四问题全部属实（数字 ±5% 出入见 §2）
 ---
 
 # 结论摘要
@@ -36,9 +36,9 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 
 > **V5/V5b 落地后（2026-10-01）**：`PlaybackController` **1320 行**（V5 拆超时/预载/取流观察，V5b 续拆音乐会话/播放器配置/重试换线 + 注释精简）、`PlayContainer` **1337 行**（音轨选择拆出）、`ComposeVideoController` **1214 行**（手势拆出）；共 8 个协作者，逐簇结论见 V5 节。
 
-# 3. 问题清单（映射用户提法 → 根因）
+# 3. 问题清单（映射提法 → 根因）
 
-| # | 用户提法 | 审查确认 | 根因归属 | 处理阶段 |
+| # | 提法 | 审查确认 | 根因归属 | 处理阶段 |
 | --- | --- | --- | --- | --- |
 | ①a | Kotlin VM 用 StateFlow、Java VM 用 LiveData，范式割裂 | 属实（14 vs 7） | 通道与观察桥接无统一边界 | V4 |
 | ①b | `observeForever` 那个 Java VM | 属实且面更大：5 文件 9 处手动配对，配对缺失即泄漏 | "换实例防迟到回包"设计（`rebindDetailSource`）倒逼出的手法 | V3/V4 |
@@ -57,7 +57,7 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 4. `com.github.tvbox.osc.viewmodel` 包不复存在——整包改名 `com.github.tvbox.osc.sourcedata`（D1 已拍板）。
 5. `PlaybackController` 按簇拆出 ≥3 个可单测协作者，主类 ≤600 行量级（软目标）；107 行匿名 `Observer` 具名化。
 6. `PlayContainer` / `ComposeVideoController` 按簇评估，拆或不拆给逐簇结论（不为行数硬拆，V5 出口条件是"每个簇有归属与单测/豁免理由"）。
-7. `ApiConfig` 直播链落地或明示豁免（V6，用户拍板）。
+7. `ApiConfig` 直播链落地或明示豁免（V6，已确认）。
 
 # 5. 渐进式计划
 
@@ -135,7 +135,7 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - **改名（`e082bcf`）**：`git mv` 两个目录(主 + 测试,16 文件)+ 原地改写 24 个文件里的包名/import。**不动编码与行尾**(`SearchViewModel.kt` 保持 CRLF,其余 LF;全部无 BOM)。
   - **纯搬迁证明**:`git show e082bcf --numstat` = **24 文件 / 25 insertions / 25 deletions** —— 16 个改名文件各只有 1 行(package 声明)不同、8 个包外文件各只有 1~2 行(import)不同(`HomeViewModel` 2 行),账目恰好对上;`git show e082bcf --stat` 把这些文件全部识别为 rename(`{viewmodel => sourcedata}`),**改名本身零内容改动**。另按 spec §9 卡口做逐行去空白比对:24 个文件各自只有 package/import 一行不同。包内 40 个包级成员的可见性一字未改(这是选"改名而非重拆"的唯一理由)。行尾/编码逐文件核对:除 `SearchViewModel.kt` 保持 CRLF 外均 LF,全部无 BOM。
   - 验证:`assembleDebug` + `testDebugUnitTest` 全绿(**59 类 / 458 例 / 0 失败**,与 V3.1 同数 —— 改名不带行为);审查轮又做了一次**删掉整个 `app/build` 的全量重建**复核(依赖缓存与子模块输出不动,20s),结论相同,排除缓存假绿。
-  - **审查轮登记的接受项**:①缓存字段由 `private` 放宽为**包级**(计划要求,`SortLoader` 只用注入引用,当前无滥用),代价是"唯一清理出口"从语言保证降为约定;②`Entry` 裸名(未写 `Map.Entry`)是从旧实现逐字搬来的写法,项目工具链通过,仅对"把该类搬进纯 JVM 编译"的场景有影响;③仓外 spider jar 若按上游类名引用 `SourceViewModel.spThreadPool`/`clearRuntimeCache`,改名+删别名会让其在运行时失配(D3 已明确不留过渡别名;仓内与 `示例文件/上游项目` 之外的来源不在库内,无法检索)。
+  - **审查轮登记的接受项**:①缓存字段由 `private` 放宽为**包级**(计划要求,`SortLoader` 只用注入引用,当前无滥用),代价是"唯一清理出口"从语言保证降为约定;②`Entry` 裸名(未写 `Map.Entry`)是从旧实现逐字搬来的写法,项目工具链通过,仅对"把该类搬进纯 JVM 编译"的场景有影响;③仓外 spider jar 若按上游类名引用 `SourceViewModel.spThreadPool`/`clearRuntimeCache`,改名+删别名会让其在运行时失配(D3 已明确不留过渡别名;仓内与参考实现之外的来源不在库内,无法检索)。
 - 未做:装机走查 —— `adb` 不在 PATH。判据沿用旧 spec 阶段 5:换源后 `sortCache` 清理仍生效(`HomeViewModel.reload()` → 分类与首页推荐应重新取数,不再命中旧源缓存)。
 - 遗留说明:包名叫 `sourcedata` 后,`SourceViewModel`/`SubtitleViewModel` 这两个**真 VM** 也在包内(旧 spec 阶段 5 的同包刻意产物,D1 的前提就是整包原样改名)。V4 会在这两个类上继续做观察侧收口,是否把它们移出该包等 V4/V5 后再评估(D4 同类问题)。
 
@@ -256,7 +256,7 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - 【低｜既有，登记不修】`PlaybackFetch.handlePlayResult` 约 105 行（即原匿名 Observer 主体，触 `avbox-code-review-spec.md` 的"方法 >100 行"阈值；本次按"只搬位置"未拆，若要拆另立）；`PlaybackTimeouts` 里"与既有 mHandler 的三条定时消息拆开"沿原文搬运（含过程叙事，按同批"注释精简"惯例处理）。
 - 【信息】无新增包级环（`PlaybackFetch`↔`PlaybackController` 为同包类级双向，`GestureController` 同包单向）；`history/` 不补条目 —— V1–V5 的过程记录归 `skill/review/refactor-plan-20261001.md`，符合文档地图对 `skill/review/` 的定义（活规范已同步的只有手势节与 i18n 附录注记）。
 
-**V5b（继续拆分到 ~1300 行，2026-10-01 同日追加）**：用户要求主类继续压到 1300 行左右，新增 3 个协作者（各一笔 commit，同样逐簇归一化比对 + 构建 + 单测）：
+**V5b（继续拆分到 ~1300 行，2026-10-01 同日追加）**：主类继续压到 1300 行左右，新增 3 个协作者（各一笔 commit，同样逐簇归一化比对 + 构建 + 单测）：
 
 | commit | 簇 | 交付 |
 | --- | --- | --- |
@@ -295,7 +295,7 @@ source: 2026-10-01 用户提名的四问题审查：① 双范式并存（LiveDa
 - 不做的代价：ApiConfig 停在 ~1054 行，直播链与站源门面继续同文件。
 - **已拍板不做（2026-10-01，按建议）**。若直播链后续出现回归需改动该区域，凭"单独排一次直播专项真机回归（判据：切直播源、线路历史、hosts 失效、跟随点播四路径）"的前提可重开。
 
-# 6. 设计决策（D 系；2026-10-01 用户拍板"全部按建议"，⏳ 已清零）
+# 6. 设计决策（D 系；2026-10-01，⏳ 已清零）
 
 | # | 问题 | 建议 | 状态 |
 | --- | --- | --- | --- |

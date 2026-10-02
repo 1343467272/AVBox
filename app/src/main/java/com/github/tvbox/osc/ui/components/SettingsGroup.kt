@@ -15,17 +15,21 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -142,12 +146,13 @@ fun SettingsRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SettingsIconBadge(@DrawableRes iconRes: Int, contentDescription: String? = null) {
     Box(
         modifier = Modifier
             .size(40.dp)
-            .clip(CircleShape)
+            .clip(MaterialShapes.Cookie7Sided.toShape())
             .background(MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center,
     ) {
@@ -214,6 +219,30 @@ fun SettingsSliderRow(
 }
 
 @Composable
+fun SettingsSwitch(
+    checked: Boolean,
+    onCheckedChange: ((Boolean) -> Unit)?,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = modifier,
+        enabled = enabled,
+        thumbContent = if (checked) {
+            {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(SwitchDefaults.IconSize),
+                )
+            }
+        } else null,
+    )
+}
+
+@Composable
 fun SettingsSwitchRow(
     title: String,
     checked: Boolean,
@@ -248,7 +277,7 @@ fun SettingsSwitchRow(
         if (valueText != null) {
             RowValue(text = valueText, enabled = enabled, modifier = Modifier.padding(end = 8.dp))
         }
-        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+        SettingsSwitch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
 

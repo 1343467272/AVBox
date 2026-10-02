@@ -37,7 +37,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -75,6 +74,7 @@ import com.github.tvbox.osc.ui.components.SettingsCardPosition
 import com.github.tvbox.osc.ui.components.SettingsGroup
 import com.github.tvbox.osc.ui.components.RowLeadingIcon
 import com.github.tvbox.osc.ui.components.SettingsOptionRow
+import com.github.tvbox.osc.ui.components.SettingsSwitch
 import com.github.tvbox.osc.ui.components.SettingsSwitchRow
 import com.github.tvbox.osc.ui.components.TopBarActionBox
 import com.github.tvbox.osc.ui.components.glassSurface
@@ -592,7 +592,7 @@ private fun SubscribeCard(
                 if (managing) {
                     Checkbox(checked = selected, onCheckedChange = { onClick() })
                 } else {
-                    Switch(checked = active, onCheckedChange = onCheckedChange)
+                    SettingsSwitch(checked = active, onCheckedChange = onCheckedChange)
                 }
             }
         }

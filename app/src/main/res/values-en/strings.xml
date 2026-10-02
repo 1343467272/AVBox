@@ -462,6 +462,7 @@
     <string name="settings_github">Visit GitHub Repository</string>
     <string name="settings_github_subtitle">Open the project source repository</string>
     <string name="settings_app_tagline">TVBox for Phone</string>
+    <string name="settings_app_version">App version</string>
 
     <!-- Settings: preferences -->
     <string name="settings_preference_title">Preferences</string>

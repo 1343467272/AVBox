@@ -462,6 +462,7 @@
     <string name="settings_github">访问 GitHub 仓库</string>
     <string name="settings_github_subtitle">访问项目源代码仓库</string>
     <string name="settings_app_tagline">TVBox手机版</string>
+    <string name="settings_app_version">应用版本</string>
 
     <!-- 设置:偏好设置 -->
     <string name="settings_preference_title">偏好设置</string>

@@ -3,8 +3,8 @@
 > 项目:AVBox(TVBox OSC fork;仓库根目录 = 本文件所在目录的上一级)
 > 配套:先读 `SKILL.md`(通用规范 + 文档地图)与 `avbox-mobile-ui-spec.md`(§2 技术基线 / §4 页面规范)。
 > 状态:**草案,未实施**(2026-09-21 盘点)。§5 决策点需拍板后才进入实施。
-> **实施节奏(用户 2026-09-21 定):渐进式,按语言分四步** —— 简体中文 → 英语 → 繁体中文(台湾)→ 繁体中文(香港);每完成一个语言即回写 §6.1 进度表 + 追加 `history/features.md` + 同步双副本(哈希核对),本文档随步更新。
-> 触发背景:用户 2026-09-21 提出"适配简体中文 / 英语 / 繁体中文(香港)/ 繁体中文(台湾)";本文 = 可行性评估结论 + 实施方案。
+> **实施节奏(2026-09-21 定):渐进式,按语言分四步** —— 简体中文 → 英语 → 繁体中文(台湾)→ 繁体中文(香港);每完成一个语言即回写 §6.1 进度表 + 追加 `history/features.md` + 同步双副本(哈希核对),本文档随步更新。
+> 触发背景:;本文 = 可行性评估结论 + 实施方案。
 
 ## 0. 摘要
 
@@ -103,7 +103,7 @@
 
 **非目标**
 
-- N1 不翻译采集源返回的内容(站点名 / 分类 / 片名 / 简介 / EPG 文本 / 爬虫 `msg`)—— 内容侧不可控,联网内容保持源语言;英语用户看到"英文 UI + 中文内容"是产品固有限制;
+- N1 不翻译采集源返回的内容(站点名 / 分类 / 片名 / 简介 / EPG 文本 / 爬虫 `msg`)—— 内容侧不可控,联网内容保持源语言;英语是产品固有限制;
 - N2 不交付日 / 韩 / 法等其他语言(本次只交四语 + 语言框架,新增语言只需加一个 `values-*` 目录);
 - N3 不重构数据层(除 §4.2 Context 包裹与 §4.5 `Trans` 门控这类必要接线);
 - N4 不引入 i18n 第三方库、不接 AppCompatDelegate 的自动语言存储(理由见 §5-D2 / §4.6)。
@@ -142,7 +142,7 @@
 | 线路 | line | `线路N` = `Line N` |
 | 解析(超级解析) | parse / resolve | 超级解析 = `Super parse` |
 | 弹幕 | Danmaku | 保留日语借词(二次元语境通行),**不译** bullet comment |
-| 解码(硬解码 / 软解码) | Decoding(Hardware / Software) | 2026-09-26 由底栏移到播放参数抽屉;显示文案统一走 `player_decode_hard` / `player_decode_soft`(2026-09-27 用户"统一为左边硬解码,右边软解码",原 `_short` 短标签键 `HW` / `SW` 已删),面板与播放设置页同款 |
+| 解码(硬解码 / 软解码) | Decoding(Hardware / Software) | 2026-09-26 由底栏移到播放参数抽屉;显示文案统一走 `player_decode_hard` / `player_decode_soft`(2026-09-27,原 `_short` 短标签键 `HW` / `SW` 已删),面板与播放设置页同款 |
 | 预载 / 缓存 / 缓冲 | preload / cache / buffer | |
 | 投屏 | cast | |
 | 节目单 | TV Guide | 节目单**数据内容**不翻(§2-N1) |
@@ -189,9 +189,9 @@ object LanguageManager {
 - 只做"MMKV 初始化 + 读一个 String 键",不在这里做 IO / 装 crash 记录器等(`BootGuard.install()` 等仍留在 `onCreate`);
 - `wrap()`:`Configuration(base.resources.configuration)` 拷贝 + `setLocale(locale)`(API 24+ 自动同步 `LocaleList`),**不要直接改 `resources.configuration`**。
 
-### 4.3 语言切换路径(2026-09-22 用户拍板:**重启后生效**)
+### 4.3 语言切换路径(2026-09-22 已确认:**重启后生效**)
 
-用户在「设置 tab → 偏好设置」选中语言后(**写 KV 提前到"选中时"**,对齐参考项目 `示例文件/android` —— 它在 ViewModel 里选择即持久化,点重启时只剩重启本身):
+选中语言后(**写 KV 提前到"选中时"**,对齐参考项目参考实现 —— 它在 ViewModel 里选择即持久化,点重启时只剩重启本身):
 
 1. 选中语言 → **立即** `LanguageManager.set(lang)` 写 KV(给 MMKV 落盘留出后续弹窗交互的时间),并记下原语言用于回滚;
 2. 弹确认框:内容 = `settings_language_restart_message`(「重启后生效」),右下「确认」/ 左下「取消」(M3 `AlertDialog` 默认 `confirmButton` / `dismissButton` 位置);
@@ -203,7 +203,7 @@ object LanguageManager {
 **为什么不用"立刻生效"**(2026-09-22 评估结论):
 - 立刻生效需要一整套运行时规则:三处 `attachBaseContext` 包裹 + 遍历 `AppManager.snapshot()` 逐个 `recreate()` + 长生命周期组件必须走 `LanguageManager.localized()` + 禁进程级文案缓存 —— 规则多、易踩(每条新文案都要选对取法);
 - 且存在确定性缺陷:① **解析期取文案进 bean 的位置**(直播设置面板组名 / `源%d` / 默认线名)切语言后不刷新,需重解析直播配置;② 通知渠道名建后不可改(Android 机制);③ `recreate()` 丢页面临时状态(非 saveable 的 `remember`、`DetailActivity.fullScreen` 等普通字段 ⇒ 播放页可能从全屏退回预览);④ 播放页重建后的重挂路径、AutoSize × 包裹 Configuration 叠加,只有真机才能验(§8)。
-- 重启方案把正确性从"运行时"搬到"启动时":只需 `attachBaseContext` 包裹一次(已实现),确定性更高;代价 = 切语言中断播放 + 回首页(用户接受)。
+- 重启方案把正确性从"运行时"搬到"启动时":只需 `attachBaseContext` 包裹一次(已实现),确定性更高;代价 = 切语言中断播放 + 回首页(接受)。
 
 `LanguageManager.localized()` **保留**(在重启语义下依然正确且无害,长生命周期组件照旧走它);上一轮为「立刻生效」新增的 `AppManager.snapshot()` **已随该方案一并移除**(避免死代码,历史实现见 git)。
 
@@ -225,7 +225,7 @@ object LanguageManager {
 
 - 现状(改造前):`.trans = Locale.getDefault().getCountry().equals("TW")`,构造时固化,港区不生效、与应用内语言无关;
 - **落地做法 = 方案①(语言签名懒重建)**:`Trans.get()` 先读 `LanguageManager.isTraditional()` 得到目标档位,与 `Loader` 缓存的签名比对,不一致才新建实例(`trans=true` 时才构建字表,简体 / 英语档仍零开销)—— 语言变化(含系统语言变化、KV 就绪后读到真实档位)都能自愈,不会残留旧方向。未用方案②(`reset()`):重建入口有三处(爬虫 `Global` / 弹幕 / 未来调用),签名自校验不依赖调用时序;
-- ⚠️ **判据的「跟随系统」档必须回落系统 locale**(2026-09-22 升级兼容审查):`isTraditional()` 若只看 `tag.startsWith("zh-Hant")`,「跟随系统」档(tag = null)恒为 false ⇒ 系统语言 zh-TW / zh-HK 且**未在应用内选过语言**的用户会"UI 命中繁体资源、源数据不转"(旧版判据是系统国家 == `TW`,不会漏)。现判定 = 显式档看 tag,否则看系统 locale(script == `Hant` 或 region ∈ `{TW, HK, MO}`);显式「简体中文」即使在 TW 系统下也不转;
+- ⚠️ **判据的「跟随系统」档必须回落系统 locale**(2026-09-22 升级兼容审查):`isTraditional()` 若只看 `tag.startsWith("zh-Hant")`,「跟随系统」档(tag = null)恒为 false ⇒ 系统语言 zh-TW / zh-HK 且**未在应用内选过语言**的(旧版判据是系统国家 == `TW`,不会漏)。现判定 = 显式档看 tag,否则看系统 locale(script == `Hant` 或 region ∈ `{TW, HK, MO}`);显式「简体中文」即使在 TW 系统下也不转;
 - 方向语义:`s2t` = 简体→繁体(繁体档下把源内容转繁体);`t2s` = 繁体→简体(**弹幕搜索 `DanmakuApi` 恒用简体查询,与 UI 语言无关,保持不变**);
 - ⚠️ `Trans` 首次使用可能早于 `KV.init`(爬虫在 Application 早期加载):`LanguageManager.current()` 已容忍(读不到 = 跟随系统 → 非繁体),不抛异常;
 - ⚠️ 缓存失效:重建方案下下次 `get()` 即按新签名;重启生效语义下进程重建,天然无残留。
@@ -326,8 +326,8 @@ Android 13+ 的「系统设置 → 应用 → 语言」需要 `res/xml/locales_c
 4. **不要翻译 R1–R5 的字面量**,也不要顺手把 `HawkConfig` 的键名/值改成英文(键名是持久化契约)。
 5. **`stringResource` 只能在 Composable 内用**;VM / 回调 / Java 里用 `context.getString`。
 6. **占位符必须带位置**(`%1$s`),多语言重排参数才不会错位。
-7. 切语言**要重启进程**(2026-09-22 用户拍板反转口径);正确姿势(照搬 `示例文件/android`)= **选中语言即 `LanguageManager.set` 写 KV(提前写,留落盘时间) → 确认后 `restartApp()` 立即 `startActivity(CLEAR_TOP|NEW_TASK)` + `killProcess`**;取消则 `set(原语言)` 回滚。⚠️ 四个反例:① 遍历 `AppManager` 快照 `recreate()`(丢页面临时状态、解析期文案不刷新,见 §4.3);② `AlarmManager` 登记后等触发(实测**黑屏 + 重启两次**);③ `CLEAR_TASK`(AMS 失去要恢复的 ActivityRecord);④ 把 `set` 放在确认回调里紧跟 `restartApp`(写与 kill 间隔≈0,可能丢设置);⑤ 确认回调里 `pending = null` 后**同帧** `restartApp`(弹窗残留最后一帧,须等 1~2 帧)。
-8. **语言入口按步放开**(`LanguageManager.available()`):未交付的语言不得出现在设置页 —— 否则用户切到半成品语言(缺的条目回落简体)会误报成 bug。
+7. 切语言**要重启进程**(2026-09-22 已确认反转口径);正确姿势(沿用参考实现)= **选中语言即 `LanguageManager.set` 写 KV(提前写,留落盘时间) → 确认后 `restartApp()` 立即 `startActivity(CLEAR_TOP|NEW_TASK)` + `killProcess`**;取消则 `set(原语言)` 回滚。⚠️ 四个反例:① 遍历 `AppManager` 快照 `recreate()`(丢页面临时状态、解析期文案不刷新,见 §4.3);② `AlarmManager` 登记后等触发(实测**黑屏 + 重启两次**);③ `CLEAR_TASK`(AMS 失去要恢复的 ActivityRecord);④ 把 `set` 放在确认回调里紧跟 `restartApp`(写与 kill 间隔≈0,可能丢设置);⑤ 确认回调里 `pending = null` 后**同帧** `restartApp`(弹窗残留最后一帧,须等 1~2 帧)。
+8. **语言入口按步放开**(`LanguageManager.available()`):未交付的语言不得出现在设置页 —— 否则切到半成品语言(缺的条目回落简体)会误报成 bug。
 9. **资源里的撇号必须转义或改写**:Android 字符串中裸 `'` 会构建失败(`Apostrophe not preceded by \`)⇒ 英文文案优先改写(用 `cannot`、避免属格),必须使用时写 `\'`;双引号同理(`\"`,或按第 2 步做法改用弯引号 `“ ”`)。
 10. **语言名条目用 endonym(各自语言的写法)**:语言选择列表里写 `简体中文` / `繁體(台灣)` / `English`,不按界面语言译成 "Simplified Chinese"(与系统语言选择器一致);`i18n_align.py` 的 CJK 残留白名单正是这三个 key。
 11. **英文允许"同值多 key",简中不允许**:英文的区分粒度低于中文(`上一个` / `上一首` / `上一集` 都可能译 "Previous")⇒ `i18n_align.py` 不做重复值检查;`values` 侧"同文案必须同 key"仍由 `i18n_check_keys.py` 把关。
@@ -368,17 +368,17 @@ Get-ChildItem -Recurse app\src\main\java -Include *.kt,*.java |
 | 日期 | 修订 | 说明 |
 |---|---|---|
 | 2026-09-21 | 初版 | 可行性评估 + 实施方案;数据来源 = `.codebuddy/tools/i18n_hardcoded_scan.py` 实测(645 处 / 453 条) |
-| 2026-09-21 | 实施节奏改为"按语言四步" | 用户要求"渐进式适配,分四步,对应四个语言,每完成一个语言及时更新":§3.1 增"实施步"列并重定义繁体结构(基础层 + 香港差异层)、§4.1 增语言白名单 `available()`、§5-D3/D4 改为港台资源结构与分步交付、§6 由 P0–P4 改为四步 + 进度表 + 每步固定动作、§7 增按步取用说明与入口验收、§8/§9 同步 |
+| 2026-09-21 | 实施节奏改为"按语言四步" | §3.1 增"实施步"列并重定义繁体结构(基础层 + 香港差异层)、§4.1 增语言白名单 `available()`、§5-D3/D4 改为港台资源结构与分步交付、§6 由 P0–P4 改为四步 + 进度表 + 每步固定动作、§7 增按步取用说明与入口验收、§8/§9 同步 |
 | 2026-09-22 | 第 1 步实施(进行中) | 框架落地(`LanguageManager` + 三处 `attachBaseContext` + `AppManager.snapshot()` + 语言入口,「跟随系统」不包裹);外置 33 文件 ≈465 处、`values/strings.xml` 344 条;§1.3 新增 R7–R13 红线;§4.4 增"无 Context 取文案"行(长生命周期组件走 `LanguageManager.localized`,直用 `App.getInstance().getString` 会停旧语言);§6 状态改"进行中";附录 B 增 4 个配套工具;双副本已同步核哈希 |
 | 2026-09-22 | 审查修复(gate 盲区) | ① `\uXXXX` 转义显示值补外置:`IjkMediaPlayer` 音轨/字幕、`ExoPlayer` 音轨/视轨/字幕 + 单声道/立体声/`%1$d 声道`(新增 `player_channel_mono/stereo/count`)—— 转义数 118→100,剩余全为语言映射表等数据判据(keep);② `i18n_hardcoded_scan.LOG_HINT` 收紧(去掉过宽 `KL`/`TAG,`,严格对拍 0 假阴性);③ 复核:`assembleDebug` + 230 单测全绿、卡口仍全绿、`res/*.xml`(除 strings)与 `player/` fork 模块无 UI 文案、`localized()` 调用点全传 Application;④ §7-A 增两条"扫描盲区"登记 |
 | 2026-09-22 | 第 1 步文案外置收口(卡口归零) | ui 层 39→0、非 ui 层 138→0:`i18n_gate.py` = ui 0 / 非 ui 0;`values/strings.xml` **420 条**(声明=引用,无重名/未用/重复值/首尾空白);ui 31 处外置(含 contentDescription、`FilterSheet`/`HeroCarousel` 带参、`MusicPlayerState` 改 `@StringRes labelRes`、`HomeViewModel`/`LivePlayViewModel` 加 `str()`) + 非 ui 54 处外置(`PlayUrlResolver`/`Thunder`/`LocalConfigHelper`/`DanmakuApi`/`SpiderLoader`/`M3u8PurifyUseCase`/`DLNACastManager`/`IjkMediaPlayer`);keep 打标 47 处;`ConfigParser` 的"线路N"回归字面量 keep(数据默认名 + 单测锁定);`PlayerUiState` 片头尾默认值改空串;`OkGoHelper` DNS "关闭"保持索引锚点、显示侧在 `SettingsPage` 映射资源;⚠️ 补 `PlaybackController` 的 `import com.github.tvbox.osc.R` + 静态 `str()`(此前 Java 侧只换引用未定义 helper,Kotlin-only 编译绿灯掩盖);`assembleDebug` + 230 单测全绿 |
-| 2026-09-22 | 语言切换改为"重启后生效"(用户拍板;真机实测后修正) | §4.3 重写:确认框(内容「重启后生效」,右下确认 / 左下取消)+ 确认后 `LanguageManager.set` + `restartApp()`(新增 `util/AppRestart.kt`:**先 `startActivity(CLEAR_TOP|NEW_TASK)` 再 `killProcess`**,照搬 `示例文件/android`),附"为什么不用立刻生效"的 4 条缺陷与两条实测反例(**AlarmManager 登记等触发 = 黑屏 + 重启两次**;`CLEAR_TASK` = AMS 失去 ActivityRecord);§7-C 验收改口径(含"取消不生效");§9-7 由"不要重启进程"反转为"要重启进程";新增资源 `settings_language_restart_message`;`LanguageRow` 移除 `recreate()` 遍历与 `AppManager` import;`localized()` 保留、`AppManager.snapshot()` 已移除 |
+| 2026-09-22 | 语言切换改为"重启后生效"(已确认;真机实测后修正) | §4.3 重写:确认框(内容「重启后生效」,右下确认 / 左下取消)+ 确认后 `LanguageManager.set` + `restartApp()`(新增 `util/AppRestart.kt`:**先 `startActivity(CLEAR_TOP|NEW_TASK)` 再 `killProcess`**,沿用参考实现),附"为什么不用立刻生效"的 4 条缺陷与两条实测反例(**AlarmManager 登记等触发 = 黑屏 + 重启两次**;`CLEAR_TASK` = AMS 失去 ActivityRecord);§7-C 验收改口径(含"取消不生效");§9-7 由"不要重启进程"反转为"要重启进程";新增资源 `settings_language_restart_message`;`LanguageRow` 移除 `recreate()` 遍历与 `AppManager` import;`localized()` 保留、`AppManager.snapshot()` 已移除 |
 | 2026-09-22 | 文档口径对齐(实施后状态) | §0 摘要、§1.1 基础设施表、§1.2 规模表、§5 决策点(D1/D2 已按推荐实施)、§7 验收清单(标注 A 全绿/B 静态面通过/C·D 待走查)、附录 A(完成情况)、附录 B(关键数字:423 条 / 卡口 0 处 / 230 单测 / `\u` 转义 100 处)由"盘点时"口径更新为"实施后";§6 第 1 步状态保持"代码完成·待真机走查"。注:上一条"420 条"为审查前数字,审查修复新增 `player_channel_*` 3 条 ⇒ 现 **423 条** |
 | 2026-09-22 | 第 2 步(英语)资源与入口落地 | 新增 `values-en/strings.xml`(**424 条**):按 §3.3 术语表统一初翻,key 集合/占位符/空值经 `i18n_align.py en` 逐条对齐(PASS);`LanguageManager.delivered` 放开 `English`(设置页语言入口出现「English」,`languageLabelRes` 已含该分支);语言名条目保留各自语言自称(endonym,见 §9-10),英文允许同值多 key(见 §9-11);`assembleDebug` 绿、卡口仍 0。⚠️ 数字口径:第 1 步落地后又新增 `settings_language_restart_message` ⇒ `values/strings.xml` 实为 **424 条**(上一条修订记录的"423 条"为其时数字);**英语逐页走查(截断/挤压)待真机**(§7-D) |
 | 2026-09-22 | 新增 §3.3 术语表 + §9 坑 9–11 | 术语表(中/英对照 + 约定)供第 3/4 步沿用;§9 增:资源撇号需转义或改写、语言名用 endonym 且为其设 CJK 白名单、英文同值多 key 的检查口径(仅 `i18n_align.py` 不查重复值) |
 | 2026-09-22 | 第 3 步(繁體台灣)落地 | 新增 `values-b+zh+Hant/strings.xml` **424 条**(繁体基础层,用词取台湾:搜尋 / 設定 / 預設 / 快取 / 執行緒 / 佇列 / 導覽 / 儲存庫 / 應用程式 / 網路 / 軟體 / 畫質 / 逾時 / 位址…,标点按台湾习惯用全角括号与全角冒号);`Trans` 门控改造落地(§4.5 重写为"语言签名懒重建":`Trans.get()` 读 `LanguageManager.isTraditional()` 比对签名,不一致才重建,`trans=true` 才构建字表);`delivered` 放开 `TraditionalTW`;`i18n_align.py b+zh+Hant` PASS(424=424) |
 | 2026-09-22 | 第 4 步(繁體香港)落地 | 新增 `values-zh-rHK/strings.xml` **53 条**(差异层,只覆盖港台用词不同条目:網絡 / 軟件·互聯網 / 緩存 / 隊列 / 列表 / 導航 / 控件 / 視頻 / 音頻 / 屏幕·全屏 / 點播 / 超時 / 地址 / 獲取·信息 / 文件夾·數據 / 本地 / 線程 / 訪問·項目,未覆盖条目回落基础层;占比 12.5% < spec §3.1 的 30% 阈值,维持"基础层 + 差异层"结构);`delivered` 放开 `TraditionalHK`(四语全放开);`i18n_align.py zh-rHK --subset` PASS;`assembleDebug` 绿 |
-| 2026-09-22 | 升级兼容审查 + `isTraditional()` 修正 | 用户问"从旧版本升级不会出问题吧":逐项核对 = ① KV 新键 `app_language` 读取带默认值且**不回写**、MMKV 无 schema / 无迁移 ⇒ 数据层安全;② 「跟随系统」档 `wrap()` 原样返回 base ⇒ 默认渲染路径与改造前一致;③ `App.attachBaseContext` 提前 `KV.init`(幂等,`onCreate` 那处保留);④ 预期内变化 = 英文 / 繁体系统语言设备升级后 UI 跟随系统语言(产品目标),非中英回落简体;⑤ 已知限制 = 通知渠道名建后不可改。**发现并修复 1 处真回归**:`isTraditional()` 原只看 `tag.startsWith("zh-Hant")` ⇒ 「跟随系统」档恒 false,zh-TW / zh-HK 老用户(未在应用内选语言)"UI 繁体但源数据不转"(旧版按系统国家 `TW` 判定不会漏)⇒ 改为显式档看 tag、「跟随系统」回落系统 locale(`script == Hant` 或 region ∈ `{TW, HK, MO}`);§4.5 增对应坑注 |
+| 2026-09-22 | 升级兼容审查 + `isTraditional()` 修正 | 逐项核对 = ① KV 新键 `app_language` 读取带默认值且**不回写**、MMKV 无 schema / 无迁移 ⇒ 数据层安全;② 「跟随系统」档 `wrap()` 原样返回 base ⇒ 默认渲染路径与改造前一致;③ `App.attachBaseContext` 提前 `KV.init`(幂等,`onCreate` 那处保留);④ 预期内变化 = 英文 / 繁体系统语言设备升级后 UI 跟随系统语言(产品目标),非中英回落简体;⑤ 已知限制 = 通知渠道名建后不可改。**发现并修复 1 处真回归**:`isTraditional()` 原只看 `tag.startsWith("zh-Hant")` ⇒ 「跟随系统」档恒 false,zh-TW / zh-HK 老(旧版按系统国家 `TW` 判定不会漏)⇒ 改为显式档看 tag、「跟随系统」回落系统 locale(`script == Hant` 或 region ∈ `{TW, HK, MO}`);§4.5 增对应坑注 |
 | 2026-09-22 | 四语审查(错误/遗漏/回归)与修正 | ① **HK 层补漏 15 条**(台港用词差异):「記錄」vs 台「紀錄」(搜尋記錄 ×3 / 歷史記錄上限 / 刪除記錄 / 觀看記錄 / 全部觀看歷史記錄)、「項」vs 台「筆」(历史上限值与副标题)、「從本地選擇」vs 台「從本機」、"暫無熱搜數據"vs 台「資料」、「超時換源」vs 台「逾時換源」、「收起」vs 台「收合」、「死機」vs 台「當機」(自动停用提示 + 禁用源弹窗 2 条);② **修 2 条港层自造不一致**:`player_get_info_error` / `player_getting_info` 的「信息」改回「資訊」(港台通行,避免半港半台);③ **删 2 条冗余**:`toast_local_grant_not_persisted` / `toast_local_refs_missing` 与台湾层逐字相同(差异层只放差异)⇒ HK 层 53→**66 条**(补 15、删 2);④ `Trans.get()` 的"实例 + 独立签名"两处状态合并为只读实例字段 `trans`(消除 volatile 不一致窗口与多余重建);⑤ 核查通过:未登记 String 键走 MMKV 原生分支(`KVDecoder` 的 `wanted.isInstance(raw)` 直接返回,不打日志、不依赖登记表)、全仓无 `Locale.setDefault` 污染判定、`Service` 仅 `PlaybackService`(已包裹)、两个 `BroadcastReceiver` 无用户可见文案;⑥ 工具:`i18n_align.py --subset` 增 `REDUNDANT-VS-UPPER` 检查,且 subset 模式不再打印超长 MISSING 清单 |
-| 2026-09-22 | 打包期语言过滤(`androidResources.localeFilters`) | 用户问"是否需要在 app/build.gradle.kts 加 localeFilters";`aapt2 dump configurations` 实测 APK 内带 27 个语言变体(依赖库的 ar/de/fr/ja/ko/ru… + en 各区域变体 + zh-rCN/zh-rTW)⇒ 值得过滤。**实踩坑**:AGP 把 localeFilters 原样透传成 `aapt2 -c`,脚本限定必须写 **`b+zh+Hant`**(写 BCP-47 的 `zh-Hant` 直接构建失败)。落地 `["en", "zh", "zh-rCN", "b+zh+Hant", "zh-rTW", "zh-rHK"]`;debug + release(R8/资源收缩)均 EXIT=0,两 APK 语言配置均只剩这 5 项(四语齐全);体积收益 KB 级(debug 83.96→83.959 MB)⇒ 定位为"显式声明交付语言",非瘦身手段;§3.1 加说明 + §9-14 |
+| 2026-09-22 | 打包期语言过滤(`androidResources.localeFilters`) | ;`aapt2 dump configurations` 实测 APK 内带 27 个语言变体(依赖库的 ar/de/fr/ja/ko/ru… + en 各区域变体 + zh-rCN/zh-rTW)⇒ 值得过滤。**实踩坑**:AGP 把 localeFilters 原样透传成 `aapt2 -c`,脚本限定必须写 **`b+zh+Hant`**(写 BCP-47 的 `zh-Hant` 直接构建失败)。落地 `["en", "zh", "zh-rCN", "b+zh+Hant", "zh-rTW", "zh-rHK"]`;debug + release(R8/资源收缩)均 EXIT=0,两 APK 语言配置均只剩这 5 项(四语齐全);体积收益 KB 级(debug 83.96→83.959 MB)⇒ 定位为"显式声明交付语言",非瘦身手段;§3.1 加说明 + §9-14 |
 | 2026-09-26 | 本地源导入判据改造:删 2 条文案 | 删 `toast_local_direct_grant_hint`(直引不再拦导入)、`toast_local_grant_not_persisted`(目录授权不再作为直引前提,持久化提示失去意义)⇒ 四语各删 2 条,**港层只删前一条**(`grant_not_persisted` 本就未进港层)。其余本地源文案(`missing_files_hint` / `missing_files_all_files` / `tree_denied` / `tree_forbidden` / `refs_missing`)全部仍在用,口径未变 |

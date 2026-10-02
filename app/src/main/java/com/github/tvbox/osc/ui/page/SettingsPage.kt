@@ -5,28 +5,21 @@ package com.github.tvbox.osc.ui.page
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,16 +29,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -67,6 +54,7 @@ import com.github.tvbox.osc.ui.activity.ConfigManageActivity
 import com.github.tvbox.osc.ui.activity.PlaySettingsActivity
 import com.github.tvbox.osc.ui.activity.PreferenceSettingsActivity
 import com.github.tvbox.osc.ui.activity.ThemeSettingsActivity
+import com.github.tvbox.osc.util.DefaultConfig
 import com.github.tvbox.osc.util.FileUtils
 import com.github.tvbox.osc.util.HistoryHelper
 import com.github.tvbox.osc.util.HistoryMerge
@@ -75,10 +63,11 @@ import com.github.tvbox.osc.util.HawkConfig
 import com.github.tvbox.osc.util.MusicSettings
 import com.github.tvbox.osc.util.OkGoHelper
 import com.github.tvbox.osc.util.KV
-import com.github.tvbox.osc.util.LOG
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private const val CACHE_SIZE_REFRESH_MIN_INTERVAL_MS = 60_000L
 
 data class SettingsState(
     val playType: Int,
@@ -115,6 +104,7 @@ data class SettingsState(
 
 class SettingsViewModel : ViewModel() {
     private var cacheSizeText: String = ""
+    private var cacheSizeRefreshedAt = 0L
 
     private val _state = mutableStateOf(loadState())
 
@@ -140,10 +130,16 @@ class SettingsViewModel : ViewModel() {
     }
 
     fun refreshCacheSize() {
+        cacheSizeRefreshedAt = SystemClock.elapsedRealtime()
         viewModelScope.launch {
             val text = withContext(Dispatchers.IO) { FileUtils.formatCacheSize(FileUtils.getCacheSize()) }
             applyCacheSizeText(text)
         }
+    }
+
+    fun refreshCacheSizeIfStale() {
+        if (SystemClock.elapsedRealtime() - cacheSizeRefreshedAt < CACHE_SIZE_REFRESH_MIN_INTERVAL_MS) return
+        refreshCacheSize()
     }
 
     fun clearCache(onCleared: () -> Unit = {}) {
@@ -212,22 +208,14 @@ fun SettingsPage(
     val navStart = contentPadding.calculateStartPadding(LocalLayoutDirection.current)
     val navBottom = contentPadding.calculateBottomPadding()
     val state by vm.state
-    // 各行的值都来自 KV,而 loadState() 只在 ViewModel 构造时读一次;播放设置/偏好设置/预载设置等
-    // 二级页也能改同一批 KV,退回本页时若不重读就会显示旧值 —— 故回本页(宿主 Activity 的 ON_RESUME)
-    // 重读一次。缓存大小走独立那条:它是整棵缓存目录的递归遍历,不该跟着每次状态重读一起跑。
+    // 各行的值都来自 KV,loadState() 只在 ViewModel 构造时读一次,而二级页也能改同一批 KV ⇒ 本页 resume 重读一次。
+    // 缓存大小是整棵缓存目录的递归遍历,距上次计算不足 CACHE_SIZE_REFRESH_MIN_INTERVAL_MS 时不重算。
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         vm.refreshState()
-        vm.refreshCacheSize()
+        vm.refreshCacheSizeIfStale()
     }
     val context = LocalContext.current
-    val versionName = remember {
-        try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
-        } catch (ignored: Exception) {
-            LOG.d("SettingsPage", "read versionName failed")
-            ""
-        }
-    }
+    val versionName = remember { DefaultConfig.getAppVersionName(context) ?: "" }
     var aboutSheet by remember { mutableStateOf(false) }
 
     val listState = rememberScrollState()
@@ -252,7 +240,7 @@ fun SettingsPage(
         ) {
             Spacer(Modifier.height(topPad - 20.dp))
 
-            AppInfoHeaderCard(versionName)
+            AppInfoHeaderCard(versionName = versionName)
 
             SettingsGroup(title = null) {
                 SettingsCard(SettingsCardPosition.FIRST) {
@@ -376,60 +364,6 @@ fun SettingsPage(
         AboutSheet(versionName = versionName, onDismiss = { aboutSheet = false })
     }
 
-}
-
-@Composable
-private fun AppInfoHeaderCard(versionName: String) {
-    val scheme = MaterialTheme.colorScheme
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(32.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(scheme.primaryContainer, scheme.tertiaryContainer),
-                ),
-            )
-            .padding(horizontal = 20.dp, vertical = 18.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "AVBox",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = scheme.onPrimaryContainer,
-                )
-                Text(
-                    text = stringResource(R.string.settings_app_tagline),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = scheme.onPrimaryContainer.copy(alpha = 0.75f),
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-                Surface(
-                    shape = CircleShape,
-                    color = scheme.onPrimaryContainer,
-                    contentColor = scheme.primaryContainer,
-                    modifier = Modifier.padding(top = 10.dp),
-                ) {
-                    Text(
-                        text = if (versionName.isEmpty()) "v-.-.-" else "v$versionName",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    )
-                }
-            }
-            Icon(
-                painter = painterResource(R.drawable.ic_launcher_foreground),
-                contentDescription = null,
-                tint = scheme.onPrimaryContainer,
-                modifier = Modifier
-                    .padding(start = 12.dp)
-                    .size(84.dp)
-                    .scale(1.7f),
-            )
-        }
-    }
 }
 
 @Composable

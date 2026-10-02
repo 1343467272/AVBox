@@ -41,7 +41,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.tvbox.osc.R
@@ -184,11 +184,11 @@ fun CollectPage(
     val navBottom = contentPadding.calculateBottomPadding()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val items by vm.items.collectAsState()
-    val loading by vm.loading.collectAsState()
-    val placementAnim by vm.placementAnim.collectAsState()
-    val unavailableKeys by vm.unavailableKeys.collectAsState()
-    val columns by vm.columns.collectAsState()
+    val items by vm.items.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val placementAnim by vm.placementAnim.collectAsStateWithLifecycle()
+    val unavailableKeys by vm.unavailableKeys.collectAsStateWithLifecycle()
+    val columns by vm.columns.collectAsStateWithLifecycle()
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<VodCollect?>(null) }

@@ -35,22 +35,23 @@
          失败是静默超时(不抛异常);127.0.0.1 回环不受影响。运行时请求见 PermissionHelper -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
-    <!--
-        2026-09-13 权限梳理(第二部分):删掉**依赖库清单**塞进来的无关权限。
-        这些是随库合并进来的,不删就会进最终 APK —— 其中 MOUNT 属系统级高权限,
-        上架会被追问用途,而本项目根本拿不到也用不到它。来源已用 manifest-merger 报告逐个核对:
-          MOUNT_UNMOUNT_FILESYSTEMS : com.lzy.net:okgo:3.0.4(系统签名权限,第三方应用纯噪声)
-          GET_TASKS                 : 上游 player 模块(Android 5+ 已废弃)
-          READ_PHONE_STATE          : 上游 player 模块(ScreenUtils 已改造为不需要电话权限)
-          ACCESS_FINE_LOCATION      : 上游/依赖(DLNA 组播锁不需要定位)
-        注意:READ/WRITE_EXTERNAL_STORAGE 不在此列 —— 它们由本清单**合法声明**并带 maxSdkVersion=32,
-        okgo 只是又声明了一遍(无 maxSdkVersion),清单合并会自动保留我们那份带上限的版本。
-        ⚠️ 依赖升级/替换后请复查本清单是否仍有对应来源(okgo 若将来被移除,这几条可一并删掉)。
-    -->
     <uses-permission android:name="android.permission.MOUNT_UNMOUNT_FILESYSTEMS" tools:node="remove" />
     <uses-permission android:name="android.permission.GET_TASKS" tools:node="remove" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+        <package android:name="com.mxtech.videoplayer.pro" />
+        <package android:name="com.mxtech.videoplayer.ad" />
+        <package android:name="xyz.re.player.ex" />
+        <package android:name="org.xbmc.kodi" />
+        <package android:name="org.videolan.vlc" />
+    </queries>
 
     <application
         android:name=".base.App"
@@ -140,7 +141,6 @@
         <meta-data
             android:name="design_height_in_dp"
             android:value="720" />
-        <!-- P2 播放宿主 + P3 媒体通知(FGS mediaPlayback;引擎与通知共用同一实例) -->
         <service
             android:name=".player.PlaybackService"
             android:foregroundServiceType="mediaPlayback"

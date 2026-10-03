@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -236,7 +235,7 @@ internal fun DetailContent(
             item(key = "quality") {
                 ChipRow(
                     title = stringResource(R.string.detail_quality),
-                    leading = { SectionTitleIcon(Icons.Filled.HighQuality) },
+                    leading = { SectionTitleIcon(painterResource(R.drawable.ic_detail_quality)) },
                 ) {
                     itemsIndexed(qualityOptions) { index, option ->
                         FilterChip(

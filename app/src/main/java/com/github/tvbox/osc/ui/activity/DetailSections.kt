@@ -13,8 +13,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -140,7 +138,7 @@ internal fun RelatedSection(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
         ) {
-            SectionTitleIcon(Icons.Filled.Movie)
+            SectionTitleIcon(painterResource(R.drawable.ic_detail_recommend))
             Text(
                 text = stringResource(R.string.detail_recommend),
                 style = MaterialTheme.typography.titleLarge,

@@ -4254,3 +4254,17 @@ new-instance v2, Lorg/json/JSONArray;  invoke-direct {v2, v1}      # new JSONArr
 **过程教训(设备操作)**:本次为看渲染效果直接 `adb install -r -d` + 截图,并要求系统临时切到深色(`cmd uimode night yes` → 截图 → `no` 还原)—— 设备当时正在被人使用,截屏与改系统夜间模式都属于**未经允许动用户设备**。后续同类验证:装机/截屏/改系统设置前先问,或只用构建产物说明。
 
 **同日修订(按要求)**:版本胶囊的值去掉 `versionCode` —— 只显示 `1.2.0` 这种裸版本名(参照图的 `(209)` 那种构建号不要)。随之删掉 `AppInfoHeaderCard` 的 `versionCode` 入参、`formatAppVersion` 私有函数与 `SettingsPage` 里的 `versionCode` 读取,版本号只剩 `DefaultConfig.getAppVersionName` 一处;版本名为空仍显示 `-`。
+
+## 详情页「相关推荐」「清晰度」分区图标换成 `.tubiao` 画稿(2026-10-03,承接"这一行的图标是不是 emoji"的查证)
+
+**起因**:需求方问"影视详情页相关推荐这一行的图标是不是 emoji"。查证结论 = **不是 emoji,是 Compose 内置 Material 图标**(`DetailSections.kt` 的 `RelatedSection` 用 `SectionTitleIcon(Icons.Filled.Movie)`,经 `Icon(tint = onSurface, size = 22.dp)` 画成单色字形;对三个详情页 UI 文件做 emoji 码点扫描〔代理对 + `☀`-`➿` 段 + `FE0F`〕命中 0)。**顺带查出真相**:`.tubiao/相关推荐.svg` 早就画好却没接线,`DetailContent.kt` 的「清晰度」同病(`Icons.Filled.HighQuality`),二者 = 详情页五个分区标题里仅剩的两颗非画稿图标。
+
+**落地(2 新 drawable + 2 改文件)**:
+- 新增 `res/drawable/ic_detail_recommend.xml`(源 `.tubiao/相关推荐.svg`)、`res/drawable/ic_detail_quality.xml`(源 `.tubiao/清晰度.svg`)。转换范式逐个沿用兄弟文件(`ic_detail_episodes/line/switch_source`):`viewportWidth/Height = 960` + `<group android:translateY="960">` 抵消源 SVG 的 `viewBox="0 -960 960 960"` 负偏移,`pathData` 逐字照抄(两个文件都与源 SVG 做过**字符串级比对**:292 / 568 字符 `-ceq` 全等),`fillColor` = `#FF1F1F1F`(与三颗兄弟同值;绘制期被 `Icon` 的 tint 完全覆盖,不影响显示)。
+- 替换两处调用:`DetailSections.kt` 相关推荐 → `painterResource(R.drawable.ic_detail_recommend)`;`DetailContent.kt` 清晰度 → `painterResource(R.drawable.ic_detail_quality)`。
+- **import 清理**:`DetailSections.kt` 删 `material.icons.Icons` + `filled.Movie`(该文件 `Icons.` 已无其他用处);`DetailContent.kt` 只删 `filled.HighQuality`(`Icons` / `filled.ArrowDropDown` 仍被简介展开箭头使用,不能一并删)。全仓现已无 `Icons.Filled.Movie` / `Icons.Filled.HighQuality` 引用。
+- **未动**:`SectionTitleIcon` 本身(22dp / `onSurface` tint / `contentDescription = null` 的口径不变)、`.tubiao/` 源 SVG、`ic_detail_cast.xml` 与 `ic_detail_music_player.xml`(它们是标题行按钮、非分区标题,且早已是画稿)。
+
+**验证**:`:app:assembleDebug` BUILD SUCCESSFUL(1m5s,`compileDebugKotlin` / `mergeDebugResources` / `processDebugResources` 均重新执行);`:app:testDebugUnitTest` BUILD SUCCESSFUL,**65 套 / 501 例 / 0 失败**(测试面与本次资源改动无关,取的是当前基线)。**真机未装机、未截图**(本次只出构建产物;按上一条的过程教训,装机/截屏前先问)。**待真机走查**:竖屏详情页五个分区标题的图标观感与视觉重量是否同源(尤其「相关推荐」的手托造型在小尺寸下的辨识度)、深色/纯黑主题下的 tint。
+
+**文档同步**:活规范 `skill/avbox-mobile-ui-spec.md` §4.4 新增"五个分区标题行一律挂 `.tubiao` 画稿图标"一条(含 icon ↔ 分区对照表与转换范式);本条为实施记录。

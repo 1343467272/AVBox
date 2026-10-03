@@ -78,6 +78,11 @@ final class PlayContainerViewBridge implements PlaybackViewBridge {
     }
 
     @Override
+    public boolean isKernelErrored() {
+        return container.mVideoView != null && container.mVideoView.isKernelErrored();
+    }
+
+    @Override
     public Context context() {
         return container.getContext();
     }
@@ -202,6 +207,11 @@ final class PlayContainerViewBridge implements PlaybackViewBridge {
             container.mVideoView.requireKernelRebuild();
             LOG.i("echo-render-changed: rebuild kernel on next start");
         }
+        // 错误态兜底:许可放行后内核仍可能在本轮取流期间才报错,到这里必须补强结论,不能把坏内核接着 reset 用
+        if (container.mVideoView.isKernelErrored()) {
+            container.mVideoView.requireKernelRebuild();
+            LOG.i("echo-kernel-error: rebuild errored kernel on start");
+        }
         // 复用内核不会重选解码器:标记无条件消费一次,避免残留到下一次无关起播
         boolean rebuildKernel = container.mVideoView.consumeKernelRebuildRequired();
         boolean kernelPresent = container.mVideoView.getMediaPlayer() != null;
@@ -210,6 +220,10 @@ final class PlayContainerViewBridge implements PlaybackViewBridge {
         if (!reusePlayer) container.hideTip();
         if (!reusePlayer && kernelPresent) {
             container.releasePlayerKernel();
+        } else if (reusePlayer && container.scheduler.isSameStartedContent()) {
+            // 同内容重播走 replay、不经 release(该方法内部才有 saveProgress 兜底),位置在此补落一次;
+            // 换内容不能在此落盘:键与起点都已属新内容,落盘会把新内容的起点写进旧键
+            container.mVideoView.saveCurrentProgress();
         }
         container.mVideoView.setProgressKey(container.scheduler.progressKey());
         // 记忆键与进度键同处下发:内核重建后是新实例,起播前必须推给它

@@ -1098,7 +1098,8 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         if (url != null && !url.isEmpty()) {
             scheduler.stopParse();
             scheduler.initParseLoadFound();
-            releasePlayerKernel();
+            // 重播/切播放器/切解码共走本方法:总闸下重播不必重建内核;切外部播放器不在此处(内核交不出去,由 pl≥10 分支先释放)
+            if (!scheduler.isCrossContentReuseAllowed()) releasePlayerKernel();
             scheduler.goPlayUrl(url, scheduler.webHeaderMap());
         } else {
             playViaScheduler(false);
@@ -1302,7 +1303,13 @@ mController.toggleControlBar();
         long position = mVideoView.getCurrentPosition();
         scheduler.setPendingInherit(scheduler.progressKey(), position);
         mVideoView.pause();
-        releasePlayerKernel();
+        if (scheduler.isCrossContentReuseAllowed()) {
+            // 总闸下换源也算换线:内核留给新源复用(释放与判定共用同一许可);进度改由此处显式落盘,原先靠 release 内部兜底
+            mVideoView.saveCurrentProgress();
+            LOG.i("echo-switchSource keep player kernel for reuse");
+        } else {
+            releasePlayerKernel();
+        }
         if (mController != null) mController.stopOther();
         resetDanmuState();
         scheduler.setWebPlayUrl(null);

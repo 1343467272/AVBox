@@ -112,6 +112,13 @@ public abstract class AbstractPlayer {
     }
 
     /**
+     * 复用一个内核播下一段内容前,清掉上一段内容的选轨残留。
+     * 必要性:选轨器随播放器实例常驻,而上一段选过的轨以轨道组为键留参数里、轨道组相等性又是按内容比的 ⇒ 会串到下一段。默认空实现。
+     */
+    public void resetTrackSelection() {
+    }
+
+    /**
      * 是否正在播放
      */
     public abstract boolean isPlaying();

@@ -7,12 +7,16 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,6 +25,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.github.tvbox.osc.R
@@ -28,6 +35,27 @@ import com.github.tvbox.osc.bean.Movie
 import com.github.tvbox.osc.ui.components.VodCard
 import com.github.tvbox.osc.ui.page.openVodCardOrDetail
 import com.github.tvbox.osc.ui.theme.filterChipColors
+
+/** 分区标题前的裸图标(22dp、onSurface 着色):画稿图标与内置图标共用 */
+@Composable
+internal fun SectionTitleIcon(painter: Painter) {
+    Icon(
+        painter = painter,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.size(22.dp),
+    )
+}
+
+@Composable
+internal fun SectionTitleIcon(imageVector: ImageVector) {
+    Icon(
+        imageVector = imageVector,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.size(22.dp),
+    )
+}
 
 @Composable
 internal fun SourceSection(vm: DetailViewModel, currentSourceName: String?, revision: Int) {
@@ -51,11 +79,14 @@ internal fun SourceSection(vm: DetailViewModel, currentSourceName: String?, revi
                 .padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            SectionTitleIcon(painterResource(R.drawable.ic_detail_switch_source))
             Text(
                 text = stringResource(R.string.detail_switch_source),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp),
             )
             if (sourcesSearching) {
                 Text(
@@ -105,12 +136,18 @@ internal fun RelatedSection(
     val relatedVideos by vm.relatedVideos.collectAsState()
     if (relatedVideos.isEmpty()) return
     Column(modifier = Modifier.padding(top = 20.dp)) {
-        Text(
-            text = stringResource(R.string.detail_recommend),
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+        ) {
+            SectionTitleIcon(Icons.Filled.Movie)
+            Text(
+                text = stringResource(R.string.detail_recommend),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),

@@ -132,12 +132,6 @@ fun PlayerTopBar(state: PlayerUiState, actions: PlayerActions) {
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.height(TopBarLineHeight),
                     ) {
-                        if (state.netSpeedSideVisible) {
-                            TopBarText(state.netSpeedTopRight)
-                        }
-                        if (state.seekTimeVisible) {
-                            TopBarText(state.seekTimeText)
-                        }
                         if (state.sysTimeVisible && state.batteryPercent in 0..100) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,

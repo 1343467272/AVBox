@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -233,7 +234,10 @@ internal fun DetailContent(
 
         if (qualityOptions.size > 1) {
             item(key = "quality") {
-                ChipRow(title = stringResource(R.string.detail_quality)) {
+                ChipRow(
+                    title = stringResource(R.string.detail_quality),
+                    leading = { SectionTitleIcon(Icons.Filled.HighQuality) },
+                ) {
                     itemsIndexed(qualityOptions) { index, option ->
                         FilterChip(
                             selected = index == qualitySelected,
@@ -249,7 +253,10 @@ internal fun DetailContent(
 
         if (flags.size > 1) {
             item(key = "flags") {
-                ChipRow(title = stringResource(R.string.detail_line)) {
+                ChipRow(
+                    title = stringResource(R.string.detail_line),
+                    leading = { SectionTitleIcon(painterResource(R.drawable.ic_detail_line)) },
+                ) {
                     itemsIndexed(flags, key = { i, f -> "${i}_${f.name}" }) { _, flag ->
                         FilterChip(
                             selected = flag.name == currentFlag,
@@ -280,7 +287,11 @@ internal fun DetailContent(
 }
 
 @Composable
-private fun ChipRow(title: String, content: LazyListScope.() -> Unit) {
+private fun ChipRow(
+    title: String,
+    leading: (@Composable () -> Unit)? = null,
+    content: LazyListScope.() -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -288,12 +299,18 @@ private fun ChipRow(title: String, content: LazyListScope.() -> Unit) {
             .background(MaterialTheme.colorScheme.surfaceBright, RoundedCornerShape(16.dp))
             .padding(vertical = 12.dp),
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+        ) {
+            leading?.invoke()
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(start = if (leading != null) 8.dp else 0.dp),
+            )
+        }
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 16.dp),

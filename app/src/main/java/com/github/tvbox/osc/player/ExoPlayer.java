@@ -323,6 +323,20 @@ public class ExoPlayer extends ExoMediaPlayer {
         LOG.i("echo-exo-tunnel-prefs: tunnel=" + tunnel + ", surfaceRender=" + surfaceRender + ", preferAac=" + preferAac);
     }
 
+    /**
+     * 清掉上一段内容留下的选轨覆盖(内核复用换内容时调用,见 {@code VideoView.replay})。
+     *
+     * <p>选轨器随播放器常驻、reset 不清参数,而 {@link #applyTrack} 的覆盖表以轨道组为键、该键按内容比相等:
+     * 不清则"在 A 片选过的轨"会串到轨道结构相同的 B 片(最刺眼:B 片记忆是关字幕却仍有字幕)。
+     * 只影响默认选哪条,记忆还原({@link #restoreTracks})在 STATE_PREPARED 会按新片重放。
+     */
+    @Override
+    public void resetTrackSelection() {
+        if (trackSelector == null) return;
+        trackSelector.setParameters(trackSelector.buildUponParameters().clearSelectionOverrides().build());
+        LOG.i("echo-setTrack: clear stale overrides on content switch");
+    }
+
     @Override
     public void setDataSource(String path, Map<String, String> headers) {
         defaultSubtitleTrackSelected = false;

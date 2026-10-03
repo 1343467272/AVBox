@@ -61,6 +61,9 @@ final class PlaybackRetryDelegate {
 
         boolean isPlaybackStarted();
 
+        /** 总闸下本次是否允许跨内容复用内核(内核在、未报错)。重试阶梯的"先释放再重播"以它为准;软解回退不查(改解码必须重建) */
+        boolean isCrossContentReuseAllowed();
+
         void stopMusicSessionForFailedPlayback();
     }
 
@@ -199,7 +202,7 @@ final class PlaybackRetryDelegate {
         // 复位"已起播"标记:重播若在起播前就再次失败,后续 errorWithRetry 应走 autoRetry 阶梯
         // (切内核/换线)而不是再次落入 started=true 的兜底分支(与 PlayContainer.replay 的复位一致)
         st.playbackStarted = false;
-        if (view != null) view.releasePlayer();
+        if (view != null && !host.isCrossContentReuseAllowed()) view.releasePlayer();
         if (view != null) host.playUrl(host.webPlayUrl(), host.webHeaderMap());
         return true;
     }
@@ -217,7 +220,8 @@ final class PlaybackRetryDelegate {
         host.stopParse();
         host.initParseLoadFound();
         PlaybackViewBridge view = host.view();
-        if (view != null) view.releasePlayer();
+        // 同址同内容的兜底重播:预热总闸下不重建内核(与"点击即停"路径同一许可)
+        if (view != null && !host.isCrossContentReuseAllowed()) view.releasePlayer();
         host.play(false);
         return true;
     }
@@ -251,7 +255,8 @@ final class PlaybackRetryDelegate {
             host.stopParse();
             host.initParseLoadFound();
             PlaybackViewBridge view = host.view();
-            if (view != null) view.releasePlayer();
+            // ②同址重播:预热总闸下不重建内核(软解回退是例外,见 trySoftDecodeFallback —— 改解码必须重建)
+            if (view != null && !host.isCrossContentReuseAllowed()) view.releasePlayer();
             if (view != null) host.playUrl(host.webPlayUrl(), host.webHeaderMap());
             return true;
         }
@@ -269,7 +274,8 @@ final class PlaybackRetryDelegate {
                     st.autoSwitchedPlayerType = playerType;
                     host.stopParse();
                     host.initParseLoadFound();
-                    if (view != null) view.releasePlayer();
+                    // ④切内核重播:本分支下重建标记随切换链路置位,复用判定已在起播点兜住;此处只统一"是否先释放"口径
+                    if (view != null && !host.isCrossContentReuseAllowed()) view.releasePlayer();
                     if (view != null) host.playUrl(host.webPlayUrl(), host.webHeaderMap());
                     return true;
                 }

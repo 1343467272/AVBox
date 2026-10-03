@@ -173,12 +173,7 @@ class ComposeVideoController @JvmOverloads constructor(
         initComposeLayer()
 
         // —— 初始状态（对齐旧 initView 屏显初始化） ——
-        val display = KV.get(HawkConfig.SCREEN_DISPLAY, View.GONE)
-        state.screenDisplayOn = display == View.VISIBLE
-        state.topRightVisible = display == View.VISIBLE
-        state.sysTimeVisible = display == View.VISIBLE
-        state.netSpeedSideVisible = display == View.VISIBLE
-        state.seekTimeVisible = display == View.VISIBLE
+        state.sysTimeVisible = false
         state.isPortrait =
             resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         updateDanmuBtnState()
@@ -338,7 +333,6 @@ class ComposeVideoController @JvmOverloads constructor(
                 listener?.playNext(true)
             }
         }
-        state.seekTimeText = formatSeekTime(position) + " | " + formatSeekTime(duration)
         state.bufferedPercent = runCatching { mControlWrapper?.bufferedPercentage ?: 0 }.getOrDefault(0)
     }
 
@@ -359,15 +353,6 @@ class ComposeVideoController @JvmOverloads constructor(
         state.seekHintForward = seekTo > curr
         state.seekHintText = PlayerUtils.stringForTime(seekTo)
         state.seekHintVisible = true
-    }
-
-    private fun formatSeekTime(timeMs: Int): String {
-        val totalSeconds = timeMs.coerceAtLeast(0) / 1000
-        val seconds = totalSeconds % 60
-        val minutes = totalSeconds / 60 % 60
-        val hours = totalSeconds / 3600
-        return if (hours > 0) String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
-        else String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
     }
 
     internal fun isInPlaybackState(): Boolean {
@@ -409,11 +394,7 @@ class ComposeVideoController @JvmOverloads constructor(
         state.topLeftVisible = true
         state.topRightVisible = true
         state.netSpeedTopRightVisible = true
-        if (!state.screenDisplayOn) {
-            state.sysTimeVisible = true
-        } else {
-            state.netSpeedSideVisible = false
-        }
+        state.sysTimeVisible = true
         state.backVisible = !state.isPortrait
         showLockView()
         keepControlsAlive()
@@ -428,11 +409,7 @@ class ComposeVideoController @JvmOverloads constructor(
         state.controlsVisible = false
         state.topLeftVisible = false
         state.netSpeedTopRightVisible = false
-        if (!state.screenDisplayOn) {
-            state.sysTimeVisible = false
-        } else {
-            state.netSpeedSideVisible = true
-        }
+        state.sysTimeVisible = false
         state.backVisible = false
         uiHandler.removeCallbacks(lockHideRunnable)
         if (state.lockState != LockVisibility.GONE) {
@@ -1047,16 +1024,6 @@ class ComposeVideoController @JvmOverloads constructor(
     override fun onParamsClicked() {
         keepControlsAlive()
         state.paramsSheet = buildParamsSheet()
-    }
-
-    override fun onScreenDisplayClicked() {
-        val newDisplay = if (state.screenDisplayOn) View.GONE else View.VISIBLE
-        KV.put(HawkConfig.SCREEN_DISPLAY, newDisplay)
-        state.screenDisplayOn = newDisplay == View.VISIBLE
-        state.seekTimeVisible = state.screenDisplayOn
-        state.netSpeedSideVisible = state.screenDisplayOn
-        if (state.screenDisplayOn) state.sysTimeVisible = true
-        hideBottom()
     }
 
     override fun onInfoOsdClicked() {

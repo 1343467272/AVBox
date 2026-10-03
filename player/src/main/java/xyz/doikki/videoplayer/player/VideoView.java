@@ -570,6 +570,12 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
             start();
             return;
         }
+        // 复用内核不经 startPlay():补一次"新一次播放开始",否则上一段遗留的"待焦点恢复"会被陈旧 GAIN 兑现成自动起播
+        if (mEnableAudioFocus && mAudioFocusHelper != null) {
+            mAudioFocusHelper.onNewPlayback();
+        }
+        // 内核复用的内容边界:同一选轨器接着用,上一段选过的轨(轨道组按内容比相等)会串到这一段
+        mMediaPlayer.resetTrackSelection();
         if (mMediaPlayer.keepRenderViewOnReset()) {
             mMediaPlayer.reset();
             setOptions();

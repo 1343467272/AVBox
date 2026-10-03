@@ -744,6 +744,11 @@ public final class PlaybackEngine implements PlaybackHostApi {
         }
 
         @Override
+        public boolean isKernelErrored() {
+            return !released && videoView.isKernelErrored();
+        }
+
+        @Override
         public void releasePlayer() {
             // 与页面桥同一入口:走引擎的意图方法(所有权收口,见 PlaybackEngine.releasePlayer)
             PlaybackEngine.this.releasePlayer();
@@ -823,6 +828,11 @@ public final class PlaybackEngine implements PlaybackHostApi {
         @Override
         public void startVideoPlayback(String url, HashMap<String, String> headers, boolean forceExoPlayer) {
             if (released) return;
+            // 错误态兜底:复用判定放行后内核仍可能报错,坏内核不能接着 reset 用(与页面桥同一口径)
+            if (videoView.isKernelErrored()) {
+                videoView.requireKernelRebuild();
+                LOG.i(TAG + " rebuild errored kernel on start (headless)");
+            }
             // 与页面桥同一判定;重建标记必须消费,否则复用内核会沿用旧渲染/解码方式(无页面时迟到的取流回调同样能撞上)。
             boolean kernelPresent = videoView.getMediaPlayer() != null;
             boolean rebuildKernel = videoView.consumeKernelRebuildRequired();
@@ -835,6 +845,10 @@ public final class PlaybackEngine implements PlaybackHostApi {
             videoView.setTrackMemoryKey("");
             videoView.setUrl(url, headers);
             if (reusePlayer) {
+                // 同内容重播才补落盘:换内容那份已由 play() 在键易主前落好,此处落盘会把新内容的起点写进旧键
+                if (controller.isSameStartedContent()) videoView.saveCurrentProgress();
+                // 复用起播走 replay、不经 startPlay ⇒ 续播位置只能在这里灌;缺了它会从上一段内容的位置接着播
+                videoView.skipPositionWhenPlay((int) controller.playTimeoutBasePosition());
                 videoView.replay(false);
             } else {
                 videoView.start();

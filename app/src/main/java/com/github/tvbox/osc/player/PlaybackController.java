@@ -512,6 +512,11 @@ public class PlaybackController {
         public void stopMusicSessionForFailedPlayback() {
             music.stopMusicSessionForFailedPlayback();
         }
+
+        @Override
+        public boolean isCrossContentReuseAllowed() {
+            return PlaybackController.this.isCrossContentReuseAllowed();
+        }
     });
 
     /** 解析/嗅探调度(见 PlayUrlResolver) */
@@ -754,20 +759,39 @@ public class PlaybackController {
      * D6 必须拒绝接管(真机 bug:点播页播着直播)。
      */
     private String startedPlaybackKey;
+    /** 上一次真正起播时下发的进度键。与归属键的唯一区别:**会话边界不清** —— 换片时 {@link #startSession} 会先清归属键(D6 依据须即时作废),复用判定若读它则恒判不出"内核里是上一部片"。 */
+    private String startedProgressKey;
 
     /** 内容真正起播(地址交给播放器)时调用:记录归属,供 D6 接管判定 */
     public void markContentStarted() {
         startedPlaybackKey = currentSession == null ? null : currentSession.playbackKey();
+        // 与归属同处记录:此刻 progressKey 已是本次内容的键(起播点先 setProgressKey 再调本方法)
+        startedProgressKey = progressKey;
     }
 
     /** 内容不再属于当前会话(直播接管等):清空归属标记 */
     public void clearStartedContent() {
         startedPlaybackKey = null;
+        // 内核交出去后播放器里不再有"本控制器的内容",进度也没有可落盘的归属了(与上面同处清,保持两者同步)
+        startedProgressKey = null;
     }
 
     @Nullable
     public String startedPlaybackKey() {
         return startedPlaybackKey;
+    }
+
+    /** 上一次真正起播的进度键(= 内核里那份内容的位置归属);null = 内核里没播过内容(未创建/预热空闲/已释放) */
+    private String startedProgressKey() {
+        return startedProgressKey;
+    }
+
+    /**
+     * 内核里那份内容是否就是本次要播的这一集(= 同内容重播,不是换内容)。
+     * 起播点据此决定要不要在 replay 前补落盘:换内容时进度键与起点都已属新内容,补落盘会污染新旧两个键。
+     */
+    public boolean isSameStartedContent() {
+        return startedProgressKey != null && TextUtils.equals(startedProgressKey, progressKey());
     }
 
     /** 建立取流结果观察者 */
@@ -892,10 +916,15 @@ public class PlaybackController {
         if (view != null) view.hidePreloadReadyTip();
         if (vod() == null) return;
         // 起播前的复用判定走唯一入口(与各起播点同一函数):意图来自同片换集/换线/切歌;
-        // 预热建的空闲内核(无内容语义)在开关开启时免意图复用 —— 否则它会被这里的释放收走,预热收益归零
+        // 预热总闸开启后换片/换源也免意图复用 —— 否则会被这里的释放收走,预热与总闸双双落空
         boolean kernelPresent = view != null && view.mediaPlayer() != null;
         boolean idleKernelReused = isIdleKernelReusable(kernelPresent);
-        boolean reuseAllowed = consumeReusePlayerOnSwitch() || idleKernelReused;
+        boolean crossContentReuseAllowed = isCrossContentReuseAllowed();
+        boolean reuseAllowed = consumeReusePlayerOnSwitch() || idleKernelReused || crossContentReuseAllowed;
+        // 内核里躺着的还是本次这一集(= 同片换集,提示语可留着);假 → 换内容或空闲内核,须给"获取信息"反馈
+        String startedKey = startedProgressKey();
+        boolean sameContentReuse = startedKey != null
+                && !KernelReusePolicy.isCrossContentSwitch(startedKey, progressKey());
         // "必须重建"标记与 dash 专用路径取流后才可知,交起播点判定;这里只决定"要不要先把内核释放掉"
         boolean reusePlayer = KernelReusePolicy.decide(kernelPresent, false, false, reuseAllowed)
                 == KernelDecision.REUSE;
@@ -914,12 +943,12 @@ public class PlaybackController {
             return;
         }
         EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_REFRESH, vod()));
-        if (reusePlayer && !idleKernelReused) {
+        if (sameContentReuse) {
             // 复用播放器时提示已由上一集留着,这里强制写一次空态(走 view.showTip 而非页面 setTip):
             // 提示层状态归视图桥,页面/音乐页初始化都会先 hide(),旧态不会留给下一页
             if (view != null) view.showTip("", true, false);
         } else if (view != null) {
-            // 空闲内核(预热)复用没有"上一集的提示"可留,仍要给"获取播放信息"反馈
+            // 空闲内核与换内容都没有"上一集的提示"可留,仍要给"获取播放信息"反馈
             view.showTip(str(R.string.player_getting_info), true, false);
         }
         publishTitle();
@@ -936,10 +965,8 @@ public class PlaybackController {
             view.resetDanmu();
             view.clearLyric();
             if (reusePlayer) {
-                long previousPosition = view.currentPosition();
-                if (previousPosition > 0 && !TextUtils.isEmpty(progressKey())) {
-                    WatchProgressStore.save(progressOwner(), progressKey(), previousPosition, view.duration());
-                }
+                // 复用起播必经此处补落盘:同片换集有停播链路兜底(幂等),换内容(含音乐页换歌)则是唯一时机
+                savePreviousContentProgress();
                 view.clearVideoFrame();
             } else if (kernelPresent) {
                 // 内核本来就不在时不空转 release(它会重复清"已起播内容"归属)
@@ -1018,6 +1045,28 @@ public class PlaybackController {
     private boolean isIdleKernelReusable(boolean kernelPresent) {
         if (!kernelPresent || !KV.get(HawkConfig.KERNEL_PREWARM, false)) return false;
         return view.currentPlayState() == VideoView.STATE_IDLE;
+    }
+
+    /**
+     * 「内核预热」总闸开启时的跨内容复用许可(换片/换源/换集/换线)。三处共用,避免各判各的造成动作分裂。
+     * ERROR 态返回 false:复用一个坏内核没有意义,强制重建兜底。
+     */
+    public boolean isCrossContentReuseAllowed() {
+        if (!KV.get(HawkConfig.KERNEL_PREWARM, false)) return false;
+        if (view == null || view.mediaPlayer() == null) return false;
+        return !view.isKernelErrored();
+    }
+
+    /**
+     * 换内容前把上一段的位置落盘,**必须在下一次 {@link #setProgressKey} 之前**调 —— 之后进度键就易主了。
+     * 复用起播走 replay、不经 release(该方法内部才有 saveProgress 兜底),漏了这一步就丢上一段的观看位置。
+     */
+    private void savePreviousContentProgress() {
+        if (view == null) return;
+        if (TextUtils.isEmpty(progressKey())) return;
+        long position = view.currentPosition();
+        if (position <= 0) return;
+        WatchProgressStore.save(progressOwner(), progressKey(), position, view.duration());
     }
 
     /**

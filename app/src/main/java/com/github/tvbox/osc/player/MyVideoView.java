@@ -86,6 +86,11 @@ public class MyVideoView extends VideoView implements DrawHandler.Callback {
         return mMediaPlayer;
     }
 
+    /** 内核存在且停在错误态:复用判定用它兜底 —— 复用一个坏内核没有意义,必须强制重建(无内核时为 false) */
+    public boolean isKernelErrored() {
+        return mMediaPlayer != null && getCurrentPlayState() == STATE_ERROR;
+    }
+
     public void requireKernelRebuild() {
         mKernelRebuildRequired = true;
     }

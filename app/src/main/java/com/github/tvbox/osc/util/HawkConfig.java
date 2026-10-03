@@ -80,7 +80,6 @@ public class HawkConfig {
     public static final String LIVE_API_URL = "live_api_url";
     public static final String M3U8_PURIFY = "m3u8_purify";
     public static final String AUTO_SWITCH_LINE = "auto_switch_line";
-    public static final String SCREEN_DISPLAY = "screen_display";
     /** 收藏页栅格列数(2/3;设置页"收藏页布局"写入,默认 3) */
     public static final String COLLECT_COLUMNS = "collect_columns";
     public static final String LIVE_WEB_HEADER = "live_web_header";

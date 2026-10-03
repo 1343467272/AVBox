@@ -28,4 +28,23 @@ object KernelReusePolicy {
         if (rebuildRequired || dedicatedPath) return KernelDecision.REBUILD
         return if (reuseAllowed) KernelDecision.REUSE else KernelDecision.REBUILD
     }
+
+    /**
+     * 内核里躺着的**不是**本次要播的同一集(换片/换源/换线,或同片换线后换集) —— 与"同片同线路换集"相对。
+     * 只用来分辨提示语与进度落盘口径;归属键格式见 [PlaybackSession.playbackKey] `源|片id|线路|集号`。
+     */
+    @JvmStatic
+    fun isCrossContentSwitch(startedKey: String?, targetKey: String?): Boolean {
+        if (startedKey.isNullOrEmpty()) return false
+        val prefix = sameVodEpisodePrefix(targetKey)
+        if (prefix.isEmpty()) return true
+        return !startedKey.startsWith(prefix)
+    }
+
+    /** 同片同线路的归属前缀:按目标键最后一个 `|` 切出,内核里那条键以它开头即同集换集;切不出返回空串(判不出按换内容) */
+    private fun sameVodEpisodePrefix(targetKey: String?): String {
+        if (targetKey.isNullOrEmpty()) return ""
+        val cut = targetKey.lastIndexOf('|')
+        return if (cut > 0) targetKey.substring(0, cut + 1) else ""
+    }
 }

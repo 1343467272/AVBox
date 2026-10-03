@@ -386,15 +386,27 @@ class MusicPlayerActivity : BaseActivity(), PlaybackPage {
 
     private fun startPlayback(url: String, headers: HashMap<String, String>?, forceExoPlayer: Boolean) {
         PlayerTipBridge.hide()
-        if (player.mediaPlayer != null && player.needsRenderRebuild(player.factoryRenderType())) {
+        // 纯音频会话的视图最终总会热切 Texture(见 ensureAudioOnlyRender),按用户设置重建只会白断一次声音
+        if (player.mediaPlayer != null
+            && !controller.isConfirmedAudioOnly()
+            && player.needsRenderRebuild(player.factoryRenderType())
+        ) {
             player.requireKernelRebuild()
             LOG.i("echo-render-changed: rebuild kernel on next start")
+        }
+        // 许可放行后内核仍可能报错:坏内核不能接着 reset 用(与点播页同一口径)
+        if (player.isKernelErrored()) {
+            player.requireKernelRebuild()
+            LOG.i("echo-kernel-error: rebuild errored kernel on start")
         }
         val rebuildKernel = player.consumeKernelRebuildRequired()
         val kernelPresent = player.mediaPlayer != null
         val reusePlayer = KernelReusePolicy.decide(kernelPresent, rebuildKernel, forceExoPlayer, true) == KernelDecision.REUSE
         if (!reusePlayer && kernelPresent) engine.releasePlayer()
+        // 换歌一律是换内容(进度键每首不同),上一首的落盘由 PlaybackController.play() 在键易主前统一做
         player.setProgressKey(controller.progressKey())
+        // 记忆键随内核作废(MyVideoView.release),复用别页留下的内核时必须显式清,否则会沿用上一部片的字幕记忆
+        player.setTrackMemoryKey("")
         controller.markContentStarted()
         if (headers != null) player.setUrl(url, headers) else player.setUrl(url)
         controller.startSwitchLinePlayTimeout()

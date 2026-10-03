@@ -72,11 +72,14 @@ internal fun EpisodeRow(
                 .padding(start = 16.dp, end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            SectionTitleIcon(painterResource(R.drawable.ic_detail_episodes))
             Text(
                 text = stringResource(R.string.detail_episodes),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp),
             )
             PillAction(
                 // 图标与文案同向:都表达"点一下会切到什么" —— 正序=向上箭头,倒序=向下箭头

@@ -95,7 +95,6 @@ public final class KVKeySpec implements KVDecoder.TypeRegistry {
         register(HawkConfig.SUBTITLE_EXO_SCALE, 0);
         register(HawkConfig.SUBTITLE_TEXT_STYLE, 0);
         register(HawkConfig.LIVE_GROUP_INDEX, 0);
-        register(HawkConfig.SCREEN_DISPLAY, 0);
         register(HawkConfig.SEARCH_THREADS, 0);
         register(HawkConfig.LONG_PRESS_SPEED, 0);
         register(HawkConfig.BUFFER_TIMES, 0);

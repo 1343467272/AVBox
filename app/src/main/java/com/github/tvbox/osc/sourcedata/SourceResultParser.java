@@ -208,8 +208,25 @@ final class SourceResultParser {
 
     AbsXml json(MutableLiveData<AbsXml> result, String json, String sourceKey, String searchToken, Integer detailToken) {
         try {
+            if (json == null || json.trim().isEmpty()) {
+                if (result != null) {
+                    LOG.i("echo--parse-empty-body:" + sourceKey
+                            + " (站点返回空响应;JSON 型源(ac=detail)拿不到内容时常见,或该源实为 XML 类型)");
+                }
+                if (searchResult == result) {
+                    postEmptySearchResult(result, sourceKey, searchToken);
+                } else if (result == detailResult) {
+                    result.postValue(createEmptyDetail(sourceKey, detailToken));
+                } else if (result != null) {
+                    result.postValue(null);
+                }
+                return null;
+            }
             AbsJson absJson = gson.fromJson(json, new TypeToken<AbsJson>() {
             }.getType());
+            if (absJson == null) {
+                throw new IllegalStateException("json 非空但解析不出对象: " + json);
+            }
             AbsXml data = absJson.toAbsXml();
             SourceHelper.absXml(data, sourceKey, searchToken);
             data.detailToken = detailToken;

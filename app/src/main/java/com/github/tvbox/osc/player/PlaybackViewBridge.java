@@ -69,6 +69,9 @@ public interface PlaybackViewBridge {
     /** 当前内核实例(轨道信息读取用;无播放器时 null) */
     AbstractPlayer mediaPlayer();
 
+    /** 内核是否停在错误态(无内核为 false):错误内核不能复用,必须强制重建 */
+    boolean isKernelErrored();
+
     // ---------- 起播/释放 ----------
 
     /** 释放当前播放器实例(内核切换前 / 换线重播前 / 换内核时) */

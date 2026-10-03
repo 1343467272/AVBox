@@ -72,14 +72,8 @@ class PlayerUiState {
     var topRightVisible: Boolean by mutableStateOf(false)
     /** tv_sys_time */
     var sysTimeVisible: Boolean by mutableStateOf(false)
-    /** net_play_speed（右块行内网速） */
-    var netSpeedSideVisible: Boolean by mutableStateOf(false)
-    /** tv_seek_time */
-    var seekTimeVisible: Boolean by mutableStateOf(false)
     /** tv_play_load_net_speed_right_top */
     var netSpeedTopRightVisible: Boolean by mutableStateOf(false)
-    /** tv_seek_time 文本（1s 轮询 + setProgress 更新） */
-    var seekTimeText: String by mutableStateOf("")
 
     /** 返回键：true = VISIBLE（仅横屏非 TV），false = INVISIBLE（占位不显示） */
     var backVisible: Boolean by mutableStateOf(false)
@@ -87,7 +81,6 @@ class PlayerUiState {
     var lockState: LockVisibility by mutableStateOf(LockVisibility.GONE)
 
     // —— 底部菜单（照搬 updatePortraitMenu / updatePlayerCfgView / hideLiveAboutBtn） ——
-    var screenDisplayOn: Boolean by mutableStateOf(false)
     var infoOsdVisible: Boolean by mutableStateOf(false)
     var infoOsdLeft: List<String> by mutableStateOf(emptyList())
     var infoOsdRight: List<String> by mutableStateOf(emptyList())
@@ -344,7 +337,6 @@ interface PlayerActions {
     fun onRotateClicked()
     /** 打开播放参数抽屉（右侧竖排入口） */
     fun onParamsClicked()
-    fun onScreenDisplayClicked()
     fun onInfoOsdClicked()
     fun onBackClicked()
     fun onLockClicked()

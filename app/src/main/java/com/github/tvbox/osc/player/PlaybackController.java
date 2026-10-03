@@ -26,6 +26,7 @@ import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.LanguageManager;
 import com.github.tvbox.osc.util.MD5;
 import com.github.tvbox.osc.util.PlayerHelper;
+import com.github.tvbox.osc.util.PlaybackProgress;
 import com.github.tvbox.osc.util.WatchProgressStore;
 import com.github.tvbox.osc.util.thunder.Jianpian;
 import com.github.tvbox.osc.util.thunder.Thunder;
@@ -978,6 +979,7 @@ public class PlaybackController {
         setProgressKey(vod().sourceKey + vod().id + vod().playFlag + vod().playIndex + vs.name);
         // 这一集是真的重新起播:删除时下的"作废"到此为止(否则用户重看一遍也不再记进度)
         WatchProgressStore.onPlayStart(progressKey());
+        PlaybackProgress.onEpisodeStartNoScroll();
         startResolvePlayUrlTimeout();
         // 换源点击即停前记下的进度:新源进度键不同,写进新键缓存接着看(新键已有历史记录则不覆盖);
         // 回滚原源时键相同,停播 release 已落盘,该方法会直接跳过
@@ -1039,20 +1041,19 @@ public class PlaybackController {
     }
 
     /**
-     * 预热建的空闲内核(从未绑定内容)可被新内容起播免意图复用:它没有内容语义要保护,复用只是 reset+换源;
-     * 有内容的内核(暂停/在播)仍按"新内容先释放"处理。开关关闭时恒 false,维持既有行为。
+     * 未绑定内容的空闲内核(预热建的、或上次内容已停)可免意图复用:它没有内容语义要保护,复用只是 reset+换源。
+     * 有内容的内核(暂停/在播)仍按"新内容先释放"处理。
      */
     private boolean isIdleKernelReusable(boolean kernelPresent) {
-        if (!kernelPresent || !KV.get(HawkConfig.KERNEL_PREWARM, false)) return false;
+        if (!kernelPresent) return false;
         return view.currentPlayState() == VideoView.STATE_IDLE;
     }
 
     /**
-     * 「内核预热」总闸开启时的跨内容复用许可(换片/换源/换集/换线)。三处共用,避免各判各的造成动作分裂。
+     * 跨内容复用许可(换片/换源/换集/换线):复用在上界内(见引擎的空闲释放)才有收益,与预热开关无关。
      * ERROR 态返回 false:复用一个坏内核没有意义,强制重建兜底。
      */
     public boolean isCrossContentReuseAllowed() {
-        if (!KV.get(HawkConfig.KERNEL_PREWARM, false)) return false;
         if (view == null || view.mediaPlayer() == null) return false;
         return !view.isKernelErrored();
     }

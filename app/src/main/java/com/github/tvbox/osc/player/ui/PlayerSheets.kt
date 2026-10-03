@@ -3,6 +3,7 @@ package com.github.tvbox.osc.player.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.annotation.DimenRes
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -298,6 +299,54 @@ internal fun SheetButton(
 }
 
 private const val ACTION_FLASH_MS = 100L
+
+@Composable
+internal fun SheetTextAction(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    padding: Dp? = null,
+    @DimenRes fontSizeRes: Int = R.dimen.ts_20,
+) {
+    Box(
+        modifier = modifier.pointerInput(onClick) {
+            detectTapGestures(onTap = { onClick() })
+        },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.primary,
+            fontSize = playerTextSize(fontSizeRes),
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(
+                horizontal = padding ?: playerDim(R.dimen.vs_10),
+                vertical = playerDim(R.dimen.vs_10),
+            ),
+        )
+    }
+}
+
+@Composable
+internal fun SheetHeaderRow(
+    title: String,
+    modifier: Modifier = Modifier,
+    action: (@Composable () -> Unit)? = null,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = playerDim(R.dimen.vs_30)),
+        contentAlignment = Alignment.Center,
+    ) {
+        SheetTitle(title)
+        if (action != null) {
+            Box(Modifier.align(Alignment.CenterEnd)) { action() }
+        }
+    }
+}
 
 @Composable
 internal fun SheetActionButton(

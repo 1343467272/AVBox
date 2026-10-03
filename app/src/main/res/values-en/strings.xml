@@ -53,6 +53,7 @@
     <string name="subtitle_style_two">Subtitle style 2</string>
     <string name="subtitle_delay_exo_hint">Subtitle delay applies to built-in subtitles</string>
     <string name="subtitle_delay_hint">Subtitle delay applies to external subtitles only</string>
+    <string name="subtitle_position_value">Position %1$s</string>
     <string name="subtitle_advance">Advance subtitle</string>
     <string name="subtitle_delay">Delay subtitle</string>
     <string name="subtitle_search_hint">Enter subtitle name</string>

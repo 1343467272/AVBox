@@ -1,7 +1,7 @@
 package com.github.tvbox.osc.util
 
-/** 一条进度值的处置结论:落盘 / 清除已有记录 / 不写也不清 */
-enum class WatchDecision { SAVE, CLEAR, SKIP }
+/** 一条进度值的处置结论:落盘 / 不写 */
+enum class WatchDecision { SAVE, SKIP }
 
 /**
  * "这条进度值不值得记住"的唯一判据:续播点、历史页百分比、"看过"门槛三处共用 ——
@@ -15,12 +15,12 @@ object WatchProgressRules {
     /** 续播点最小比例(%);与 [MIN_RESUME_MS] 取更小者,让短视频也能留下续播点 */
     const val MIN_RESUME_PERCENT = 30L
 
-    /** 看到这个比例即视为看完:清掉续播点与百分比,否则下次点开直接跳片尾 */
+    /** 到这个比例即视为看完:百分比照常留到 100%,续播点由播出结束的清除路径负责 */
     const val FINISHED_PERCENT = 95L
 
     fun decide(positionMs: Long, durationMs: Long): WatchDecision {
         if (positionMs <= 0) return WatchDecision.SKIP
-        if (durationMs > 0 && positionMs * 100 >= durationMs * FINISHED_PERCENT) return WatchDecision.CLEAR
+        if (durationMs > 0 && positionMs * 100 >= durationMs * FINISHED_PERCENT) return WatchDecision.SAVE
         val minResume = if (durationMs > 0) {
             minOf(MIN_RESUME_MS, durationMs * MIN_RESUME_PERCENT / 100)
         } else {

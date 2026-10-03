@@ -24,11 +24,12 @@ class WatchProgressRulesTest {
     }
 
     @Test
-    fun decide_finishedPercentClears() {
+    fun decide_finishedPercentStillSaves() {
+        // 看完不清百分比:卡片要能显示到 100(续播点由播出结束的清除路径负责)
         val hundredSeconds = 100_000L
         assertEquals(WatchDecision.SAVE, WatchProgressRules.decide(94_999, hundredSeconds))
-        assertEquals(WatchDecision.CLEAR, WatchProgressRules.decide(95_000, hundredSeconds))
-        assertEquals(WatchDecision.CLEAR, WatchProgressRules.decide(hundredSeconds, hundredSeconds))
+        assertEquals(WatchDecision.SAVE, WatchProgressRules.decide(95_000, hundredSeconds))
+        assertEquals(WatchDecision.SAVE, WatchProgressRules.decide(hundredSeconds, hundredSeconds))
     }
 
     @Test

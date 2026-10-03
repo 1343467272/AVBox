@@ -64,6 +64,14 @@ public class DanmuHelper {
         return Color.parseColor(PALETTE[index]);
     }
 
+    public static void reset() {
+        KV.delete(HawkConfig.DANMU_RANDOM_COLOR);
+        KV.delete(HawkConfig.DANMU_SPEED);
+        KV.delete(HawkConfig.DANMU_SIZE_SCALE);
+        KV.delete(HawkConfig.DANMU_MAX_LINE);
+        KV.delete(HawkConfig.DANMU_ALPHA);
+    }
+
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(value, max));
     }

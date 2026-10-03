@@ -84,7 +84,8 @@ class HistoryViewModel : ViewModel() {
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     fun onRefreshEvent(event: RefreshEvent) {
-        if (event.type == RefreshEvent.TYPE_HISTORY_REFRESH) refresh(scrollToTop = true)
+        // 带 obj(Boolean.FALSE)= 起播点刷新:只重读快照,不把用户手里的列表滚回顶部
+        if (event.type == RefreshEvent.TYPE_HISTORY_REFRESH) refresh(scrollToTop = event.obj !is Boolean)
         // 历史按当前订阅隔离:换了订阅必须重读库,只重解析站名会继续列着上一个订阅的记录
         else if (event.type == RefreshEvent.TYPE_API_URL_CHANGE) refresh()
     }

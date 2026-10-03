@@ -130,7 +130,6 @@ fun SubtitleSheet(sheet: SubtitleSheetState, onDismiss: () -> Unit) {
                         }, modifier = Modifier.width(playerDim(R.dimen.vs_140)))
                     }
                     Spacer(Modifier.height(playerDim(R.dimen.vs_10)))
-                    // 样式行:exo = 上移/位置/下移;外挂 = 样式一/样式二
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -153,15 +152,19 @@ fun SubtitleSheet(sheet: SubtitleSheetState, onDismiss: () -> Unit) {
                             },
                             modifier = Modifier.width(playerDim(R.dimen.vs_140)),
                         )
-                        Text(
-                            text = posText,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = playerTextSize(R.dimen.ts_26),
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.Center,
+                        SheetTextAction(
+                            text = stringResource(R.string.theme_reset),
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(horizontal = playerDim(R.dimen.vs_10)),
+                            onClick = {
+                                sheet.onReset()
+                                sizeText = if (exo) SubtitleHelper.getExoSubtitleScale().toString() + "%"
+                                else SubtitleHelper.getTextSize(context.findActivityOrNull()).toString()
+                                val position = SubtitleHelper.getExoSubtitlePosition()
+                                posText = if (position == 0.0f) "0" else "$position%"
+                                delayText = SubtitleHelper.getTimeDelay().let { if (it == 0) "0" else (it / 1000.0).toString() }
+                            },
                         )
                         SheetButton(
                             stringResource(if (exo) R.string.subtitle_move_down else R.string.subtitle_style_two),
@@ -178,6 +181,18 @@ fun SubtitleSheet(sheet: SubtitleSheetState, onDismiss: () -> Unit) {
                                 }
                             },
                             modifier = Modifier.width(playerDim(R.dimen.vs_140)),
+                        )
+                    }
+                    if (exo) {
+                        Text(
+                            text = stringResource(R.string.subtitle_position_value, posText),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = playerTextSize(R.dimen.ts_20),
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = playerDim(R.dimen.vs_5)),
                         )
                     }
                     Spacer(Modifier.height(playerDim(R.dimen.vs_10)))

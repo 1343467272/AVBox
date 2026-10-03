@@ -53,6 +53,7 @@
     <string name="subtitle_style_two">字幕樣式二</string>
     <string name="subtitle_delay_exo_hint">字幕延遲對內建字幕有效</string>
     <string name="subtitle_delay_hint">字幕延遲僅對外掛字幕有效</string>
+    <string name="subtitle_position_value">目前位置 %1$s</string>
     <string name="subtitle_advance">字幕提前</string>
     <string name="subtitle_delay">字幕延後</string>
     <string name="subtitle_search_hint">請輸入字幕名稱</string>

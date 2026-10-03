@@ -34,9 +34,6 @@ object PlaybackProgress {
 
     private var watchedToken = ""
 
-    /** 已清空百分比的键:看完后每帧都判 CLEAR,不去重会变成每秒一次 KV 读改写 */
-    private var clearedKey = ""
-
     private val writer: ExecutorService by lazy {
         Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "playback-progress") }
     }
@@ -54,26 +51,38 @@ object PlaybackProgress {
             .toMap()
     }
 
+    /**
+     * 起播点清掉该片残留的百分比:百分比按整片一条(键 = 源|片id),留着会让卡片挂着上一集的进度。
+     * [scrollToTop] 为 false 时刷新不置顶列表(起播不是"用户在看历史页")。
+     */
+    fun onEpisodeStart(scrollToTop: Boolean) {
+        val id = currentKey() ?: return
+        val cleared = forget(id)
+        val event = if (scrollToTop) {
+            RefreshEvent(RefreshEvent.TYPE_HISTORY_REFRESH)
+        } else {
+            // obj = Boolean.FALSE:历史页据此跳过置顶
+            RefreshEvent(RefreshEvent.TYPE_HISTORY_REFRESH, java.lang.Boolean.FALSE)
+        }
+        if (cleared || !scrollToTop) EventBus.getDefault().post(event)
+    }
+
+    /** 起播点入口(Java 调用) */
+    @JvmStatic
+    fun onEpisodeStartNoScroll() = onEpisodeStart(false)
+
     fun onProgress(positionMs: Int, durationMs: Int) {
         val id = currentKey() ?: return
         WatchProgressStore.noteDuration(id, durationMs.toLong())
         // 节流会吞采样,判据必须拿到全部采样
         markWatched(positionMs, durationMs)
-        when (WatchProgressRules.decide(positionMs.toLong(), durationMs.toLong())) {
-            WatchDecision.SKIP -> return
-            WatchDecision.CLEAR -> {
-                clearIfNeeded(id)
-                return
-            }
-            WatchDecision.SAVE -> Unit
-        }
+        if (WatchProgressRules.decide(positionMs.toLong(), durationMs.toLong()) == WatchDecision.SKIP) return
         val percent = calcPercent(positionMs, durationMs) ?: return
         val now = System.currentTimeMillis()
         if (id == lastKey && (percent == lastSavedPercent || now - lastSavedAt < MIN_INTERVAL_MS)) return
         lastKey = id
         lastSavedAt = now
         lastSavedPercent = percent
-        clearedKey = ""
         writer.execute { write(id, percent) }
     }
 
@@ -83,20 +92,25 @@ object PlaybackProgress {
         watchedToken = ""
         sampleToken = ""
         advancedMs = 0
-        return when (WatchProgressRules.decide(positionMs.toLong(), durationMs.toLong())) {
-            WatchDecision.SKIP -> false
-            WatchDecision.CLEAR -> clearNow(id)
-            WatchDecision.SAVE -> {
-                val percent = calcPercent(positionMs, durationMs) ?: return false
-                if (id == lastKey && percent == lastSavedPercent) return false
-                if (!write(id, percent)) return false
-                lastKey = id
-                lastSavedAt = System.currentTimeMillis()
-                lastSavedPercent = percent
-                clearedKey = ""
-                true
-            }
-        }
+        if (WatchProgressRules.decide(positionMs.toLong(), durationMs.toLong()) == WatchDecision.SKIP) return false
+        val percent = calcPercent(positionMs, durationMs) ?: return false
+        if (id == lastKey && percent == lastSavedPercent) return false
+        if (!write(id, percent)) return false
+        lastKey = id
+        lastSavedAt = System.currentTimeMillis()
+        lastSavedPercent = percent
+        return true
+    }
+
+    /** 本集播完:百分比落满 100,续播点由内核对完播的清除路径负责(VideoView.onCompletion 写 0) */
+    fun markFinished() {
+        val id = currentKey() ?: return
+        if (id == lastKey && lastSavedPercent == 100) return
+        if (!write(id, 100)) return
+        lastKey = id
+        lastSavedAt = System.currentTimeMillis()
+        lastSavedPercent = 100
+        EventBus.getDefault().post(RefreshEvent(RefreshEvent.TYPE_HISTORY_REFRESH))
     }
 
     /** 只认平滑推进:回拖与 seek 跳变(起播起始位置来自上次进度)都不算"在播" */
@@ -123,26 +137,6 @@ object PlaybackProgress {
         if (!WatchProgressRules.shouldRemember(positionMs.toLong(), durationMs.toLong())) return
         watchedToken = token
         EventBus.getDefault().post(RefreshEvent(RefreshEvent.TYPE_PLAYBACK_STARTED))
-    }
-
-    /** 看完要连百分比一起清,否则"已观看 100%"会一直挂在历史卡片上 */
-    private fun clearIfNeeded(id: String) {
-        if (id == clearedKey) return
-        clearedKey = id
-        resetSavedState()
-        writer.execute { remove(id) }
-    }
-
-    private fun clearNow(id: String): Boolean {
-        if (id == clearedKey) return false
-        clearedKey = id
-        resetSavedState()
-        return remove(id)
-    }
-
-    private fun resetSavedState() {
-        lastKey = ""
-        lastSavedPercent = -1
     }
 
     private fun calcPercent(positionMs: Int, durationMs: Int): Int? {
@@ -195,16 +189,12 @@ object PlaybackProgress {
 
     /** 用户删历史时的移除入口(owner = 源|片id):主动操作不受无痕拦截 */
     @Synchronized
-    fun forget(id: String): Boolean {
-        if (id == clearedKey) clearedKey = ""
-        return remove(id)
-    }
+    fun forget(id: String): Boolean = remove(id)
 
     @Synchronized
     fun forgetAll() {
         lastKey = ""
         lastSavedPercent = -1
-        clearedKey = ""
         KV.delete(KEY)
     }
 

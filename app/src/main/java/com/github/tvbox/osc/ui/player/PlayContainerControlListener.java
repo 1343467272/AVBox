@@ -8,6 +8,7 @@ import com.github.tvbox.osc.bean.VodInfo;
 import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.player.controller.VodControlListener;
 import com.github.tvbox.osc.player.state.DanmuSettingSheetState;
+import com.github.tvbox.osc.util.DanmuHelper;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.WatchProgressStore;
 import org.greenrobot.eventbus.EventBus;
@@ -27,6 +28,10 @@ final class PlayContainerControlListener implements VodControlListener {
         if (!container.isAttached()) return;
         container.mController.getUiState().setDanmuSettingSheet(new DanmuSettingSheetState(() -> {
             container.openDanmuSearchSheet();
+            return kotlin.Unit.INSTANCE;
+        }, () -> {
+            DanmuHelper.reset();
+            container.applyDanmuSettings(true);
             return kotlin.Unit.INSTANCE;
         }));
     }

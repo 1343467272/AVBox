@@ -54,4 +54,12 @@ public class SubtitleHelper {
         KV.put(HawkConfig.SUBTITLE_EXO_POSITION, position);
     }
 
+    public static void reset() {
+        KV.delete(HawkConfig.SUBTITLE_TEXT_SIZE);
+        KV.delete(HawkConfig.SUBTITLE_TIME_DELAY);
+        KV.delete(HawkConfig.SUBTITLE_TEXT_STYLE);
+        KV.delete(HawkConfig.SUBTITLE_EXO_SCALE);
+        KV.delete(HawkConfig.SUBTITLE_EXO_POSITION);
+    }
+
 }

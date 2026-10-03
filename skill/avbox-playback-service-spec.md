@@ -217,6 +217,7 @@
 | D5 | 是否迁 media3 `MediaSessionService` | 不迁(内核非 media3 Player) | ✅ 已按建议执行(保留 `MediaSessionCompat` + MediaStyle) |
 | D6 | 详情页叠加的"同片续播 / 换片重播"判定 | 按 `playbackKey`(同片只 attach) | ✅ P3 已落地(`PlayContainer.setData` + `isSamePlaybackOwned`) |
 | D7 | 是否执行本 Spec(以及从哪个阶段开始) | P0/P1 先做(风险最低) | ✅ 全程执行 P0→P5(2026-09-14 一天内分批落地;真机回归待补) |
+| D8 | 内核复用是否继续由「内核预热」开关当总闸 | 拆开:复用一律放行,开关只管预建与常驻 | ✅ 已执行(2026-10-03):`isCrossContentReuseAllowed()` / `isIdleKernelReusable()` 删预热判据,只留 `isKernelErrored()` 与 `requireKernelRebuild()` 两条强重建条件;换线/换源/换片不再重建;预热开=启动预建+空闲常驻,关=首次起播才建+页面摘除后 60 秒回收(`IDLE_RELEASE_DELAY_MS`)。判定细节与已知取舍见 `avbox-mobile-ui-spec.md` §6.19 |
 
 ## 8. 修订记录
 
@@ -232,3 +233,4 @@
 | 2026-09-14 | **真机功能回归通过(已确认)**;spec 状态收口为 P0–P5 ✅。第五轮审查另修:`exitLive()` 顺序缺陷(直播 position 写进点播进度缓存 → release 提到 `exitLiveState()` 之前)、直播接管后回直播页停死内核并重播当前频道(`enterLiveState()` 返回 boolean)、`play()` 裸取崩溃防护、`HeadlessView.startVideoPlayback` 复用/释放防线 |
 | 2026-09-19 | **缺陷修复(真机确认):未授予 `POST_NOTIFICATIONS` 时播放"抽搐式"卡顿**。根因 = P3 起通知会话的唯一入口 `PlaybackController.updateMusicSession()`(**热路径**,由播放状态回调驱动,实测起播期 8~9 次/秒)无条件调用 `view.requestNotificationPermission()`,而 `PermissionHelper.requestNotificationIfNeeded()` 未授权时未提前返回 ⇒ 每次回调拉起一个 `GrantPermissionsActivity`(固定拒绝下"创建→立刻 finish"),系统窗口反复抢焦点打断渲染 Surface(真机 3.2 秒 22 次)。修复 = `PermissionHelper` 加进程级一次性闸门 + 未授权提前返回(闸门置于 binder 权限查询之前)。**要点**:`am_foreground_service_start`/`notification_enqueue` 当时均正常 ⇒ **FGS 与解码器无关**;排查手法与全部证据见 `history/features.md` 2026-09-19 节。**订正**:本文档链路上曾被记录的"状态变化即重发通知"待办,经真机 `notification_enqueue` 计数证实**不成立**(稳定播放期 0 次重发),该待办已降级 |
 | 2026-09-21 | **两处"旧内容残留"缺陷修复**(真机反馈,读码定位 + 静态修改,未装机复测):① 音乐页退出→进直播漏音 —— `enterLive()` 原只 `pause()`(PAUSED 时是空操作),改为 `releasePlayer()` 停死旧内核;② 影视页退出→进新影视页闪上一部画面 —— `attach()` 搬容器前先 `coverVideoFrame()` 遮黑(`MyVideoView` 新增"只遮黑不停内核"的 API;`clearVideoFrame()` 会 stop 内核,不能用于此),起播由 `STATE_PLAYING` 揭开。挂摘协议新增条目见 §2.3、直播边界见 §3-P4 的 R10 ④;过程见 `history/features.md` 2026-09-21 第七轮 |
+| 2026-10-03 | **内核复用总闸从「预热」开关上摘除(见 D8)**:换线/换源/换片一律走复用,不再 `releasePlayer()` 重建;预热开关收敛为"启动预建 + 空闲常驻"两个职责。连带改动:历史/进度侧四处(切集即时落库、百分比不串集、seek 松手即落盘、看完显示 100%)与返回键语义(预览态箭头不再转横屏、全屏箭头一步退全屏),均见 `avbox-mobile-ui-spec.md` §4.4/§6.10/§6.14/§6.19 与 `history/features.md` 对应条目。**构建与单测通过(65 类 / 501 用例),未真机验证;换分辨率源的复用几何是首要走查项** |

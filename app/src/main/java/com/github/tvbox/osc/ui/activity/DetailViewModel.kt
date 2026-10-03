@@ -867,6 +867,8 @@ class DetailViewModel : ViewModel() {
         info.seriesFlags.forEach { it.selected = it.name == newFlag }
         info.seriesMap?.values?.forEach { list -> list.forEach { it.selected = false } }
         newList[newIndex].selected = true
+        // "真看过"落库要过观看门槛,短看即退会让库里的集号停在上一集(卡片与续播都跟着错),故同步集号即落库
+        insertVod()
         bumpRevision()
         LOG.i("echo-detail sync -> $newFlag/$newIndex")
     }

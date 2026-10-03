@@ -105,7 +105,7 @@ object WatchProgressStore {
     }
 
     /**
-     * 落盘当前进度。[positionMs] <= 0 是"清除"而非"位置为 0"(见 VideoView.onCompletion);
+     * 落盘当前进度。[positionMs] <= 0 是"清除"而非"位置为 0"(见 VideoView.onCompletion,播完归零);
      * 无痕只拦"写新的",清除一律执行,否则旧续播点会永远留着。owner 为空时只落进度、不维护索引。
      */
     @JvmStatic
@@ -116,21 +116,13 @@ object WatchProgressStore {
             return
         }
         if (isDiscarded(progressKey)) return
-        when (WatchProgressRules.decide(positionMs, resolveDuration(owner, durationMs))) {
-            WatchDecision.SAVE -> {
-                if (HistoryHelper.isIncognito()) return
-                submit {
-                    // 执行时复查:排队期间刚落下的删除、刚打开的无痕,都要能拦住这次写
-                    if (isDiscarded(progressKey) || HistoryHelper.isIncognito()) return@submit
-                    CacheManager.save(md5(progressKey), positionMs)
-                    remember(owner, progressKey)
-                }
-            }
-            WatchDecision.CLEAR -> submit {
-                CacheManager.delete(md5(progressKey), 0L)
-                forget(owner, progressKey)
-            }
-            WatchDecision.SKIP -> Unit
+        if (HistoryHelper.isIncognito()) return
+        if (WatchProgressRules.decide(positionMs, resolveDuration(owner, durationMs)) == WatchDecision.SKIP) return
+        submit {
+            // 执行时复查:排队期间刚落下的删除、刚打开的无痕,都要能拦住这次写
+            if (isDiscarded(progressKey) || HistoryHelper.isIncognito()) return@submit
+            CacheManager.save(md5(progressKey), positionMs)
+            remember(owner, progressKey)
         }
     }
 

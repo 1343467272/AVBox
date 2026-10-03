@@ -3,7 +3,6 @@ package com.github.tvbox.osc.ui.player;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
-import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.view.LayoutInflater;
@@ -322,6 +321,10 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
         if (danmuLoadController != null) danmuLoadController.applySettings(reload);
     }
 
+    void applyDanmuSettings(boolean reload) {
+        setDanmuViewSettings(reload);
+    }
+
     private void checkDanmu(String danmu) {
         checkDanmu(danmu, null);
     }
@@ -472,6 +475,12 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
                         return kotlin.Unit.INSTANCE;
                     },
                     () -> {
+                        applySubtitleTextSize();
+                        return kotlin.Unit.INSTANCE;
+                    },
+                    () -> {
+                        SubtitleHelper.reset();
+                        setSubtitleViewTextStyle(0);
                         applySubtitleTextSize();
                         return kotlin.Unit.INSTANCE;
                     }));
@@ -1152,19 +1161,7 @@ public class PlayContainer extends FrameLayout implements CustomAdapt, PlaybackH
     }
 
     public boolean onBackPressed() {
-        int requestedOrientation = mActivity.getRequestedOrientation();
-        boolean portrait = requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT || requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT || requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT;
-        if (portrait && previewMode) {
-            if (mController.onBackPressed()) {
-                return true;
-            }
-            mActivity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-            return true;
-        }
-        if (mController.onBackPressed()) {
-            return true;
-        }
-        return false;
+        return mController.onBackPressed();
     }
 
     public boolean isPortraitVideo() {

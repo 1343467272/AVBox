@@ -256,9 +256,10 @@ class PictureParamsState(
     val onCompareChanged: (Boolean) -> Unit,
 )
 
-/** 弹幕设置面板状态（Step 6 替代 View 版 DanmuSettingDialog） */
+/** 弹幕设置面板状态（Step 6 替代 View 版 DanmuSettingDialog）；onReset = 恢复面板内各项默认（开关与搜索源不在面板内） */
 class DanmuSettingSheetState(
     val onOpenSearch: () -> Unit,
+    val onReset: () -> Unit = {},
 )
 
 /** 弹幕搜索面板状态（替代 View 版 SearchDanmuDialog）；onLoad = 命中弹幕 XML 回调（PlayContainer.checkDanmu） */
@@ -279,6 +280,7 @@ class SubtitleSheetState(
     val onSelectStyle: (Int) -> Unit = {},
     /** 字号按钮只写了设置,需播放层立即按当前形态(预览 0.6×/全屏 1×)应用到字幕视图 */
     val onTextSizeChange: () -> Unit = {},
+    val onReset: () -> Unit = {},
 )
 
 /**

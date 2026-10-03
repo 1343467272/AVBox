@@ -17,6 +17,7 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import android.webkit.WebView
 import android.widget.Toast
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.platform.ComposeView
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
@@ -291,7 +292,7 @@ class ComposeVideoController @JvmOverloads constructor(
             VideoView.STATE_ERROR -> listener?.errReplay()
             VideoView.STATE_PREPARED -> listener?.prepared()
             VideoView.STATE_PLAYBACK_COMPLETED -> {
-                savePlaybackProgress(notifyHistory = true)
+                PlaybackProgress.markFinished()
                 listener?.playNext(true)
             }
         }
@@ -336,11 +337,16 @@ class ComposeVideoController @JvmOverloads constructor(
         state.bufferedPercent = runCatching { mControlWrapper?.bufferedPercentage ?: 0 }.getOrDefault(0)
     }
 
-    private fun savePlaybackProgress(notifyHistory: Boolean) {
+    /** [seekTargetMs] 只在 seek 提交时给:此刻读 currentPosition 还是拖动前的老位置,暂停态也等不到下一拍更正 */
+    private fun savePlaybackProgress(notifyHistory: Boolean, seekTargetMs: Int = -1) {
         val wrapperDuration = runCatching { mControlWrapper?.duration ?: 0L }.getOrDefault(0L).toInt()
         val wrapperPosition = runCatching { mControlWrapper?.currentPosition ?: 0L }.getOrDefault(0L).toInt()
         val duration = if (wrapperDuration > 0) wrapperDuration else state.duration
-        val position = if (wrapperDuration > 0) wrapperPosition else state.position
+        val position = when {
+            seekTargetMs >= 0 -> seekTargetMs
+            wrapperDuration > 0 -> wrapperPosition
+            else -> state.position
+        }
         if (duration <= 0) return
         PlaybackProgress.flush(position, duration)
         // 值没变也必须通知:周期写入早已落盘,历史页手里的可能是进播放前的旧快照
@@ -1039,13 +1045,9 @@ class ComposeVideoController @JvmOverloads constructor(
     }
 
     override fun onBackClicked() {
-        if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
-            mActivity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            hideBottom()
-            return
-        }
-        isClickBackBtn = true
-        mActivity?.onBackPressed()
+        isClickBackBtn = state.controlsVisible && !previewMode
+        // 走 dispatcher(宿主一律是 BaseActivity):Activity.onBackPressed() 已废弃
+        (mActivity as? ComponentActivity)?.onBackPressedDispatcher?.onBackPressed()
     }
 
     override fun onLockClicked() {
@@ -1083,14 +1085,19 @@ class ComposeVideoController @JvmOverloads constructor(
     override fun onSeekFinished(progress: Int) {
         keepControlsAlive()
         val wrapper = mControlWrapper
+        var seekTarget = -1
         if (wrapper != null) {
             val duration = PlayerUtils.safeTimeMs(wrapper.duration)
-            wrapper.seekTo(seekBarToPosition(progress, duration))
+            seekTarget = seekBarToPosition(progress, duration).toInt()
+            wrapper.seekTo(seekTarget.toLong())
         }
+        // 顺序反了这次 seek 的位置就进不了记录:拖拽态下 setProgress 丢弃这一拍,而暂停态的循环开完这一拍就停
         state.dragging = false
         keySeekProgress = 0
         mControlWrapper?.startProgress()
         mControlWrapper?.startFadeOut()
+        // 显式落盘:暂停态等不到下一拍,播放态也不该等到下一拍才更新历史页
+        if (seekTarget >= 0) savePlaybackProgress(notifyHistory = true, seekTargetMs = seekTarget)
     }
 
     override fun onSeekCancelled() {
